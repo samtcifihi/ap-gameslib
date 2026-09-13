@@ -13,8 +13,9 @@ export type HexDir = "N" | "NE" | "SE" | "S" | "SW" | "NW";
 // Internal directions used by HexTriGraph (flat-top hex)
 type InternalDir = "NE" | "E" | "SE" | "SW" | "W" | "NW";
 
-// A plane has owner, direction, and height
-export type PlaneInfo = [playerid, HexDir, number];
+// A plane has owner, direction, height, and whether it has ever occupied a
+// non-cloud cell. The last field is optional for compatibility with old saves.
+export type PlaneInfo = [playerid, HexDir, number, boolean?];
 
 const allDirections: HexDir[] = ["N", "NE", "SE", "S", "SW", "NW"];
 
@@ -490,19 +491,33 @@ export class CrosshairsGame extends GameBase {
 
     // Resolve effects caused by entering cells after the manoeuvre's intrinsic
     // height change has already been applied. Cells must be in travel order so
-    // a two-space level flight or a multi-swoop dive can enter several clouds.
-    private resolveCloudEntry(enteredCells: string[], heightAfterManeuver: number): { heightAfterEntry: number; crashCell?: string } {
+    // a two-space level flight can enter several clouds. Only the final cell is
+    // occupied; dives call this once per swoop, allowing eligibility to change
+    // between manoeuvres. Missing eligibility flags come from old saved states
+    // and retain the earlier behaviour by defaulting to turbulence-eligible.
+    private resolveCloudEntry(
+        enteredCells: string[],
+        heightAfterManeuver: number,
+        hasOccupiedClearCell = true,
+    ): { heightAfterEntry: number; hasOccupiedClearCell: boolean; crashCell?: string } {
         let heightAfterEntry = heightAfterManeuver;
-        if (!this.variants.includes("turbulence")) return { heightAfterEntry };
-
-        for (const cell of enteredCells) {
-            if (!this.clouds.has(cell)) continue;
-            // Each cloud is a separate trigger. Stop at the first one that
-            // would make an already-ground-level plane lose another height.
-            if (heightAfterEntry <= 0) return { heightAfterEntry: 0, crashCell: cell };
-            heightAfterEntry--;
+        if (this.variants.includes("turbulence") && hasOccupiedClearCell) {
+            for (const cell of enteredCells) {
+                if (!this.clouds.has(cell)) continue;
+                // Each cloud is a separate trigger. Stop at the first one that
+                // would make an already-ground-level plane lose another height.
+                if (heightAfterEntry <= 0) {
+                    return { heightAfterEntry: 0, hasOccupiedClearCell, crashCell: cell };
+                }
+                heightAfterEntry--;
+            }
         }
-        return { heightAfterEntry };
+
+        const occupiedCell = enteredCells[enteredCells.length - 1];
+        return {
+            heightAfterEntry,
+            hasOccupiedClearCell: hasOccupiedClearCell || !this.clouds.has(occupiedCell),
+        };
     }
 
     // Check if we're in cloud placement phase
@@ -784,7 +799,7 @@ export class CrosshairsGame extends GameBase {
     // Generate all possible moves for a single plane
     // Optional board parameter for checking against a specific board state (e.g., after partial moves)
     private getPlaneMovements(cell: string, info: PlaneInfo, board?: Map<string, PlaneInfo>): string[] {
-        const [, dir, height] = info;
+        const [, dir, height, hasOccupiedClearCell = true] = info;
         const moves: string[] = [];
 
         // (a) Climb: +1 height (capped at 6), move 1 forward, optional 60° turn
@@ -818,7 +833,7 @@ export class CrosshairsGame extends GameBase {
 
         // (c) Dive: series of swoops and power dives
         // This is complex - we generate all possible dive sequences
-        const diveSequences = this.generateDiveSequences(cell, height, dir, board);
+        const diveSequences = this.generateDiveSequences(cell, height, dir, hasOccupiedClearCell, board);
         for (const seq of diveSequences) {
             moves.push(`${cell}v${seq}`);
         }
@@ -832,14 +847,27 @@ export class CrosshairsGame extends GameBase {
     }
 
     // Generate all possible dive sequences from a position
-    private generateDiveSequences(cell: string, height: number, dir: HexDir, board?: Map<string, PlaneInfo>): string[] {
+    private generateDiveSequences(
+        cell: string,
+        height: number,
+        dir: HexDir,
+        hasOccupiedClearCell: boolean,
+        board?: Map<string, PlaneInfo>,
+    ): string[] {
         if (height === 0) return [];
 
         const sequences: string[] = [];
 
-        // Helper to generate sequences recursively
-        // Dive steps are separated by ">" (not comma, which separates actions in a turn)
-        const generate = (currentCell: string, currentHeight: number, currentDir: HexDir, path: string) => {
+        // Each recursive call receives the fully resolved state after one
+        // manoeuvre. Dive steps are separated by ">" (not comma, which
+        // separates actions in a turn).
+        const generate = (
+            currentCell: string,
+            currentHeight: number,
+            currentDir: HexDir,
+            currentHasOccupiedClearCell: boolean,
+            path: string,
+        ) => {
             // A dive must lose height, so we must do at least one maneuver
             if (path !== "") {
                 // Add current state as a valid sequence (can stop diving at any point)
@@ -852,14 +880,22 @@ export class CrosshairsGame extends GameBase {
                 if (forward !== undefined) {
                     // Resolve cloud entry after applying the swoop's normal
                     // one-height loss. Power dives do not enter a new cell.
-                    const cloudEntry = this.resolveCloudEntry([forward], currentHeight - 1);
+                    const cloudEntry = this.resolveCloudEntry(
+                        [forward], currentHeight - 1, currentHasOccupiedClearCell,
+                    );
                     const continueSwoop = (newDir: HexDir, newPath: string) => {
                         if (cloudEntry.crashCell !== undefined) {
                             // A crash is a valid terminal dive sequence, but no
                             // later swoops or power dives may follow it.
                             sequences.push(newPath);
                         } else {
-                            generate(forward, cloudEntry.heightAfterEntry, newDir, newPath);
+                            generate(
+                                forward,
+                                cloudEntry.heightAfterEntry,
+                                newDir,
+                                cloudEntry.hasOccupiedClearCell,
+                                newPath,
+                            );
                         }
                     };
 
@@ -875,15 +911,24 @@ export class CrosshairsGame extends GameBase {
             if (currentHeight >= 2) {
                 const newHeight = currentHeight - 2;
                 // Keep direction
-                generate(currentCell, newHeight, currentDir, path === "" ? `P` : `${path}>P`);
+                generate(
+                    currentCell, newHeight, currentDir, currentHasOccupiedClearCell,
+                    path === "" ? `P` : `${path}>P`,
+                );
                 // Turn
                 const [left, right] = adjacentDirs(currentDir);
-                generate(currentCell, newHeight, left, path === "" ? `P/${left}` : `${path}>P/${left}`);
-                generate(currentCell, newHeight, right, path === "" ? `P/${right}` : `${path}>P/${right}`);
+                generate(
+                    currentCell, newHeight, left, currentHasOccupiedClearCell,
+                    path === "" ? `P/${left}` : `${path}>P/${left}`,
+                );
+                generate(
+                    currentCell, newHeight, right, currentHasOccupiedClearCell,
+                    path === "" ? `P/${right}` : `${path}>P/${right}`,
+                );
             }
         };
 
-        generate(cell, height, dir, "");
+        generate(cell, height, dir, hasOccupiedClearCell, "");
         return sequences;
     }
 
@@ -1153,25 +1198,34 @@ export class CrosshairsGame extends GameBase {
         const parsed = this.parseMove(action);
         if (parsed.type === "enter") {
             const cell = parsed.cell!;
-            // A newly placed plane enters its starting cell at height 0.
-            const cloudEntry = this.resolveCloudEntry([cell], 0);
+            // A new plane is exempt until it has occupied a clear cell.
+            const cloudEntry = this.resolveCloudEntry([cell], 0, false);
             if (cloudEntry.crashCell === undefined) {
-                board.set(cell, [this.currplayer, parsed.dir!, cloudEntry.heightAfterEntry]);
+                board.set(cell, [
+                    this.currplayer,
+                    parsed.dir!,
+                    cloudEntry.heightAfterEntry,
+                    cloudEntry.hasOccupiedClearCell,
+                ]);
             }
         } else if (parsed.type === "move") {
             const fromCell = parsed.cell!;
             const info = board.get(fromCell);
             if (!info) return;
-            const [owner, currentDir, currentHeight] = info;
+            const [owner, currentDir, currentHeight, hasOccupiedClearCell = true] = info;
 
             if (parsed.moveType === "crash") {
                 board.delete(fromCell);
             } else if (parsed.moveType === "climb") {
                 const newDir = parsed.dir || currentDir;
-                const cloudEntry = this.resolveCloudEntry([parsed.target!], Math.min(currentHeight + 1, 6));
+                const cloudEntry = this.resolveCloudEntry(
+                    [parsed.target!], Math.min(currentHeight + 1, 6), hasOccupiedClearCell,
+                );
                 board.delete(fromCell);
                 if (cloudEntry.crashCell === undefined) {
-                    board.set(parsed.target!, [owner, newDir, cloudEntry.heightAfterEntry]);
+                    board.set(parsed.target!, [
+                        owner, newDir, cloudEntry.heightAfterEntry, cloudEntry.hasOccupiedClearCell,
+                    ]);
                 }
             } else if (parsed.moveType === "level") {
                 const newDir = parsed.dir || currentDir;
@@ -1179,16 +1233,19 @@ export class CrosshairsGame extends GameBase {
                 // Preserve travel order because both cells of a two-space move
                 // can independently trigger cloud-entry effects.
                 const enteredCells = oneAhead === parsed.target ? [parsed.target!] : [oneAhead!, parsed.target!];
-                const cloudEntry = this.resolveCloudEntry(enteredCells, currentHeight);
+                const cloudEntry = this.resolveCloudEntry(enteredCells, currentHeight, hasOccupiedClearCell);
                 board.delete(fromCell);
                 if (cloudEntry.crashCell === undefined) {
-                    board.set(parsed.target!, [owner, newDir, cloudEntry.heightAfterEntry]);
+                    board.set(parsed.target!, [
+                        owner, newDir, cloudEntry.heightAfterEntry, cloudEntry.hasOccupiedClearCell,
+                    ]);
                 }
             } else if (parsed.moveType === "dive") {
                 // Process full dive sequence
                 let cell = fromCell;
                 let height = currentHeight;
                 let dir = currentDir;
+                let occupiedClearCell = hasOccupiedClearCell;
                 const sequence = parsed.diveSequence || "";
                 const steps = sequence.split(">");
                 for (const step of steps) {
@@ -1210,17 +1267,18 @@ export class CrosshairsGame extends GameBase {
                                 const d = parts[1].toUpperCase() as HexDir;
                                 if (allDirections.includes(d)) dir = d;
                             }
-                            const cloudEntry = this.resolveCloudEntry([cell], height);
+                            const cloudEntry = this.resolveCloudEntry([cell], height, occupiedClearCell);
                             if (cloudEntry.crashCell !== undefined) {
                                 board.delete(fromCell);
                                 return;
                             }
                             height = cloudEntry.heightAfterEntry;
+                            occupiedClearCell = cloudEntry.hasOccupiedClearCell;
                         }
                     }
                 }
                 if (fromCell !== cell) board.delete(fromCell);
-                board.set(cell, [owner, dir, height]);
+                board.set(cell, [owner, dir, height, occupiedClearCell]);
             }
         }
     }
@@ -1237,12 +1295,12 @@ export class CrosshairsGame extends GameBase {
         const fromCell = parsed.cell!;
         const info = boardBefore.get(fromCell);
         if (!info) return [{ action, newPassed: new Set(passedPlanes) }];
-        const [owner, currentDir, currentHeight] = info;
+        const [owner, currentDir, currentHeight, hasOccupiedClearCell = true] = info;
         const sequence = parsed.diveSequence || "";
         const steps = sequence.split(">");
 
-        // Process each step, tracking board state and branching on shots.
-        // We build the action string incrementally: "g6v" + step1 + ">" + step2 + ...
+        // Process each manoeuvre before branching on the shots it enables. We
+        // build the action string incrementally: "g6v" + step1 + ">" + step2 + ...
         type DiveVariant = {
             prefix: string;       // built action so far (e.g., "g6vf6(e5)>e5")
             board: Map<string, PlaneInfo>;
@@ -1250,6 +1308,7 @@ export class CrosshairsGame extends GameBase {
             cell: string;
             height: number;
             dir: HexDir;
+            hasOccupiedClearCell: boolean;
             crashed: boolean;
         };
 
@@ -1260,6 +1319,7 @@ export class CrosshairsGame extends GameBase {
             cell: fromCell,
             height: currentHeight,
             dir: currentDir,
+            hasOccupiedClearCell,
             crashed: false,
         }];
 
@@ -1275,6 +1335,7 @@ export class CrosshairsGame extends GameBase {
                 let newCell = v.cell;
                 let newHeight = v.height;
                 let newDir = v.dir;
+                let newHasOccupiedClearCell = v.hasOccupiedClearCell;
                 let crashed = false;
 
                 const stepLower = step.toLowerCase();
@@ -1286,7 +1347,7 @@ export class CrosshairsGame extends GameBase {
                         if (allDirections.includes(d)) newDir = d;
                     }
                     // Update board: plane stays in same cell with new height/dir
-                    newBoard.set(newCell, [owner, newDir, newHeight]);
+                    newBoard.set(newCell, [owner, newDir, newHeight, newHasOccupiedClearCell]);
                 } else {
                     const parts = stepLower.split("/");
                     const targetCell = parts[0];
@@ -1304,13 +1365,16 @@ export class CrosshairsGame extends GameBase {
                             const d = parts[1].toUpperCase() as HexDir;
                             if (allDirections.includes(d)) newDir = d;
                         }
-                        const cloudEntry = this.resolveCloudEntry([newCell], newHeight);
+                        const cloudEntry = this.resolveCloudEntry(
+                            [newCell], newHeight, newHasOccupiedClearCell,
+                        );
                         newHeight = cloudEntry.heightAfterEntry;
+                        newHasOccupiedClearCell = cloudEntry.hasOccupiedClearCell;
                         crashed = cloudEntry.crashCell !== undefined;
                         if (crashed) {
                             newBoard.delete(newCell);
                         } else {
-                            newBoard.set(newCell, [owner, newDir, newHeight]);
+                            newBoard.set(newCell, [owner, newDir, newHeight, newHasOccupiedClearCell]);
                         }
                     }
                 }
@@ -1337,6 +1401,7 @@ export class CrosshairsGame extends GameBase {
                         cell: newCell,
                         height: newHeight,
                         dir: newDir,
+                        hasOccupiedClearCell: newHasOccupiedClearCell,
                         crashed,
                     });
                 } else {
@@ -1353,6 +1418,7 @@ export class CrosshairsGame extends GameBase {
                             cell: newCell,
                             height: newHeight,
                             dir: newDir,
+                            hasOccupiedClearCell: newHasOccupiedClearCell,
                             crashed,
                         });
                     }
@@ -1436,7 +1502,9 @@ export class CrosshairsGame extends GameBase {
     private boardFingerprint(board: Map<string, PlaneInfo>, planesRemaining: [number, number]): string {
         const entries: string[] = [];
         for (const [cell, info] of board) {
-            entries.push(`${cell}:${info[0]},${info[1]},${info[2]}`);
+            // Eligibility is part of the game state: otherwise two positions
+            // that react differently to a future cloud could be deduplicated.
+            entries.push(`${cell}:${info[0]},${info[1]},${info[2]},${info[3] ?? true}`);
         }
         entries.sort();
         return `${entries.join(";")}|${planesRemaining[0]},${planesRemaining[1]}`;
@@ -2288,11 +2356,16 @@ export class CrosshairsGame extends GameBase {
                     if (!startingHexes.includes(cell)) { error = inv(action); break; }
                     if (!allDirections.includes(dir)) { error = inv(action); break; }
                 }
-                // Board entry itself counts as entering a cloud. Since planes
-                // enter at height 0, an occupied cloud causes an immediate crash.
-                const cloudEntry = this.resolveCloudEntry([cell], 0);
+                // A newly entered plane is protected from turbulence until it
+                // has occupied a non-cloud cell.
+                const cloudEntry = this.resolveCloudEntry([cell], 0, false);
                 if (cloudEntry.crashCell === undefined) {
-                    board.set(cell, [this.currplayer, dir, cloudEntry.heightAfterEntry]);
+                    board.set(cell, [
+                        this.currplayer,
+                        dir,
+                        cloudEntry.heightAfterEntry,
+                        cloudEntry.hasOccupiedClearCell,
+                    ]);
                 }
                 planesRemaining[this.currplayer - 1]--;
                 movedPlanes.add(cell);
@@ -2321,7 +2394,7 @@ export class CrosshairsGame extends GameBase {
                     partialState = { type: "next_action" };
                     continue;
                 }
-                const [owner, currentDir, currentHeight] = info;
+                const [owner, currentDir, currentHeight, hasOccupiedClearCell = true] = info;
 
                 if (parsed.moveType === "crash") {
                     if (validate) {
@@ -2378,10 +2451,14 @@ export class CrosshairsGame extends GameBase {
                     }
                     // The climb is resolved before effects caused by entering
                     // the destination cell.
-                    const cloudEntry = this.resolveCloudEntry([toCell], Math.min(currentHeight + 1, 6));
+                    const cloudEntry = this.resolveCloudEntry(
+                        [toCell], Math.min(currentHeight + 1, 6), hasOccupiedClearCell,
+                    );
                     board.delete(fromCell);
                     if (cloudEntry.crashCell === undefined) {
-                        board.set(toCell, [owner, newDir, cloudEntry.heightAfterEntry]);
+                        board.set(toCell, [
+                            owner, newDir, cloudEntry.heightAfterEntry, cloudEntry.hasOccupiedClearCell,
+                        ]);
                     }
                     movedPlanes.add(toCell);
                     if (generateResults) {
@@ -2445,10 +2522,12 @@ export class CrosshairsGame extends GameBase {
                     // Keep both entered cells in travel order: turbulence may
                     // apply twice, and a crash can occur in the first cell.
                     const enteredCells = oneAhead === toCell ? [toCell] : [oneAhead, toCell];
-                    const cloudEntry = this.resolveCloudEntry(enteredCells, currentHeight);
+                    const cloudEntry = this.resolveCloudEntry(enteredCells, currentHeight, hasOccupiedClearCell);
                     board.delete(fromCell);
                     if (cloudEntry.crashCell === undefined) {
-                        board.set(toCell, [owner, newDir, cloudEntry.heightAfterEntry]);
+                        board.set(toCell, [
+                            owner, newDir, cloudEntry.heightAfterEntry, cloudEntry.hasOccupiedClearCell,
+                        ]);
                     }
                     movedPlanes.add(cloudEntry.crashCell ?? toCell);
                     if (generateResults) {
@@ -2509,10 +2588,14 @@ export class CrosshairsGame extends GameBase {
                     let cell = fromCell;
                     let height = currentHeight;
                     let dir = currentDir;
+                    let occupiedClearCell = hasOccupiedClearCell;
                     let prevCell = fromCell; // track previous cell for board cleanup
                     let diveIsPartial = false;
                     let crashed = false;
 
+                    // Fully resolve movement, height, direction, cloud entry,
+                    // board state, shooting, and crashes for one manoeuvre
+                    // before beginning the next loop iteration.
                     for (let stepIdx = 0; stepIdx < stepsWithShoots.length; stepIdx++) {
                         const stepWithShoot = stepsWithShoots[stepIdx];
                         const stepTargets = this.extractShootTargets(stepWithShoot);
@@ -2560,8 +2643,9 @@ export class CrosshairsGame extends GameBase {
 
                                 // Resolve each swoop separately so a dive can
                                 // suffer turbulence from several clouds.
-                                const cloudEntry = this.resolveCloudEntry([cell], height);
+                                const cloudEntry = this.resolveCloudEntry([cell], height, occupiedClearCell);
                                 height = cloudEntry.heightAfterEntry;
+                                occupiedClearCell = cloudEntry.hasOccupiedClearCell;
                                 crashed = cloudEntry.crashCell !== undefined;
                             }
                         }
@@ -2581,7 +2665,7 @@ export class CrosshairsGame extends GameBase {
                                 results.push({ type: "destroy", what: "plane", where: cell });
                             }
                         } else {
-                            board.set(cell, [owner, dir, height]);
+                            board.set(cell, [owner, dir, height, occupiedClearCell]);
                         }
                         prevCell = cell;
 
@@ -2606,7 +2690,7 @@ export class CrosshairsGame extends GameBase {
                         board.delete(fromCell);
                     }
                     if (!crashed) {
-                        board.set(cell, [owner, dir, height]);
+                        board.set(cell, [owner, dir, height, occupiedClearCell]);
                     }
 
                     movedPlanes.add(crashed ? fromCell : cell);
