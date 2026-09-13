@@ -488,17 +488,21 @@ export class CrosshairsGame extends GameBase {
         return new Map(Array.from(board, ([k, v]) => [k, [...v] as PlaneInfo]));
     }
 
-    // Apply one turbulence loss for every entered cloud, after the manoeuvre's
-    // own height change. A plane already at height 0 crashes on the next loss.
-    private applyTurbulence(enteredCells: string[], height: number): { height: number; crashCell?: string } {
-        if (!this.variants.includes("turbulence")) return { height };
+    // Resolve effects caused by entering cells after the manoeuvre's intrinsic
+    // height change has already been applied. Cells must be in travel order so
+    // a two-space level flight or a multi-swoop dive can enter several clouds.
+    private resolveCloudEntry(enteredCells: string[], heightAfterManeuver: number): { heightAfterEntry: number; crashCell?: string } {
+        let heightAfterEntry = heightAfterManeuver;
+        if (!this.variants.includes("turbulence")) return { heightAfterEntry };
 
         for (const cell of enteredCells) {
             if (!this.clouds.has(cell)) continue;
-            if (height <= 0) return { height: 0, crashCell: cell };
-            height--;
+            // Each cloud is a separate trigger. Stop at the first one that
+            // would make an already-ground-level plane lose another height.
+            if (heightAfterEntry <= 0) return { heightAfterEntry: 0, crashCell: cell };
+            heightAfterEntry--;
         }
-        return { height };
+        return { heightAfterEntry };
     }
 
     // Check if we're in cloud placement phase
@@ -846,13 +850,16 @@ export class CrosshairsGame extends GameBase {
             if (currentHeight >= 1) {
                 const forward = this.moveForward(currentCell, currentDir, board);
                 if (forward !== undefined) {
-                    const turbulence = this.applyTurbulence([forward], currentHeight - 1);
+                    // Resolve cloud entry after applying the swoop's normal
+                    // one-height loss. Power dives do not enter a new cell.
+                    const cloudEntry = this.resolveCloudEntry([forward], currentHeight - 1);
                     const continueSwoop = (newDir: HexDir, newPath: string) => {
-                        if (turbulence.crashCell !== undefined) {
-                            // The dive ends immediately when turbulence crashes the plane.
+                        if (cloudEntry.crashCell !== undefined) {
+                            // A crash is a valid terminal dive sequence, but no
+                            // later swoops or power dives may follow it.
                             sequences.push(newPath);
                         } else {
-                            generate(forward, turbulence.height, newDir, newPath);
+                            generate(forward, cloudEntry.heightAfterEntry, newDir, newPath);
                         }
                     };
 
@@ -1140,14 +1147,16 @@ export class CrosshairsGame extends GameBase {
     }
 
     // Apply a single bare action (no shot notation) to a board in-place.
-    // Lightweight version of applyActions for just board mutation.
+    // This lightweight simulation is used while expanding move-and-shoot
+    // choices, so its cloud-entry effects must match applyActions exactly.
     private applyActionToBoard(action: string, board: Map<string, PlaneInfo>): void {
         const parsed = this.parseMove(action);
         if (parsed.type === "enter") {
             const cell = parsed.cell!;
-            const turbulence = this.applyTurbulence([cell], 0);
-            if (turbulence.crashCell === undefined) {
-                board.set(cell, [this.currplayer, parsed.dir!, turbulence.height]);
+            // A newly placed plane enters its starting cell at height 0.
+            const cloudEntry = this.resolveCloudEntry([cell], 0);
+            if (cloudEntry.crashCell === undefined) {
+                board.set(cell, [this.currplayer, parsed.dir!, cloudEntry.heightAfterEntry]);
             }
         } else if (parsed.type === "move") {
             const fromCell = parsed.cell!;
@@ -1159,19 +1168,21 @@ export class CrosshairsGame extends GameBase {
                 board.delete(fromCell);
             } else if (parsed.moveType === "climb") {
                 const newDir = parsed.dir || currentDir;
-                const turbulence = this.applyTurbulence([parsed.target!], Math.min(currentHeight + 1, 6));
+                const cloudEntry = this.resolveCloudEntry([parsed.target!], Math.min(currentHeight + 1, 6));
                 board.delete(fromCell);
-                if (turbulence.crashCell === undefined) {
-                    board.set(parsed.target!, [owner, newDir, turbulence.height]);
+                if (cloudEntry.crashCell === undefined) {
+                    board.set(parsed.target!, [owner, newDir, cloudEntry.heightAfterEntry]);
                 }
             } else if (parsed.moveType === "level") {
                 const newDir = parsed.dir || currentDir;
                 const oneAhead = this.moveForward(fromCell, currentDir, board);
+                // Preserve travel order because both cells of a two-space move
+                // can independently trigger cloud-entry effects.
                 const enteredCells = oneAhead === parsed.target ? [parsed.target!] : [oneAhead!, parsed.target!];
-                const turbulence = this.applyTurbulence(enteredCells, currentHeight);
+                const cloudEntry = this.resolveCloudEntry(enteredCells, currentHeight);
                 board.delete(fromCell);
-                if (turbulence.crashCell === undefined) {
-                    board.set(parsed.target!, [owner, newDir, turbulence.height]);
+                if (cloudEntry.crashCell === undefined) {
+                    board.set(parsed.target!, [owner, newDir, cloudEntry.heightAfterEntry]);
                 }
             } else if (parsed.moveType === "dive") {
                 // Process full dive sequence
@@ -1199,12 +1210,12 @@ export class CrosshairsGame extends GameBase {
                                 const d = parts[1].toUpperCase() as HexDir;
                                 if (allDirections.includes(d)) dir = d;
                             }
-                            const turbulence = this.applyTurbulence([cell], height);
-                            if (turbulence.crashCell !== undefined) {
+                            const cloudEntry = this.resolveCloudEntry([cell], height);
+                            if (cloudEntry.crashCell !== undefined) {
                                 board.delete(fromCell);
                                 return;
                             }
-                            height = turbulence.height;
+                            height = cloudEntry.heightAfterEntry;
                         }
                     }
                 }
@@ -1293,9 +1304,9 @@ export class CrosshairsGame extends GameBase {
                             const d = parts[1].toUpperCase() as HexDir;
                             if (allDirections.includes(d)) newDir = d;
                         }
-                        const turbulence = this.applyTurbulence([newCell], newHeight);
-                        newHeight = turbulence.height;
-                        crashed = turbulence.crashCell !== undefined;
+                        const cloudEntry = this.resolveCloudEntry([newCell], newHeight);
+                        newHeight = cloudEntry.heightAfterEntry;
+                        crashed = cloudEntry.crashCell !== undefined;
                         if (crashed) {
                             newBoard.delete(newCell);
                         } else {
@@ -2277,17 +2288,19 @@ export class CrosshairsGame extends GameBase {
                     if (!startingHexes.includes(cell)) { error = inv(action); break; }
                     if (!allDirections.includes(dir)) { error = inv(action); break; }
                 }
-                const turbulence = this.applyTurbulence([cell], 0);
-                if (turbulence.crashCell === undefined) {
-                    board.set(cell, [this.currplayer, dir, turbulence.height]);
+                // Board entry itself counts as entering a cloud. Since planes
+                // enter at height 0, an occupied cloud causes an immediate crash.
+                const cloudEntry = this.resolveCloudEntry([cell], 0);
+                if (cloudEntry.crashCell === undefined) {
+                    board.set(cell, [this.currplayer, dir, cloudEntry.heightAfterEntry]);
                 }
                 planesRemaining[this.currplayer - 1]--;
                 movedPlanes.add(cell);
                 if (generateResults) {
                     results.push({ type: "place", what: "plane", where: cell });
                     results.push({ type: "orient", where: cell, facing: dir });
-                    if (turbulence.crashCell !== undefined) {
-                        results.push({ type: "destroy", what: "plane", where: turbulence.crashCell });
+                    if (cloudEntry.crashCell !== undefined) {
+                        results.push({ type: "destroy", what: "plane", where: cloudEntry.crashCell });
                     }
                 }
                 if (shootTargets.length > 0) {
@@ -2363,16 +2376,18 @@ export class CrosshairsGame extends GameBase {
                         if (!isOneAhead(fromCell, currentDir, toCell)) { error = inv(action); break; }
                         if (!validateDir(parsed.dir, currentDir, action)) break;
                     }
-                    const turbulence = this.applyTurbulence([toCell], Math.min(currentHeight + 1, 6));
+                    // The climb is resolved before effects caused by entering
+                    // the destination cell.
+                    const cloudEntry = this.resolveCloudEntry([toCell], Math.min(currentHeight + 1, 6));
                     board.delete(fromCell);
-                    if (turbulence.crashCell === undefined) {
-                        board.set(toCell, [owner, newDir, turbulence.height]);
+                    if (cloudEntry.crashCell === undefined) {
+                        board.set(toCell, [owner, newDir, cloudEntry.heightAfterEntry]);
                     }
                     movedPlanes.add(toCell);
                     if (generateResults) {
                         results.push({ type: "move", from: fromCell, to: toCell, what: "plane" });
-                        if (turbulence.crashCell !== undefined) {
-                            results.push({ type: "destroy", what: "plane", where: turbulence.crashCell });
+                        if (cloudEntry.crashCell !== undefined) {
+                            results.push({ type: "destroy", what: "plane", where: cloudEntry.crashCell });
                         } else if (newDir !== currentDir) {
                             results.push({ type: "orient", where: toCell, facing: newDir });
                         }
@@ -2427,17 +2442,19 @@ export class CrosshairsGame extends GameBase {
                         if (!validateDir(parsed.dir, currentDir, action)) break;
                     }
                     const oneAhead = this.moveForward(fromCell, currentDir, board)!;
+                    // Keep both entered cells in travel order: turbulence may
+                    // apply twice, and a crash can occur in the first cell.
                     const enteredCells = oneAhead === toCell ? [toCell] : [oneAhead, toCell];
-                    const turbulence = this.applyTurbulence(enteredCells, currentHeight);
+                    const cloudEntry = this.resolveCloudEntry(enteredCells, currentHeight);
                     board.delete(fromCell);
-                    if (turbulence.crashCell === undefined) {
-                        board.set(toCell, [owner, newDir, turbulence.height]);
+                    if (cloudEntry.crashCell === undefined) {
+                        board.set(toCell, [owner, newDir, cloudEntry.heightAfterEntry]);
                     }
-                    movedPlanes.add(turbulence.crashCell ?? toCell);
+                    movedPlanes.add(cloudEntry.crashCell ?? toCell);
                     if (generateResults) {
-                        results.push({ type: "move", from: fromCell, to: turbulence.crashCell ?? toCell, what: "plane" });
-                        if (turbulence.crashCell !== undefined) {
-                            results.push({ type: "destroy", what: "plane", where: turbulence.crashCell });
+                        results.push({ type: "move", from: fromCell, to: cloudEntry.crashCell ?? toCell, what: "plane" });
+                        if (cloudEntry.crashCell !== undefined) {
+                            results.push({ type: "destroy", what: "plane", where: cloudEntry.crashCell });
                         } else if (newDir !== currentDir) {
                             results.push({ type: "orient", where: toCell, facing: newDir });
                         }
@@ -2541,9 +2558,11 @@ export class CrosshairsGame extends GameBase {
                                     }
                                 }
 
-                                const turbulence = this.applyTurbulence([cell], height);
-                                height = turbulence.height;
-                                crashed = turbulence.crashCell !== undefined;
+                                // Resolve each swoop separately so a dive can
+                                // suffer turbulence from several clouds.
+                                const cloudEntry = this.resolveCloudEntry([cell], height);
+                                height = cloudEntry.heightAfterEntry;
+                                crashed = cloudEntry.crashCell !== undefined;
                             }
                         }
                         if (error) break;
