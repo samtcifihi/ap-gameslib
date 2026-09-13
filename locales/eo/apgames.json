@@ -1281,6 +1281,14 @@
       "unbounded-cloud-banks": {
         "name": "Senlimaj nubaroj",
         "description": "Nubaroj povas enhavi ajnan nombron da nuboj."
+      },
+      "turbulence": {
+        "name": "Turbulento",
+        "description": "Ĉiufoje kiam aviadilo eniras nubon, ĝia alto malpliiĝas je 1. Unue aplikiĝas la altoŝanĝo de la manovro; aviadilo je alto 0 tuj kraŝas."
+      },
+      "concealed-fire": {
+        "name": "Kaŝita pafado",
+        "description": "Aviadiloj povas pafi el nuboj, sed ankoraŭ ne povas pafi en aŭ tra ili."
       }
     },
     "cubeo": {

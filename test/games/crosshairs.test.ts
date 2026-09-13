@@ -1261,6 +1261,143 @@ describe("Crosshairs", () => {
         });
     });
 
+    describe("Optional Rules Variants", () => {
+        const makeFlightGame = (height: number, clouds: string[], variants = ["turbulence"]): CrosshairsGame => {
+            const g = new CrosshairsGame(undefined, variants);
+            g.clouds.clear();
+            for (const cloud of clouds) g.clouds.add(cloud);
+            g.turnNumber = 10;
+            g.currplayer = 1;
+            g.board.clear();
+            g.board.set("f5", [1, "S", height]);
+            g.board.set("k5", [2, "N", 3]);
+            g.planesRemaining = [0, 0];
+            (g as unknown as { saveState: () => void }).saveState();
+            return g;
+        };
+
+        const shootablePlanes = (g: CrosshairsGame): string[] =>
+            (g as unknown as {
+                getShootablePlanes: (p: number, b: Map<string, [number, string, number]>) => string[];
+            }).getShootablePlanes(1, g.board);
+
+        it("should expose turbulence and concealed fire as independent variants", () => {
+            const variants = new CrosshairsGame().allvariants()!;
+            const turbulence = variants.find(variant => variant.uid === "turbulence")!;
+            const concealedFire = variants.find(variant => variant.uid === "concealed-fire")!;
+
+            expect(turbulence.name).to.equal("Turbulence");
+            expect(concealedFire.name).to.equal("Concealed fire");
+            expect(turbulence.group).to.be.undefined;
+            expect(concealedFire.group).to.be.undefined;
+
+            const combined = new CrosshairsGame(undefined, [
+                "turbulence", "concealed-fire", "random-start", "clouds-22", "unbounded-cloud-banks",
+            ]);
+            expect(combined.variants).to.include.members(["turbulence", "concealed-fire"]);
+            expect(combined.clouds.size).to.equal(22);
+        });
+
+        it("should apply a climb's height gain before turbulence", () => {
+            const g = makeFlightGame(0, ["f6"]);
+
+            g.move("f5+f6");
+
+            expect(g.board.get("f6")).to.deep.equal([1, "S", 0]);
+        });
+
+        it("should crash a height-0 plane entered directly into a cloud", () => {
+            const g = new CrosshairsGame(undefined, ["turbulence"]);
+            const entryCell = g.graph.getEdges().get("S")![0];
+            g.clouds.clear();
+            g.clouds.add(entryCell);
+            g.turnNumber = 1;
+            g.currplayer = 1;
+            g.board.clear();
+            g.planesRemaining = [1, 1];
+            (g as unknown as { saveState: () => void }).saveState();
+
+            g.move(`enter:${entryCell}/N`);
+
+            expect(g.board.has(entryCell)).to.be.false;
+            expect(g.results).to.deep.include({ type: "destroy", what: "plane", where: entryCell });
+        });
+
+        it("should apply turbulence for both clouds crossed in a two-space level flight", () => {
+            const g = makeFlightGame(3, ["f6", "f7"]);
+
+            g.move("f5-f7");
+
+            expect(g.board.get("f7")).to.deep.equal([1, "S", 1]);
+        });
+
+        it("should crash at the second turbulent cloud when the first loss leaves height 0", () => {
+            const g = makeFlightGame(1, ["f6", "f7"]);
+
+            g.move("f5-f7");
+
+            expect(g.board.has("f7")).to.be.false;
+            expect(g.results).to.deep.include({ type: "destroy", what: "plane", where: "f7" });
+        });
+
+        it("should apply turbulence at every cloud entered during a dive", () => {
+            const g = makeFlightGame(5, ["f6", "f7"]);
+
+            g.move("f5vf6>f7");
+
+            expect(g.board.get("f7")).to.deep.equal([1, "S", 1]);
+        });
+
+        it("should crash immediately during a dive and reject later manoeuvres", () => {
+            const g = makeFlightGame(1, ["f6"]);
+
+            expect(g.actions()).to.include("f5vf6");
+            expect(g.actions().some(action => action.startsWith("f5vf6>"))).to.be.false;
+            expect(g.validateMove("f5vf6>f7").valid).to.be.false;
+            g.move("f5vf6");
+
+            expect(g.board.has("f6")).to.be.false;
+            expect(g.results).to.deep.include({ type: "destroy", what: "plane", where: "f6" });
+        });
+
+        it("should not reapply turbulence during a power dive inside a cloud", () => {
+            const g = makeFlightGame(4, ["f5"]);
+
+            g.move("f5vP");
+
+            expect(g.board.get("f5")).to.deep.equal([1, "S", 2]);
+        });
+
+        it("should let planes shoot out of clouds with concealed fire", () => {
+            const g = new CrosshairsGame(undefined, ["concealed-fire"]);
+            g.clouds.clear();
+            g.clouds.add("f3");
+            g.clouds.add("f9");
+            g.board.clear();
+            g.board.set("f3", [1, "S", 3]);
+            g.board.set("f9", [1, "N", 3]);
+            g.board.set("f6", [2, "NE", 3]);
+
+            expect(shootablePlanes(g)).to.include("f6");
+        });
+
+        it("should still prevent shooting into or through clouds with concealed fire", () => {
+            const g = new CrosshairsGame(undefined, ["concealed-fire"]);
+            g.clouds.clear();
+            g.board.clear();
+            g.board.set("f3", [1, "S", 3]);
+            g.board.set("f9", [1, "N", 3]);
+            g.board.set("f6", [2, "NE", 3]);
+
+            g.clouds.add("f6");
+            expect(shootablePlanes(g)).to.not.include("f6");
+
+            g.clouds.delete("f6");
+            g.clouds.add("f5");
+            expect(shootablePlanes(g)).to.not.include("f6");
+        });
+    });
+
     describe("Rendering", () => {
         it("should show click hints during dive direction selection", () => {
             const g = new CrosshairsGame();

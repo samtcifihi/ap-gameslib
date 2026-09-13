@@ -1697,6 +1697,14 @@
             "unbounded-cloud-banks": {
                 "name": "Unbounded cloud banks",
                 "description": "Cloud banks may contain any number of clouds."
+            },
+            "turbulence": {
+                "name": "Turbulence",
+                "description": "Each time a plane enters a cloud, it loses 1 height. Apply the maneuver's height change first; a plane at height 0 crashes immediately."
+            },
+            "concealed-fire": {
+                "name": "Concealed fire",
+                "description": "Planes may shoot out of clouds, but still cannot shoot into or through them."
             }
         },
         "crossway": {
