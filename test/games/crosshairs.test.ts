@@ -1265,7 +1265,7 @@ describe("Crosshairs", () => {
         const makeFlightGame = (
             height: number,
             clouds: string[],
-            hasOccupiedClearCell = true,
+            hasEnteredClearCell = true,
             variants = ["turbulence"],
         ): CrosshairsGame => {
             const g = new CrosshairsGame(undefined, variants);
@@ -1274,7 +1274,7 @@ describe("Crosshairs", () => {
             g.turnNumber = 10;
             g.currplayer = 1;
             g.board.clear();
-            g.board.set("f5", [1, "S", height, hasOccupiedClearCell]);
+            g.board.set("f5", [1, "S", height, hasEnteredClearCell]);
             g.board.set("k5", [2, "N", 3, true]);
             g.planesRemaining = [0, 0];
             (g as unknown as { saveState: () => void }).saveState();
@@ -1348,14 +1348,14 @@ describe("Crosshairs", () => {
             expect(new CrosshairsGame(g.serialize()).board.get("f7")![3]).to.be.true;
         });
 
-        it("should not count the intermediate cell of level flight as occupied", () => {
+        it("should end the exemption at an intermediate clear cell during level flight", () => {
             const g = makeFlightGame(3, ["f5", "f7"], false);
 
             g.move("f5-f7");
 
-            // Clear f6 is crossed within one manoeuvre, not occupied between
-            // manoeuvres, so the plane remains exempt when it reaches cloudy f7.
-            expect(g.board.get("f7")).to.deep.equal([1, "S", 3, false]);
+            // Crossing clear f6 ends the exemption before the plane enters
+            // cloudy f7 later in the same manoeuvre.
+            expect(g.board.get("f7")).to.deep.equal([1, "S", 2, true]);
         });
 
         it("should apply turbulence for both clouds crossed in a two-space level flight", () => {
