@@ -46,7 +46,7 @@ export class ArimaaGame extends GameBase {
         name: "Arimaa",
         uid: "arimaa",
         playercounts: [2],
-        version: "20251223",
+        version: "20260921",
         dateAdded: "2026-01-23",
         // i18next.t("apgames:descriptions.arimaa")
         description: "apgames:descriptions.arimaa",
@@ -814,6 +814,11 @@ export class ArimaaGame extends GameBase {
     private validateLegacyMovement(m: string): IValidationResult {
         const result: IValidationResult = {valid: false, message: i18next.t("apgames:validation._general.DEFAULT_HANDLER")};
         const g = new SquareOrthGraph(8, 8);
+        // Games begun under the first version keep two lapses of this validator
+        // so that they replay: a push completed by a piece of equal strength
+        // when a stronger one is also adjacent, and a pull that moves the pulled
+        // piece to a square other than the one the puller vacated.
+        const lax = this.stack[0]._version === "20251223";
         const classifications = ArimaaGame.classify(this.currplayer, m.split(",").filter(Boolean));
         const steps = m.split(",").filter(Boolean).map(mv => ArimaaGame.baseMove(mv));
             // can't make too many moves
@@ -864,7 +869,7 @@ export class ArimaaGame extends GameBase {
                     // from must be adjacent to lastFrom
                     // to must equal lastFrom
                     // pc must be stronger than lastPc
-                    if (lastPlayer === cloned.currplayer || !g.neighbours(lastFrom!).includes(from) || (to !== undefined && to !== lastFrom) || ArimaaGame.strength(pc) < ArimaaGame.strength(lastPc)) {
+                    if (lastPlayer === cloned.currplayer || !g.neighbours(lastFrom!).includes(from) || (to !== undefined && to !== lastFrom) || ArimaaGame.strength(pc) < ArimaaGame.strength(lastPc) || (!lax && ArimaaGame.strength(pc) === ArimaaGame.strength(lastPc))) {
                         result.valid = false;
                         result.message = i18next.t("apgames:validation.arimaa.INVALID_PUSH", {where: from});
                         return result;
@@ -882,7 +887,7 @@ export class ArimaaGame extends GameBase {
                     if (i > 0 && classifications[i - 1] !== "pusher") {
                         const [lastPc, lastPlayer, lastFrom] = steps[i - 1];
                         const ns = g.neighbours(from);
-                        if (lastPlayer === cloned.currplayer && ns.includes(lastFrom!) && ArimaaGame.strength(lastPc) > ArimaaGame.strength(pc)) {
+                        if (lastPlayer === cloned.currplayer && ns.includes(lastFrom!) && ArimaaGame.strength(lastPc) > ArimaaGame.strength(pc) && (lax || to === undefined || to === lastFrom)) {
                             validPull = true;
                             // check if push is possible
                             let canPush = false;

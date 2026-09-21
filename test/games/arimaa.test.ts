@@ -600,18 +600,30 @@ describe("Arimaa notation compatibility", () => {
         }
     });
     it("keeps the old notation for a move only the legacy validator allows", () => {
+        // games begun under the first version keep the validator's lapses so they replay
+        const legacyEra = (game: ArimaaGame): ArimaaGame => {
+            game.stack[0]._version = "20251223";
+            return game;
+        };
         // from a recorded game (mirrored so that Gold moves): the rabbit on a2
-        // completes a push of its equal, which the legacy validator accepts
+        // completes a push of its equal, which the old validator accepts
         // because the elephant on a4 satisfies the push precondition
-        const g = position("De1,Dg2,Cd2,Ch1,Rh2,Ra2,Ra1,Hf2,Mc2,Eb4", "hb8,ca8,rh7,rh8,cf7,ra3,db6,ec4,dd6,mg5");
+        const fresh = position("De1,Dg2,Cd2,Ch1,Rh2,Ra2,Ra1,Hf2,Mc2,Eb4", "hb8,ca8,rh7,rh8,cf7,ra3,db6,ec4,dd6,mg5");
+        let rejected = fresh.validateMove("Mc2b2, Eb4a4, ra3b3, Ra2a3");
+        expect(rejected.valid).to.be.false;
+        expect(rejected.message).to.equal(i18next.t("apgames:validation.arimaa.INVALID_PUSH", {where: "a2"}));
+        const g = legacyEra(position("De1,Dg2,Cd2,Ch1,Rh2,Ra2,Ra1,Hf2,Mc2,Eb4", "hb8,ca8,rh7,rh8,cf7,ra3,db6,ec4,dd6,mg5"));
         expect(g.validateMove("Mc2b2, Eb4a4, ra3b3, Ra2a3").valid).to.be.true;
         expect(g.validateMove("Mb2 Ea4 rb3 Ra3").valid).to.be.false;
         g.move("Mc2b2, Eb4a4, ra3b3, Ra2a3");
         expect(g.lastmove).to.equal("Mc2b2, Eb4a4, ra3b3, Ra2a3");
         expect(g.board.get("b3")).to.deep.equal(["R", 2]);
         // from another: a "pull" that moves the pulled rabbit beside the
-        // vacated square, which the legacy validator never checks
-        const h = position("Db3,Cc2,Rb1,Cf7,Ee6", "ef5,db2,re7,cd8,cg4");
+        // vacated square, which the old validator never checked
+        rejected = position("Db3,Cc2,Rb1,Cf7,Ee6", "ef5,db2,re7,cd8,cg4").validateMove("Ee6d6, re7d7, Db3c3, Dc3d3");
+        expect(rejected.valid).to.be.false;
+        expect(rejected.message).to.equal(i18next.t("apgames:validation.arimaa.INVALID_PUSH", {where: "b3"}));
+        const h = legacyEra(position("Db3,Cc2,Rb1,Cf7,Ee6", "ef5,db2,re7,cd8,cg4"));
         expect(h.validateMove("Ee6d6, re7d7, Db3c3, Dc3d3").valid).to.be.true;
         expect(h.validateMove("Ed6 rd7 Dd3").valid).to.be.false;
         h.move("Ee6d6, re7d7, Db3c3, Dc3d3");
@@ -620,7 +632,7 @@ describe("Arimaa notation compatibility", () => {
         // a capture along the way is written as the old engine wrote it: the
         // rabbit is "pulled" sideways onto f6 and dies there, and the other
         // two steps leave no room for the legal way to reach that position
-        const k = position("Ee5,Ra1", "re6,ra8,eh8");
+        const k = legacyEra(position("Ee5,Ra1", "re6,ra8,eh8"));
         k.move("Ee5e4, re6f6, Ra1a2, Ra2a3");
         expect(k.lastmove).to.equal("Ee5e4, re6f6(xrf6), Ra1a2, Ra2a3");
         expect(k.board.has("f6")).to.be.false;
@@ -653,6 +665,7 @@ describe("Arimaa recorded games", () => {
         it(`replays ${rec.name}`, function () {
             this.timeout(20000);
             const g = new ArimaaGame(undefined, rec.variants);
+            g.stack[0]._version = rec.version;
             if (rec.startingPosition !== undefined) {
                 g.stack[0].board = positionOf(rec.startingPosition);
                 g.load();
