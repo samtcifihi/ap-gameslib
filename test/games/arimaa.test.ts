@@ -377,10 +377,13 @@ describe("Arimaa resolution", () => {
         this.timeout(120000);
         // deterministic pseudo-random positions and token sets: sparse boards
         // searched four steps deep, then denser ones three steps deep
+        // mulberry32: a plain LCG overflows double precision here and collapses
         let seed = 12345;
         const rnd = (n: number): number => {
-            seed = (seed * 1103515245 + 12345) & 0x7fffffff;
-            return seed % n;
+            seed = (seed + 0x6d2b79f5) | 0;
+            let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+            t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+            return ((t ^ (t >>> 14)) >>> 0) % n;
         };
         const types = ["E", "M", "H", "D", "C", "R"];
         const key = (r: ReturnType<typeof resolve>): string => r.status === "resolved" ? `${r.status}:${r.bucket}:${r.turn.signature}` : r.status === "ambiguous" ? `${r.status}:${r.bucket}:${r.positions}` : r.status;
