@@ -794,11 +794,11 @@
         "name": "Dreiecksbrett (8 breit)"
       },
       "cobweb": {
-        "name": "Cobweb (4 Ringe, experimentell)"
+        "name": "Spinnennetz (4 Ringe)"
       },
       "cobweb-small": {
         "description": "Eine Variante auf einem runden Brett, bei der man versucht, zwei gegenüberliegende Seiten zu verbinden.",
-        "name": "Spinnennetz (3 Ringe, vom Autor bevorzugt)"
+        "name": "Spinnennetz (3 Ringe)"
       },
       "limping": {
         "name": "Humpelnd 5-6 (75 Felder)"
@@ -924,7 +924,7 @@
         "description": "Zufällig generierter Aufbau mit reduzierter Armeegröße"
       },
       "free": {
-        "name": "Freie Platzierung (ungewertet)",
+        "name": "Freie Aufstellung",
         "description": "Ermöglicht es den Spielern, beliebig viele Steine an beliebigen Stellen zu platzieren, einschließlich illegaler oder anderweitig fehlerhafter Stellungen. Die Spieler sollten vor dem Start klar miteinander kommunizieren. Diese Spiele können nicht gewertet werden."
       }
     },
@@ -934,7 +934,7 @@
       },
       "freeform": {
         "description": "Ermöglicht es den Spielern, ihre eigene Flottenzusammensetzung zu bestimmen. Erfordert vor dem Start eine gute Kommunikation. Diese Spiele können nicht gewertet werden.",
-        "name": "Freiform (ungewertet)"
+        "name": "Freiform"
       },
       "noislands": {
         "description": "Keine Startinseln",
@@ -954,10 +954,6 @@
       },
       "#rules": {
         "description": "Inkursionen sind legal."
-      },
-      "#scoring": {
-        "name": "Steinwertung",
-        "description": "Sieg durch Bewegungsunfähigkeit."
       },
       "area": {
         "name": "Flächenwertung",
@@ -3156,7 +3152,7 @@
         "name": "Standard-Aufbau"
       },
       "custom": {
-        "name": "Benutzerdefinierter Aufbau (ungewertet)",
+        "name": "Benutzerdefinierte Aufstellung",
         "description": "Die Spieler können beliebige Aufstellungen erstellen. Sollte nur bei guter Kommunikation genutzt werden. Diese Spiele können nicht gewertet werden."
       },
       "#board": {
@@ -4803,7 +4799,7 @@
       "HARLOG": "Harlog"
     },
     "asli": {
-      "AREA": "Fläche",
+      "AREA": "Gebiet + Komi",
       "TERRITORY": "Territorium & Gefangene"
     },
     "baghchal": {
@@ -5197,11 +5193,14 @@
     },
     "asli": {
       "BAD_INCURSION": "Du darfst keine zwei minimalen Vorstöße direkt hintereinander machen.",
+      "BAD_INCURSION_pass": "Du darfst nicht direkt nach dem Passen deines Gegners einen minimalen Einfall machen.",
       "BAD_KOMI": "Der erste Zug des Spiels muss eine ganze Zahl sein, die die Anzahl der Steine darstellt, die im Startgefängnis platziert werden sollen. Eine positive Zahl platziert Steine des ersten Spielers. Eine negative Zahl die des zweiten Spielers. Du darfst nicht mehr Steine im Gefängnis platzieren als die Anzahl der Felder auf dem Spielplan plus eins.",
+      "BAD_KOMI_area": "Der erste Zug des Spiels muss eine ganze Zahl an Komi-Punkten sein. Eine positive Zahl gewährt dem zweiten Spieler Komi. Eine negative Zahl dem ersten Spieler. Du darfst nicht mehr Komi anbieten als die Anzahl der Punkte auf dem Spielbrett plus eins.",
       "BAD_PASS": "Du musst einen gegnerischen Stein aus dem Gefängnis entfernen, um zu passen.",
       "BAD_PIE": "Du darfst die Pie-Regel an diesem Punkt des Spiels nicht anwenden.",
       "INITIAL_INSTRUCTIONS_area": "Setze einen Stein auf einen gültigen leeren Punkt oder passe. Passen blockiert außerdem den nächsten minimalen Vorstoß deines Gegners.",
       "INITIAL_INSTRUCTIONS_komi": "Gib die Anzahl der Steine des ersten Spielers ein, die du im Startgefängnis platzieren möchtest. Der zweite Spieler entscheidet dann, welchen Platz er einnimmt.",
+      "INITIAL_INSTRUCTIONS_komi_area": "Gib das Komi in Punkten ein, das du anbieten möchtest. Eine positive Zahl gewährt dem zweiten Spieler Komi. Eine negative Zahl dem ersten Spieler. Der andere Spieler entscheidet dann, welchen Platz er wählt.",
       "INITIAL_INSTRUCTIONS_pie": "Klicke entweder auf die Schaltfläche 'Als Zweiter spielen', um dort zu bleiben, wo du bist, und als zweiter Spieler weiterzuspielen, oder klicke auf 'Spielerplätze tauschen', um die Plätze zu wechseln.",
       "INITIAL_INSTRUCTIONS_pie2": "Passe entweder, um das Komi-Angebot anzunehmen und als zweiter Spieler weiterzuspielen, oder platziere einen Stein, um als erster Spieler zu übernehmen.",
       "INITIAL_INSTRUCTIONS_play": "Setze einen Stein auf einen gültigen leeren Punkt oder passe, um stattdessen einen gegnerischen Stein aus dem Gefängnis zu nehmen (falls einer vorhanden ist).",
@@ -5260,7 +5259,7 @@
       "INITIAL_INSTRUCTIONS": "Wähle ein Chevron zum Bewegen aus.",
       "NEED_DESTINATION": "Wähle das Ziel aus (gültige Ziele sind hervorgehoben).",
       "NO_CAPTURES": "Du darfst nicht auf ein Feld mit einem anderen Chevron ziehen.",
-      "REORIENT": "Klicke auf ein benachbartes Feld oder eine Randzone, um die Richtung auszuwählen, in die du blicken möchtest.",
+      "REORIENT": "Klicke auf ein benachbartes Feld oder eine Randzone, um die gewünschte Ausrichtung zu wählen, oder klicke auf \"Zug beenden\", um weiterhin geradeaus zu blicken.",
       "TOO_FAR": "Du kannst dich nicht weiter bewegen als deine Bewegungsreichweite (derzeit {{pom}})."
     },
     "baghchal": {
@@ -5283,11 +5282,15 @@
       "INITIAL_INSTRUCTIONS_mtaji|mtaji": "Wähle eine deiner Mulden mit zwei oder mehr Steinen, um mit dem Säen zu beginnen. Ein Schlagzug ist verfügbar.",
       "INITIAL_INSTRUCTIONS_namua|kutakata": "Wähle eine deiner inneren Mulden, die Steine enthält. Du fügst ihr einen deiner Handsteine hinzu und beginnst dann zu säen. Es ist kein Schlagen verfügbar.",
       "INITIAL_INSTRUCTIONS_namua|mtaji": "Wähle eine deiner inneren Mulden, die Steine enthält. Du fügst ihr einen deiner Handsteine hinzu und schlägst dann die gegnerischen Steine. Ein Schlagzug ist verfügbar.",
+      "KUTAKATA_ONLY": "Es ist kein Schlagen möglich; du musst aus einer deiner Mulden mit zwei oder mehr Steinen säen (Kutakata). Zum Beispiel: {{examples}}.",
+      "MUST_CAPTURE": "Schlagen ist Pflicht. Gültige Schlagzüge sind: {{examples}}.",
       "NEVER_SINGLE": "In der Mtaji-Phase darfst du deinen Zug niemals von einer Mulde mit nur einem Stein beginnen.",
+      "NO_KUTAKATA_WHILE_CAPTURE": "Du darfst keinen Kutakata-Zug ausführen, solange ein Schlagen möglich ist. Gültige Schlagzüge sind: {{examples}}.",
       "NO_BACK_ROW_mtaji": "In der Mtaji-Phase darfst du nur dann von der hinteren Reihe beginnen, wenn dies zu einem Schlagen führt oder von der vorderen Reihe kein Kutakata möglich ist.",
       "NO_BACK_ROW_namua": "In der Kunamua-Phase darfst du nicht von deiner hinteren Reihe beginnen.",
       "PLAY_HOUSE": "Dein Säen hat in deiner Nyumba geendet. Du kannst anhalten oder \"auf Safari gehen\" (dadurch wird deine Nyumba zu einer normalen Mulde). Um das Säen fortzusetzen, klicke auf deine Nyumba oder gib ein \"+\"-Zeichen im Zug-Eingabefeld ein.",
-      "TWO_PLUS": "Du darfst einen Kutakata-Zug der Kunamua-Phase nur dann in einer Mulde mit einem Stein beginnen, wenn du ein aktives Haus hast oder sich in der vorderen Reihe nur Mulden mit einzelnen Steinen befinden."
+      "TWO_PLUS": "Du darfst einen Kutakata-Zug der Kunamua-Phase nur dann in einer Mulde mit einem Stein beginnen, wenn du ein aktives Haus hast oder sich in der vorderen Reihe nur Mulden mit einzelnen Steinen befinden.",
+      "WRONG_CAPTURE": "Dieser Schlagzug ist nicht regelkonform. Gültige Schlagzüge sind: {{examples}}."
     },
     "basalt": {
       "BAD_MOVE": "Stapel dürfen sich nicht weiter bewegen als ihre Höhe angibt und keine gegnerischen Stapel überspringen.",
@@ -5960,6 +5963,7 @@
       "MUST_CHOOSE_SIDE": "Du musst gerade oder ungerade wählen, bevor du spielst.",
       "NOT_IN_HAND": "Dieser Dominostein ist nicht in deiner Hand.",
       "NEEDS_ANCHOR_PIP": "Diese Platzierung ist mehrdeutig. Markiere die Anker-Augenzahl mit einem Sternchen (z. B. 1*-2@-3,1N oder 1-2*@-3,1N).",
+      "MUST_COVER_TWO_DOMINOES": "Beim Legen eines Dominosteins auf andere müssen zwei verschiedene Dominosteine überdeckt werden.",
       "PARTIAL": "Klicke auf eine Anker-Hälfte und dann auf das andere Ende des Dominosteins."
     },
     "estate": {

@@ -794,11 +794,11 @@
                 "name": "Triangle board (8 wide)"
             },
             "cobweb": {
-                "name": "Cobweb (4 rings, experimental)"
+                "name": "Cobweb (4 rings)"
             },
             "cobweb-small": {
                 "description": "A variant played on a round board where you try to connect two opposite sides.",
-                "name": "Cobweb (3 rings, designer preferred)"
+                "name": "Cobweb (3 rings)"
             },
             "limping": {
                 "name": "Limping 5-6 (75 spaces)"
@@ -924,7 +924,7 @@
                 "description": "Randomly generated setup with reduced army size"
             },
             "free": {
-                "name": "Free placement (unrated)",
+                "name": "Free placement",
                 "description": "Lets players place as many pieces as they want wherever they want, including creating illegal or otherwise broken positions. Players should communicate clearly before starting. These games cannot be rated."
             }
         },
@@ -934,7 +934,7 @@
             },
             "freeform": {
                 "description": "Lets the players determine their own fleet compositions. Requires good communication before starting. These games cannot be rated.",
-                "name": "Freeform (unrated)"
+                "name": "Freeform"
             },
             "noislands": {
                 "description": "No starting islands",
@@ -954,10 +954,6 @@
             },
             "#rules": {
                 "description": "Incursions are legal."
-            },
-            "#scoring": {
-                "name": "Stone scoring",
-                "description": "Win by immobilization."
             },
             "area": {
                 "name": "Area scoring",
@@ -3156,7 +3152,7 @@
                 "name": "Standard setup"
             },
             "custom": {
-                "name": "Custom setup (unrated)",
+                "name": "Custom setup",
                 "description": "The players can create arbitrary setups. Should only be done with good communication. These games cannot be rated."
             },
             "#board": {
@@ -4803,7 +4799,7 @@
             "HARLOG": "Harlog"
         },
         "asli": {
-            "AREA": "Area",
+            "AREA": "Area + komi",
             "TERRITORY": "Territory & Prisoners"
         },
         "baghchal": {
@@ -5203,11 +5199,14 @@
         },
         "asli": {
             "BAD_INCURSION": "You may not make back-to-back minimal incursions.",
+            "BAD_INCURSION_pass": "You may not make a minimal incursion immediately after your opponent passes.",
             "BAD_KOMI": "The first move of the game must be an integer representing the number of pieces to place in the starting prison. A positive number puts pieces belonging to the first player. A negative number, those of the second player. You may not place more pieces in the prison than number of cells on the board plus one.",
+            "BAD_KOMI_area": "The first move of the game must be a whole number of points of komi. A positive number awards komi to the second player. A negative number, to the first player. You may not offer more komi than the number of points on the board plus one.",
             "BAD_PASS": "You must remove an enemy piece from the prison to pass.",
             "BAD_PIE": "You may not accept pie at this point in the game.",
             "INITIAL_INSTRUCTIONS_area": "Place a piece on a valid empty point, or pass. Passing also blocks your opponent's next minimal incursion.",
             "INITIAL_INSTRUCTIONS_komi": "Enter the number of first-player pieces you wish to place in the starting prison. The second player will then decide which seat to take.",
+            "INITIAL_INSTRUCTIONS_komi_area": "Enter the komi, in points, that you wish to offer. A positive number awards komi to the second player. A negative number, to the first player. The other player will then decide which seat to take.",
             "INITIAL_INSTRUCTIONS_pie": "Either click the 'Play second' button to stay where you are and continue playing second, or click 'Swap player seats' to change seats.",
             "INITIAL_INSTRUCTIONS_pie2": "Either pass to accept the komi offer and continue playing second, or place a piece to take over as first player.",
             "INITIAL_INSTRUCTIONS_play": "Place a piece on a valid empty point or pass to take an enemy piece out of the prison instead (if one is available).",
@@ -5266,7 +5265,7 @@
             "INITIAL_INSTRUCTIONS": "Select a chevron to move.",
             "NEED_DESTINATION": "Select the destination (valid targets are highlighted).",
             "NO_CAPTURES": "You may not move onto a cell with another chevron.",
-            "REORIENT": "Click a neighbouring cell or edge zone to select the direction you want to face.",
+            "REORIENT": "Click a neighbouring cell or edge zone to select the direction you want to face, or click \"Complete move\" to keep pointing straight ahead.",
             "TOO_FAR": "You can't move further than your power of movement (currently {{pom}})."
         },
         "baghchal": {
@@ -5289,11 +5288,15 @@
             "INITIAL_INSTRUCTIONS_mtaji|mtaji": "Select one of your pits that contains two or more stones to begin sowing. A capture is available.",
             "INITIAL_INSTRUCTIONS_namua|kutakata": "Select one of your inner pits that contains stones. You will add one of your in-hand stones to it and then begin sowing. No capture is available.",
             "INITIAL_INSTRUCTIONS_namua|mtaji": "Select one of your inner pits that contains stones. You will add one of your in-hand stones to it and then capture the opposing stones. A capture is available.",
+            "KUTAKATA_ONLY": "No capture is available; you must sow (kutakata) from one of your pits with two or more stones. For example: {{examples}}.",
+            "MUST_CAPTURE": "A capture is mandatory. Legal captures include: {{examples}}.",
             "NEVER_SINGLE": "In the mtaji phase, you may never start your move from a pit with only one stone.",
+            "NO_KUTAKATA_WHILE_CAPTURE": "You may not play a kutakata move while a capture is available. Legal captures include: {{examples}}.",
             "NO_BACK_ROW_mtaji": "In the mtaji phase, you may only start from the back row if it results in a capture or no kutakata is possible from the front row.",
             "NO_BACK_ROW_namua": "In the kunamua phase, you may not start from your back row.",
             "PLAY_HOUSE": "Your sowing has ended in your nyumba. You can stop or \"go on safari\" (this will turn your nyumba into a standard pit). To continue sowing, click your nyumba or type a \"+\" sign in the move entry box.",
-            "TWO_PLUS": "You may only begin a kunamua-phase kutakata turn in a pit with one stone if you have a working house or all you have in the front row are pits with single stones."
+            "TWO_PLUS": "You may only begin a kunamua-phase kutakata turn in a pit with one stone if you have a working house or all you have in the front row are pits with single stones.",
+            "WRONG_CAPTURE": "That capture is not legal. Legal captures include: {{examples}}."
         },
         "basalt": {
             "BAD_MOVE": "Stacks may not move further than their height, and they may not pass over stacks controlled by your opponent.",
@@ -5966,6 +5969,7 @@
             "MUST_CHOOSE_SIDE": "You must choose evens or odds before playing.",
             "NOT_IN_HAND": "That domino is not in your hand.",
             "NEEDS_ANCHOR_PIP": "This placement is ambiguous. Mark the anchor pip with an asterisk (e.g. 1*-2@-3,1N or 1-2*@-3,1N).",
+            "MUST_COVER_TWO_DOMINOES": "When placing a domino on top of others, you must cover two different dominoes.",
             "PARTIAL": "Click an anchor half-cell, then the other end of the domino."
         },
         "estate": {
