@@ -282,7 +282,7 @@ or a capture), add tokens until it resolves, verifying after each:
 |---|---|
 | `Ee6w Ed6s Ed5s Me4e` | `Ed4 Mf4` |
 | flip: `Hg3g4 dh3g3 dg3f3 Hg4g3`, dog dies on f3 | `dx` (explicit form `dh3x`) |
-| `re2e1 Ed2e2 Ee2e3 re1e2` (rabbit round-trips) | `Ee3 re1e2` (explicit `Ed2e3 re1e2`) |
+| `re2e1 Ed2e2 Ee2e3 re1e2` (rabbit round-trips) | `Ee3` — the plain walk `Ed2d3 Ed3e3` reaches the same position, so the round trip needs no token |
 | `Db4b5` | `Db5` if the dog is unique in reach, else `Db4b5` |
 
 ---
@@ -453,7 +453,7 @@ Ours:
 | position / notation | turn |
 |---|---|
 | `Hg3 dh3 Cf2`, Gold: `dx` or `df3` | flip `Hg3g4 dh3g3 dg3f3x Hg4g3` (also via g2; same position) |
-| `Ee3 re1e2` | `re2e1 Ed2e2 Ee2e3 re1e2` (from the existing test suite) |
+| `Ee3 re1e2` | `re2e1 Ed2e2 Ee2e3 re1e2` (from the existing test suite; `Ee3` alone is the equivalent two-step walk) |
 
 ---
 
@@ -461,39 +461,48 @@ Ours:
 
 ### 9.1 Structure
 
-* `parse(m)` → tokens or a parse error; `isLegacy(m)` per §4.1.
-* `enumerate(position, maxSteps)` → candidate turns grouped by bucket, each with
-  its per-piece trajectories, captures, and resulting position signature.
-  Cached per position; the interactive path and the serializer reuse it.
-* `resolve(tokens, candidates, mode)` → resolved turn | ambiguous | unsatisfiable.
-  Matching is separated from enumeration so the serializer can test many token
-  sets against one enumeration.
-* `serialize(turn, startBoard)` per §5.
-* `handleClick`, `validateMove`, `move`, `render`, `sameMove` as above.
-* `partialMoves()` is internal (its only caller is the immobilization check in
-  `checkEOG`) and stays, or becomes "is the 1-step bucket empty".
+* `src/games/arimaa/notation.ts`: tokenizer, `parseToken`/`parseMove` (with the
+  pending bare-square marker), `isLegacy`, token builders.
+* `src/games/arimaa/turns.ts`: the search board (typed arrays with piece
+  identities), atom generation (single step, push, pull, with the same
+  legality as the step-by-step validator), captures after every step,
+  `resolve` (strict and lenient), `serializeTurn`, `turnFromSteps` (replay of
+  an explicit step list, used for legacy input), `hasAnyMove` (the
+  immobilization check), `inferred`.
+* `src/games/arimaa.ts`: dispatch in `validateMove`/`move` (setup, legacy,
+  notation), the click grammar in `moveClick`, per-step `applyStep`, rendering
+  from per-piece trajectories, the position-comparing `sameMove`.
+
+Matching is separate from enumeration only in the sense that the serializer
+calls `resolve` once per candidate string; each call enumerates afresh, which
+the pruning below keeps cheap.
 
 ### 9.2 Enumeration cost
 
 A naive expansion of all 4-step sequences is 10⁵–10⁶ sequences and far too slow
-for a synchronous click handler in the browser. Plan:
+for a synchronous click handler in the browser. What is built:
 
-* enumerate bucket by bucket and stop at the first bucket with a match;
-* prune the step generator to squares near the tokens' pieces, widened by the
-  spare-step budget (nosteps' `relevantAtoms`: `spare = maxSteps − max(Σ own arrow
-  lengths, 2·Σ enemy arrow lengths)`), and treat any `x` token's square as
-  relevant;
-* deduplicate within a bucket by resulting position.
+* iterative deepening on the step count, stopping at the first count with a
+  satisfying turn, so shorter buckets are never enumerated past need;
+* an **admissible heuristic** pruning any node whose remaining budget is
+  below a lower bound on the steps still required. Two bounds are combined
+  by max: one step per square for every witness, summed over distinct
+  destinations (which need distinct witnesses); and, per token, the full
+  price of its cheapest witness — for an enemy piece, two steps a square
+  plus the steps a stronger own piece needs to get adjacent to it, infinite
+  when there is none. A destination held by an enemy that cannot be moved
+  and is not on a trap is unsatisfiable outright. Step tokens contribute the
+  directions not yet matched; capture tokens the distance to the nearest trap.
+* deduplication of complete turns by resulting position.
 
-Pruning must be **sound** (never hide a satisfying turn), otherwise a string
-verified "unique" today could resolve differently after a pruning fix. The one
-known hazard is a token set whose relevant core leaves the board unchanged, so
-that any extra step anywhere completes it; handle that case explicitly rather
-than through the region heuristic. Gate: a test that runs the pruned and the
-full enumeration over every position in the AP Arimaa game corpus and requires
-identical resolutions. If per-click latency allows, `move()` may verify with
-the unpruned enumeration as a belt-and-braces check; a disagreement there is an
-error, never a silent misplay.
+This is A*-style pruning rather than nosteps' relevance regions: it never
+hides a satisfying turn, because every bound is a true lower bound (the
+partner step of a drag is charged only inside the per-token max, since it may
+double as another witness's step). The test suite checks the claim directly:
+`resolve` takes a `prune` flag, and a randomized test compares pruned and
+unpruned answers on sparse positions. Measured on a full 32-piece board,
+click-built arrows resolve in 0–20 ms and pathological typed tokens in under
+60 ms; the serializer's several verification calls add under 10 ms per turn.
 
 ### 9.3 Spacing
 

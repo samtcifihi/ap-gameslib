@@ -224,3 +224,316 @@ describe("Arimaa", () => {
     });
 });
 
+
+// ---------------------------------------------------------------------------
+// Lightvector notation and arrow entry (docs/arimaa-notation.md)
+
+import { isLegacy, parseMove, parseToken, NotationError } from "../../src/games/arimaa/notation";
+import { resolve, serializeTurn, sqName, turnFromSteps, type CellContents } from "../../src/games/arimaa/turns";
+
+const rc = (cell: string): [number, number] => {
+    const [x, y] = ArimaaGame.algebraic2coords(cell);
+    return [y, x];
+};
+const click = (g: ArimaaGame, move: string, cell: string) => g.handleClick(move, ...rc(cell));
+const annotations = (g: ArimaaGame): string[] => {
+    const rep = g.render();
+    const name = (t: {row: number; col: number}): string => ArimaaGame.coords2algebraic(t.col, t.row);
+    return ((rep.annotations ?? []) as Array<{type: string; targets: Array<{row: number; col: number}>}>).map(a => `${a.type}:${a.targets.map(name).join(">")}`);
+};
+// free placement lets a test build any position: gold places, silver places, gold to move
+const position = (gold: string, silver: string): ArimaaGame => {
+    const g = new ArimaaGame(undefined, ["free"]);
+    g.move(gold);
+    g.move(silver);
+    return g;
+};
+const boardOf = (spec: string): Map<string, CellContents> => {
+    const b = new Map<string, CellContents>();
+    for (const t of spec.trim().split(/\s+/)) {
+        b.set(t.slice(1), [t[0].toUpperCase() as CellContents[0], t[0] === t[0].toUpperCase() ? 1 : 2]);
+    }
+    return b;
+};
+
+describe("Arimaa notation parser", () => {
+    it("splits tokens from the right", () => {
+        const cases: Array<[string, string, string]> = [
+            ["Ed4", "E", "dest:d4"],
+            ["d4e5", "d4", "dest:e5"],
+            ["Ed4e5", "Ed4", "dest:e5"],
+            ["ee", "e", "steps:e"],
+            ["eee", "e", "steps:ee"],
+            ["en", "e", "steps:n"],
+            ["d4ee", "d4", "steps:ee"],
+            ["de4e", "de4", "steps:e"],
+            ["Ed4news", "Ed4", "steps:news"],
+            ["h5x", "h5", "capture"],
+            ["hh5", "h", "dest:h5"],
+            ["hx", "h", "capture"],
+            ["Rc3x", "Rc3", "capture"],
+        ];
+        for (const [text, spec, prop] of cases) {
+            const t = parseToken(text);
+            const specText = `${t.spec.piece === undefined ? "" : (t.spec.owner === 1 ? t.spec.piece : t.spec.piece.toLowerCase())}${t.spec.square ?? ""}`;
+            const propText = t.prop.kind === "dest" ? `dest:${t.prop.square}` : t.prop.kind === "steps" ? `steps:${t.prop.dirs.join("")}` : "capture";
+            expect(specText, text).to.equal(spec);
+            expect(propText, text).to.equal(prop);
+        }
+    });
+    it("rejects malformed tokens", () => {
+        for (const bad of ["x", "e4", "R", "n", "garbage!", "4e", "Ex4", "z3", "i9x", "Ed4x4"]) {
+            expect(() => parseToken(bad), bad).to.throw(NotationError);
+        }
+    });
+    it("recognises legacy strings", () => {
+        expect(isLegacy("Db4b5, Ra5a6")).to.be.true;
+        expect(isLegacy("Dc4c3(xDc3)")).to.be.true;
+        expect(isLegacy("Ec3,Rd4,xRc3")).to.be.true;
+        expect(isLegacy("Db4b5")).to.be.false;
+        expect(isLegacy("Ed4 Me")).to.be.false;
+        expect(isLegacy("dx")).to.be.false;
+    });
+    it("keeps a trailing bare square as the pending selection only when allowed", () => {
+        const p = parseMove("Ed4e4 e4", true);
+        expect(p.tokens.map(t => t.text)).to.deep.equal(["Ed4e4"]);
+        expect(p.pending).to.equal("e4");
+        expect(() => parseMove("Ed4e4 e4")).to.throw(NotationError);
+        expect(() => parseMove("e4 Ed4e4", true)).to.throw(NotationError);
+    });
+});
+
+describe("Arimaa resolution", () => {
+    const flip = boardOf("Hg3 dh3 Cf2 Ra2 ra7 Ee1 ee8");
+    it("resolves the flip from any of its spellings and writes it as dx", () => {
+        for (const m of ["dx", "df3", "dh3f3", "dh3x"]) {
+            const r = resolve(flip, 1, 4, parseMove(m).tokens, false);
+            expect(r.status, m).to.equal("resolved");
+            if (r.status === "resolved") {
+                expect(r.bucket).to.deep.equal([4, 1]);
+                expect(r.turn.captures.map(c => sqName(c.square))).to.deep.equal(["f3"]);
+                expect(serializeTurn(flip, 1, 4, r.turn)).to.equal("dx");
+            }
+        }
+    });
+    it("reports ambiguity and unsatisfiability", () => {
+        expect(resolve(flip, 1, 4, parseMove("dg3").tokens, false).status).to.equal("ambiguous");
+        expect(resolve(flip, 1, 4, parseMove("Hg3g4 dh3f3").tokens, false).status).to.equal("unsatisfiable");
+        expect(resolve(flip, 1, 4, parseMove("Ea8").tokens, false).status).to.equal("unsatisfiable");
+    });
+    it("needs the pusher named when two pieces could push", () => {
+        const b = boardOf("Ed4 Hf4 re4 Ra1 ra8 ee8");
+        expect(resolve(b, 1, 4, parseMove("re4e5").tokens, false).status).to.equal("ambiguous");
+        const r = resolve(b, 1, 4, parseMove("re4e5 Ed4e4").tokens, false);
+        expect(r.status).to.equal("resolved");
+        if (r.status === "resolved") {
+            expect(r.bucket).to.deep.equal([2, 2]);
+            expect(serializeTurn(b, 1, 4, r.turn)).to.equal("re5 Ee4");
+        }
+    });
+    it("treats a round trip as equivalent to the walk that reaches the same position", () => {
+        const b = boardOf("Ed2 re2 Rb7 eg7 rf8 Ra1");
+        const turn = turnFromSteps(b, 1, [{from: "e2", to: "e1"}, {from: "d2", to: "e2"}, {from: "e2", to: "e3"}, {from: "e1", to: "e2"}]);
+        expect(turn.displaced).to.equal(1);
+        expect(serializeTurn(b, 1, 4, turn)).to.equal("Ee3");
+        const r = resolve(b, 1, 4, parseMove("Ee3").tokens, false);
+        expect(r.status).to.equal("resolved");
+        if (r.status === "resolved") {
+            expect(r.bucket).to.deep.equal([2, 1]);
+            expect(r.turn.signature).to.equal(turn.signature);
+        }
+    });
+    it("orders step tokens as written", () => {
+        // Lightvector's example, shifted off the traps: the same four tokens
+        // in another order name a different sequence, here one nobody can play
+        const b = boardOf("Rd3 Rc4 Ee1 Ra1 ra8 ee8");
+        const a = resolve(b, 1, 4, parseMove("d3n d4n c4e d4e").tokens, false);
+        expect(a.status).to.equal("resolved");
+        if (a.status === "resolved") {
+            expect(a.turn.steps.map(s => `${sqName(s.from)}${s.dir}`)).to.deep.equal(["d3n", "d4n", "c4e", "d4e"]);
+        }
+        expect(resolve(b, 1, 4, parseMove("d3n d4e d4n c4e").tokens, false).status).to.equal("unsatisfiable");
+        // without the ordering the tokens would also fit the other interleaving
+        const c = resolve(b, 1, 4, parseMove("c4e d4n d3n d4e").tokens, false);
+        expect(c.status).to.equal("resolved");
+        if (c.status === "resolved") {
+            expect(c.turn.steps.map(s => `${sqName(s.from)}${s.dir}`)).to.deep.equal(["c4e", "d4n", "d3n", "d4e"]);
+        }
+    });
+    it("pruning never changes an answer", function () {
+        this.timeout(60000);
+        // deterministic pseudo-random sparse positions and arrow sets
+        let seed = 12345;
+        const rnd = (n: number): number => {
+            seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+            return seed % n;
+        };
+        const types = ["E", "M", "H", "D", "C", "R"];
+        const key = (r: ReturnType<typeof resolve>): string => r.status === "resolved" ? `${r.status}:${r.bucket}:${r.turn.signature}` : r.status === "ambiguous" ? `${r.status}:${r.bucket}:${r.positions}` : r.status;
+        for (let trial = 0; trial < 60; trial++) {
+            const b = new Map<string, CellContents>();
+            const n = 4 + rnd(4);
+            for (let i = 0; i < n; i++) {
+                const cell = `${"abcdefgh"[rnd(8)]}${1 + rnd(8)}`;
+                if (!b.has(cell)) {
+                    b.set(cell, [types[rnd(6)] as CellContents[0], (1 + rnd(2)) as 1 | 2]);
+                }
+            }
+            // a legal position has no unsupported piece on a trap
+            for (const trap of ["c3", "f3", "c6", "f6"]) {
+                b.delete(trap);
+            }
+            const player = (1 + rnd(2)) as 1 | 2;
+            const tokens: string[] = [];
+            const cells = [...b.keys()];
+            for (let k = 0; k < 1 + rnd(2) && cells.length > 0; k++) {
+                const from = cells[rnd(cells.length)];
+                const [pc, owner] = b.get(from)!;
+                const to = `${"abcdefgh"[rnd(8)]}${1 + rnd(8)}`;
+                const kind = rnd(4);
+                const letter = owner === 1 ? pc : pc.toLowerCase();
+                tokens.push(kind === 0 ? `${letter}${from}x` : kind === 1 ? `${letter}${to}` : `${letter}${from}${to}`);
+            }
+            const parsed = parseMove(tokens.join(" ")).tokens;
+            const pruned = resolve(b, player, 4, parsed, false, true);
+            const full = resolve(b, player, 4, parsed, false, false);
+            expect(key(pruned), `${[...b.entries()].map(([c, [p, o]]) => (o === 1 ? p : p.toLowerCase()) + c).join(" ")} / ${tokens.join(" ")} / player ${player}`).to.equal(key(full));
+        }
+    });
+});
+
+describe("Arimaa arrow entry", () => {
+    it("enters a flip in two clicks and records it as dx", () => {
+        const g = position("Hg3,Cf2,Ra2,Ee1", "dh3,ra7,ee8");
+        let r = click(g, "", "h3");
+        expect(r.move).to.equal("h3");
+        expect(r.complete).to.equal(-1);
+        r = click(g, r.move, "f3");
+        expect(r.move).to.equal("dh3f3");
+        expect(r.valid).to.be.true;
+        expect(r.complete).to.equal(1);
+        const preview = g.clone();
+        preview.move(r.move, {partial: true});
+        expect(annotations(preview)).to.have.members(["enter:g3", "move:h3>f3", "exit:f3"]);
+        g.move(r.move);
+        expect(g.lastmove).to.equal("dx");
+        expect(g.board.has("h3")).to.be.false;
+        expect(g.board.get("g3")).to.deep.equal(["H", 1]);
+        expect(annotations(g)).to.have.members(["enter:g3", "move:h3>f3", "exit:f3"]);
+        expect(g.results.filter(x => x.type === "move").length).to.equal(4);
+        expect(g.results.filter(x => x.type === "destroy").length).to.equal(1);
+    });
+    it("pins an ambiguous push by arrowing the pusher onto the vacated square", () => {
+        const g = position("Ed4,Hf4,Ra1,Cc1", "re4,ra8,ee8");
+        let r = click(g, "", "e4");
+        r = click(g, r.move, "e5");
+        expect(r.move).to.equal("re4e5");
+        expect(r.complete).to.equal(-1);
+        r = click(g, r.move, "d4");
+        expect(r.move).to.equal("re4e5 d4");
+        r = click(g, r.move, "e4");
+        expect(r.move).to.equal("re4e5 Ed4e4");
+        expect(r.complete).to.equal(0);
+        g.move(r.move);
+        expect(g.lastmove).to.equal("re5 Ee4");
+    });
+    it("enters a pull in four clicks", () => {
+        const g = position("Ed4,Hf4,Ra1,Cc1", "re4,ra8,ee8");
+        let r = click(g, "", "d4");
+        r = click(g, r.move, "c4");
+        r = click(g, r.move, "e4");
+        expect(r.move).to.equal("Ed4c4 e4");
+        r = click(g, r.move, "d4");
+        expect(r.move).to.equal("Ed4c4 re4d4");
+        g.move(r.move);
+        expect(g.lastmove).to.equal("Ec4 rd4");
+        expect(annotations(g)).to.have.members(["move:d4>c4", "move:e4>d4"]);
+    });
+    it("re-selects, cancels, extends from an arrow head and deletes from its tail", () => {
+        const g = position("Ed4,Hf4,Ra1,Cc1", "re4,ra8,ee8");
+        let r = click(g, "", "d4");
+        r = click(g, r.move, "f4");
+        expect(r.move).to.equal("f4");
+        r = click(g, r.move, "f4");
+        expect(r.move).to.equal("");
+        r = click(g, "d4", "d6");
+        expect(r.move).to.equal("Ed4d6");
+        r = click(g, r.move, "d6");
+        expect(r.move).to.equal("Ed4d6 d6");
+        r = click(g, r.move, "e6");
+        expect(r.move).to.equal("Ed4e6");
+        r = click(g, r.move, "d4");
+        expect(r.move).to.equal("d4");
+        r = click(g, r.move, "d4");
+        expect(r.move).to.equal("");
+        // an empty square with nothing selected is a no-op
+        r = click(g, "", "b5");
+        expect(r.move).to.equal("");
+    });
+    it("rejects a click that no legal move can satisfy and keeps the previous move", () => {
+        const g = position("Ed4,Ra1", "ee5,ra8");
+        let r = click(g, "d4", "h8");
+        expect(r.move).to.equal("d4");
+        expect(r.valid).to.be.false;
+        // an occupied, unvacated square is a re-selection, never a destination
+        r = click(g, "d4", "e5");
+        expect(r.move).to.equal("e5");
+        expect(r.valid).to.be.true;
+    });
+    it("names the pieces it inferred", () => {
+        const g = position("Ed4,Ra1,Cc1", "re4,ra8,ee8");
+        const r = g.validateMove("re4e5");
+        expect(r.valid).to.be.true;
+        expect(r.complete).to.equal(0);
+        expect(r.message).to.contain("Ed4e4");
+    });
+    it("applies the two-step ceiling on the first ply of an endless endgame", () => {
+        const g = new ArimaaGame(undefined, ["eee"]);
+        const e = [...g.board.entries()].find(([, [pc, owner]]) => pc === "E" && owner === 1)![0];
+        const [x, y] = ArimaaGame.algebraic2coords(e);
+        const far = ArimaaGame.coords2algebraic(x, y < 4 ? y + 3 : y - 3);
+        const r = g.validateMove(`E${e}${far}`);
+        expect(r.valid).to.be.false;
+        expect(r.message).to.contain("2");
+    });
+});
+
+describe("Arimaa notation compatibility", () => {
+    it("reads the old step notation and writes the new one", () => {
+        const g = position("Hg3,Cf2,Ra2,Ee1", "dh3,ra7,ee8");
+        g.move("Hg3g4,dh3g3,dg3f3(xdf3),Hg4g3");
+        expect(g.lastmove).to.equal("dx");
+        expect(g.board.has("f3")).to.be.false;
+    });
+    it("compares moves by the position they reach", () => {
+        const g = position("Hg3,Cf2,Ra2,Ee1", "dh3,ra7,ee8");
+        g.move("dh3f3");
+        expect(g.sameMove("dx", "Hg3g2, dh3g3, dg3f3, Hg2g3")).to.be.true;
+        expect(g.sameMove("dx", "df3")).to.be.true;
+        expect(g.sameMove("dx", "Hg3g4")).to.be.false;
+    });
+    it("stored notation replays to the same position", () => {
+        const g = position("Ed4,Hf4,Ra1,Cc1,Db4", "re4,ra8,ee8,md7");
+        for (const m of ["Db4b5 Ed4c4", "md7d6 ra8b8", "Hf4e4 re4e5 Ec4c5", "ee8e7", "Hf4 Db5b4"]) {
+            const before = g.clone();
+            g.move(m);
+            const replay = before.clone();
+            replay.move(g.lastmove!);
+            expect(replay.signature(), `${m} -> ${g.lastmove}`).to.equal(g.signature());
+            const strict = resolve(before.board, before.currplayer, 4, parseMove(g.lastmove!).tokens, false);
+            expect(strict.status, g.lastmove).to.equal("resolved");
+        }
+    });
+    it("refuses a third repetition only after resolving the move", () => {
+        const g = position("Ed4,Ra2", "ee8,ra7");
+        const cycle = ["Ed4d5", "ee8e7", "Ed5d4", "ee7e8"];
+        for (let i = 0; i < 7; i++) {
+            g.move(cycle[i % 4]);
+        }
+        const r = g.validateMove("ee7e8");
+        expect(r.valid).to.be.true;
+        expect(r.complete).to.equal(-1);
+        expect(r.message).to.equal(i18next.t("apgames:validation.arimaa.REPEAT"));
+        expect(() => g.move("ee7e8")).to.throw();
+    });
+});
