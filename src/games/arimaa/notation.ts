@@ -203,3 +203,13 @@ export function isArrow(t: Token): boolean {
 export function isPin(t: Token): boolean {
     return t.prop.kind === "dest" && t.spec.square !== undefined && t.spec.square === t.prop.square;
 }
+
+/** A capture token for the piece on `square`: it is captured during the turn. */
+export function captureToken(piece: Piece, owner: playerid, square: string): Token {
+    return { spec: { piece, owner, square }, prop: { kind: "capture" }, text: `${pieceChar(piece, owner)}${square}x` };
+}
+
+/** A capture token naming a square: a mark on the piece standing there. */
+export function isMark(t: Token): boolean {
+    return t.prop.kind === "capture" && t.spec.square !== undefined;
+}

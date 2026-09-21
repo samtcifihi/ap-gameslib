@@ -5,7 +5,7 @@
  * Squares are indexed `rank * 8 + file` with rank 0 being rank "1", so `n` is
  * +8, `s` is -8, `e` is +1 and `w` is -1.
  */
-import { arrowToken, pieceChar, tokenText, type Dir, type Piece, type playerid, type Token } from "./notation.js";
+import { arrowToken, captureToken, pieceChar, tokenText, type Dir, type Piece, type playerid, type Token } from "./notation.js";
 
 export type CellContents = [Piece, playerid];
 
@@ -796,10 +796,6 @@ export function inferred(turn: Turn, tokens: Token[]): Trajectory[] {
 // ---------------------------------------------------------------------------
 // Serialization
 
-function captureToken(piece: Piece, owner: playerid, square: string): Token {
-    return { spec: { piece, owner, square }, prop: { kind: "capture" }, text: `${pieceChar(piece, owner)}${square}x` };
-}
-
 function stepToken(st: TurnStep): Token {
     const from = sqName(st.from);
     return { spec: { piece: st.piece, owner: st.owner, square: from }, prop: { kind: "steps", dirs: [st.dir] }, text: `${pieceChar(st.piece, st.owner)}${from}${st.dir}` };
@@ -868,6 +864,7 @@ export function serializeTurn(board: Map<string, CellContents>, player: playerid
         const r = resolve(board, player, maxSteps, toks, false);
         return r.status === "resolved" && r.turn.signature === turn.signature;
     };
+    const explicit = tokens.length;
     let resolved = ok(tokens);
     if (!resolved) {
         for (const tr of turn.trajectories) {
@@ -914,6 +911,13 @@ export function serializeTurn(board: Map<string, CellContents>, player: playerid
     }
     if (!resolved) {
         return undefined;
+    }
+    // a discriminator added before the decisive one may have done nothing
+    for (let i = tokens.length - 1; i >= explicit; i--) {
+        const trial = tokens.filter((_, j) => j !== i);
+        if (ok(trial)) {
+            tokens = trial;
+        }
     }
 
     // simplification candidates: the piece type is unique on the board, or

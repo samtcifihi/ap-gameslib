@@ -627,6 +627,57 @@ describe("Arimaa arrow entry", () => {
         expect(g.board.get("e3")).to.deep.equal(["D", 1]);
         expect(g.lastmove).to.equal("Re4 De3");
     });
+    it("marks a piece on a trap captured with a second click on it", () => {
+        // from a recorded game, mirrored: the horse leaves its rabbit on the
+        // trap unsupported; read without the mark, the rabbit's own move comes
+        // first and keeps it alive
+        const g = position("Ra1,Rg1,Rh1,Rh2,Ce1,Ca2,Hb3,Dh3,Rg2,Rb2,Ef2,Rd2,Hf3,Dc5,Rc3,Mb4", "ra7,ra8,rb8,rc8,rf8,rg8,rh8,rh7,cc7,df7,ce8,dd7,mf4,hg3,he3,ec4");
+        let r = click(g, "", "b3");
+        r = click(g, r.move, "a4");
+        r = click(g, r.move, "b4");
+        r = click(g, r.move, "b3");
+        r = click(g, r.move, "b2");
+        r = click(g, r.move, "c2");
+        expect(r.move).to.equal("Hb3a4 Mb4b3 Rb2c2");
+        expect(r.valid).to.be.true;
+        const reading = g.clone();
+        reading.move(r.move, {partial: true});
+        expect(reading.board.has("c3")).to.be.true;
+        r = click(g, r.move, "c3");
+        r = click(g, r.move, "c3");
+        expect(r.move).to.equal("Hb3a4 Mb4b3 Rb2c2 Rc3x");
+        expect(r.valid).to.be.true;
+        expect(r.complete).to.equal(1);
+        const preview = g.clone();
+        preview.move(r.move, {partial: true});
+        expect(preview.board.has("c3")).to.be.false;
+        expect(annotations(preview)).to.include("exit:c3");
+        // a click on the mark lifts it
+        r = click(g, r.move, "c3");
+        expect(r.move).to.equal("Hb3a4 Mb4b3 Rb2c2 c3");
+        g.move("Hb3a4 Mb4b3 Rb2c2 Rc3x");
+        expect(g.board.has("c3")).to.be.false;
+    });
+    it("marks an enemy piece captured by pieces that step out and back", () => {
+        // from a recorded game, mirrored: the elephant steps aside, pulls the
+        // camel off the rabbit's trap and pushes it back; nothing is displaced
+        const g = position("Rh3,Re3,Rf3,Rh2,Re2,Rd2,Rg3,Rg2,Re1,Rg1,Ra3,Rd3,Ra2,Hb5,Cb2,Eb4", "rg8,cb8,hf7,rh5,ef2,rd7,cb6,ra4,rf5,rd4,rc3,mb3");
+        let r = click(g, "", "c3");
+        r = click(g, r.move, "c3");
+        expect(r.move).to.equal("rc3x");
+        expect(r.valid).to.be.true;
+        expect(r.complete).to.equal(0);
+        r = click(g, r.move, "b4");
+        r = click(g, r.move, "b4");
+        expect(r.move).to.equal("rc3x Eb4b4");
+        expect(r.valid).to.be.true;
+        expect(r.complete).to.equal(1);
+        g.move(r.move);
+        expect(g.board.has("c3")).to.be.false;
+        expect(g.board.get("b4")).to.deep.equal(["E", 1]);
+        expect(g.board.get("b3")).to.deep.equal(["M", 2]);
+        expect(g.lastmove).to.equal("rc3x Eb4");
+    });
     it("submits with a piece still selected", () => {
         const g = position("Ed4,Hf4,Ra1,Cc1", "re4,ra8,ee8");
         const r = g.validateMove("Ed4c4 f4");
