@@ -226,7 +226,7 @@ describe("Arimaa", () => {
 
 
 // ---------------------------------------------------------------------------
-// Lightvector notation and arrow entry (docs/arimaa-notation.md)
+// Lightvector notation and arrow entry
 
 import { isLegacy, parseMove, parseToken, NotationError } from "../../src/games/arimaa/notation";
 import { resolve, serializeTurn, sqName, turnFromSteps, type CellContents } from "../../src/games/arimaa/turns";

@@ -572,7 +572,7 @@ export class ArimaaGame extends GameBase {
         return newmove;
     }
 
-    // Movement clicks work on the arrow list (docs/arimaa-notation.md §6.2).
+    // Movement clicks work on the arrow list; the rules are in the branch comments below.
     // The move string holds destination tokens, anything typed, and at most
     // one trailing bare square: the selected piece awaiting a destination.
     private moveClick(move: string, row: number, col: number): string {
@@ -1057,8 +1057,9 @@ export class ArimaaGame extends GameBase {
         return `${pc}${sqName(tr.start)}${sqName(tr.final)}`;
     }
 
-    // Lightvector notation: resolve the tokens leniently and report per the
-    // contract in docs/arimaa-notation.md §6.3.
+    // Lightvector notation: resolve the tokens leniently and report: invalid for
+    // unreadable or unsatisfiable input, -1 while ambiguous, selecting or
+    // repeating, 1 only for a full turn with nothing inferred, otherwise 0.
     private validateNotation(m: string): IValidationResult {
         const result: IValidationResult = {valid: false, message: i18next.t("apgames:validation._general.DEFAULT_HANDLER")};
         let parsed: ParsedMove;

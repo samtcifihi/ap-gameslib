@@ -6,7 +6,11 @@
  *   property  := square | [nsew]+ | x               e.g. `e5`, `nn`, `x`
  * Upper-case pieces are Gold, lower-case Silver. Squares are algebraic from
  * Gold's side and directions are absolute (`n` is toward rank 8 for both).
- * The full semantics live in docs/arimaa-notation.md.
+ * A token asserts that some piece satisfying its specifier (at any point in
+ * the turn) ends on the square, took those steps in that order, or was
+ * captured. The move meant is found in the first (steps, displaced pieces)
+ * bucket holding a satisfying turn, provided every satisfying turn there
+ * reaches the same position.
  */
 
 export type Piece = "E" | "M" | "H" | "D" | "C" | "R";

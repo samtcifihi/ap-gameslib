@@ -1,6 +1,6 @@
 /**
  * Turn enumeration, Lightvector-notation resolution, and canonical
- * serialization for Arimaa. See docs/arimaa-notation.md.
+ * serialization for Arimaa.
  *
  * Squares are indexed `rank * 8 + file` with rank 0 being rank "1", so `n` is
  * +8, `s` is -8, `e` is +1 and `w` is -1.
