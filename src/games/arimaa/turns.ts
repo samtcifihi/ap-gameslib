@@ -491,11 +491,12 @@ export function resolve(board: Map<string, CellContents>, player: playerid, maxS
             }
             sum += groupCost;
             // an enemy standing on the destination has to be pushed or pulled
-            // off it, unless a trap can claim it
+            // off it, unless a trap can claim it or it is itself a witness
+            // (a piece pulled onto the square the puller vacated ends there)
             const occupant = s.ids[dest];
             if (occupant >= 0 && !TRAPS.includes(dest)) {
                 const x = s.pieces[occupant];
-                if (x.owner !== s.player) {
+                if (x.owner !== s.player && !group.some(t => typeMatch(x, t) && visitedOk(x, t))) {
                     const price = enemyPrice(x, 1);
                     if (price === Infinity) {
                         return Infinity;

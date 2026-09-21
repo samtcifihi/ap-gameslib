@@ -360,6 +360,19 @@ describe("Arimaa resolution", () => {
             expect(c.turn.steps.map(s => `${sqName(s.from)}${s.dir}`)).to.deep.equal(["c4e", "d4n", "d3n", "d4e"]);
         }
     });
+    it("lets a pulled piece end where the puller started", () => {
+        // the pruning heuristic once demanded the pulled rabbit be moved off g5 again
+        const b = boardOf("mg5 Rh5 hh7 ee8 Ee1 ra8 Ra1");
+        const r = resolve(b, 2, 4, parseMove("mg5g3 Rh5g5 hh7h6").tokens, false);
+        expect(r.status).to.equal("resolved");
+        if (r.status === "resolved") {
+            expect(r.bucket).to.deep.equal([4, 3]);
+            expect(serializeTurn(b, 2, 4, r.turn)).to.equal("mg3 Rg5 hh6");
+        }
+        const c = boardOf("rb6 mb5 Ra5 ee8 Ee1 ra8 Rh1");
+        const r2 = resolve(c, 2, 4, parseMove("rb6x mb5x Ra5b5").tokens, false);
+        expect(r2.status).to.equal("resolved");
+    });
     it("pruning never changes an answer", function () {
         this.timeout(60000);
         // deterministic pseudo-random sparse positions and arrow sets
@@ -370,7 +383,7 @@ describe("Arimaa resolution", () => {
         };
         const types = ["E", "M", "H", "D", "C", "R"];
         const key = (r: ReturnType<typeof resolve>): string => r.status === "resolved" ? `${r.status}:${r.bucket}:${r.turn.signature}` : r.status === "ambiguous" ? `${r.status}:${r.bucket}:${r.positions}` : r.status;
-        for (let trial = 0; trial < 60; trial++) {
+        for (let trial = 0; trial < 150; trial++) {
             const b = new Map<string, CellContents>();
             const n = 4 + rnd(4);
             for (let i = 0; i < n; i++) {
@@ -389,7 +402,9 @@ describe("Arimaa resolution", () => {
             for (let k = 0; k < 1 + rnd(2) && cells.length > 0; k++) {
                 const from = cells[rnd(cells.length)];
                 const [pc, owner] = b.get(from)!;
-                const to = `${"abcdefgh"[rnd(8)]}${1 + rnd(8)}`;
+                // half the destinations are squares other pieces occupy, where the
+                // heuristic's occupancy reasoning is exercised
+                const to = rnd(2) === 0 ? cells[rnd(cells.length)] : `${"abcdefgh"[rnd(8)]}${1 + rnd(8)}`;
                 const kind = rnd(4);
                 const letter = owner === 1 ? pc : pc.toLowerCase();
                 tokens.push(kind === 0 ? `${letter}${from}x` : kind === 1 ? `${letter}${to}` : `${letter}${from}${to}`);
@@ -479,6 +494,16 @@ describe("Arimaa arrow entry", () => {
         r = click(g, "d4", "e5");
         expect(r.move).to.equal("e5");
         expect(r.valid).to.be.true;
+    });
+    it("accepts a double push with the pusher arrowed", () => {
+        const g = position("Ed4,Ra1,Cc1", "re4,ra8,ee8");
+        const r = g.validateMove("re4e6 Ed4e5");
+        expect(r.valid).to.be.true;
+        expect(r.complete).to.equal(1);
+        g.move("re4e6 Ed4e5");
+        expect(g.board.get("e6")).to.deep.equal(["R", 2]);
+        expect(g.board.get("e5")).to.deep.equal(["E", 1]);
+        expect(g.lastmove).to.equal("re6 Ee5");
     });
     it("names the pieces it inferred", () => {
         const g = position("Ed4,Ra1,Cc1", "re4,ra8,ee8");

@@ -1033,10 +1033,13 @@ export class ArimaaGame extends GameBase {
         return 4;
     }
 
-    // Steps the player's arrows must take at the very least: one per square
-    // for their own pieces, two per square for enemy pieces.
+    // Steps the player's arrows must take at the very least. Every piece needs
+    // a step per square, and those add up; an enemy piece needs two per square,
+    // but its partner's steps may be an arrowed own piece's own steps (a pusher
+    // that follows it), so that price stands alone rather than being added.
     private static arrowBudget(tokens: Token[], player: playerid): number {
-        let need = 0;
+        let sum = 0;
+        let enemy = 0;
         for (const t of tokens) {
             if (t.prop.kind !== "dest" || t.spec.square === undefined || t.spec.owner === undefined) {
                 continue;
@@ -1044,9 +1047,12 @@ export class ArimaaGame extends GameBase {
             const [fx, fy] = ArimaaGame.algebraic2coords(t.spec.square);
             const [tx, ty] = ArimaaGame.algebraic2coords(t.prop.square);
             const dist = Math.abs(fx - tx) + Math.abs(fy - ty);
-            need += t.spec.owner === player ? dist : 2 * dist;
+            sum += dist;
+            if (t.spec.owner !== player) {
+                enemy = Math.max(enemy, 2 * dist);
+            }
         }
-        return need;
+        return Math.max(sum, enemy);
     }
 
     private describeTrajectory(tr: Turn["trajectories"][number]): string {
