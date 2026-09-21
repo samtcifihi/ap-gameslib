@@ -577,10 +577,10 @@ export class ArimaaGame extends GameBase {
 
     // Movement clicks work on the drawn tokens; the rules are in the branch
     // comments below. The move string holds destination tokens (arrows, and
-    // pins: a piece sent to its own square), capture marks on pieces standing
-    // on traps, anything typed, and at most two trailing bare squares: the
-    // selected piece awaiting a destination and, before it, the selection
-    // that a second click on the current one completes an arrow from.
+    // pins: a piece sent to its own square), capture marks (a pin on a trap,
+    // clicked once more), anything typed, and at most two trailing bare
+    // squares: the selected piece awaiting a destination and, before it, the
+    // selection that a second click on the current one completes an arrow from.
     private moveClick(move: string, row: number, col: number): string {
         let parsed: ParsedMove;
         try {
@@ -630,11 +630,9 @@ export class ArimaaGame extends GameBase {
                     // selection before it there; its occupant will have to move
                     complete(previous, clicked);
                 } else if (unvacatedPiece(clicked) && pinOf(clicked) < 0 && markOf(clicked) < 0) {
-                    // the second click on a selected piece pins it where it
-                    // stands; on a trap, where a pin could not tell survival
-                    // from capture, it marks the piece captured instead
+                    // the second click on a selected piece pins it where it stands
                     const [pc, owner] = this.board.get(clicked)!;
-                    drawn.push(traps.includes(clicked) ? captureToken(pc, owner, clicked) : pinToken(pc, owner, clicked));
+                    drawn.push(pinToken(pc, owner, clicked));
                 }
                 // a re-opened arrow head is simply released
                 pending = undefined;
@@ -656,8 +654,13 @@ export class ArimaaGame extends GameBase {
                 // grabbing an arrow's tail removes it and starts a new one
                 drawn.splice(t, 1);
                 pending = clicked;
+            } else if (p >= 0 && traps.includes(clicked)) {
+                // on a trap a pin cannot tell survival from capture, so a
+                // click on it turns the pin into a capture mark
+                const [pc, owner] = this.board.get(clicked)!;
+                drawn[p] = captureToken(pc, owner, clicked);
             } else if (p >= 0 || markOf(clicked) >= 0) {
-                // a pin or a capture mark likewise
+                // a pin or a capture mark is lifted like an arrow's tail
                 drawn.splice(p >= 0 ? p : markOf(clicked), 1);
                 pending = clicked;
             } else if (this.board.has(clicked) || headOf(clicked) >= 0) {

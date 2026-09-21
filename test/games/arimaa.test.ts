@@ -627,7 +627,7 @@ describe("Arimaa arrow entry", () => {
         expect(g.board.get("e3")).to.deep.equal(["D", 1]);
         expect(g.lastmove).to.equal("Re4 De3");
     });
-    it("marks a piece on a trap captured with a second click on it", () => {
+    it("marks a piece on a trap captured with a third click on it", () => {
         // from a recorded game, mirrored: the horse leaves its rabbit on the
         // trap unsupported; read without the mark, the rabbit's own move comes
         // first and keeps it alive
@@ -644,6 +644,11 @@ describe("Arimaa arrow entry", () => {
         reading.move(r.move, {partial: true});
         expect(reading.board.has("c3")).to.be.true;
         r = click(g, r.move, "c3");
+        r = click(g, r.move, "c3");
+        // the second click pins it, which changes nothing here...
+        expect(r.move).to.equal("Hb3a4 Mb4b3 Rb2c2 Rc3c3");
+        expect(r.valid).to.be.true;
+        // ...and on a trap a third click turns the pin into a capture mark
         r = click(g, r.move, "c3");
         expect(r.move).to.equal("Hb3a4 Mb4b3 Rb2c2 Rc3x");
         expect(r.valid).to.be.true;
@@ -663,6 +668,8 @@ describe("Arimaa arrow entry", () => {
         // camel off the rabbit's trap and pushes it back; nothing is displaced
         const g = position("Rh3,Re3,Rf3,Rh2,Re2,Rd2,Rg3,Rg2,Re1,Rg1,Ra3,Rd3,Ra2,Hb5,Cb2,Eb4", "rg8,cb8,hf7,rh5,ef2,rd7,cb6,ra4,rf5,rd4,rc3,mb3");
         let r = click(g, "", "c3");
+        r = click(g, r.move, "c3");
+        expect(r.move).to.equal("rc3c3");
         r = click(g, r.move, "c3");
         expect(r.move).to.equal("rc3x");
         expect(r.valid).to.be.true;
