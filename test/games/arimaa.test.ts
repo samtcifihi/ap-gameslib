@@ -230,6 +230,7 @@ describe("Arimaa", () => {
 
 import { isLegacy, parseMove, parseToken, NotationError } from "../../src/games/arimaa/notation";
 import { resolve, serializeTurn, sqName, turnFromSteps, type CellContents } from "../../src/games/arimaa/turns";
+import { arimaaRecords } from "../fixtures/arimaa/records";
 
 const rc = (cell: string): [number, number] => {
     const [x, y] = ArimaaGame.algebraic2coords(cell);
@@ -636,4 +637,50 @@ describe("Arimaa notation compatibility", () => {
         expect(r.message).to.equal(i18next.t("apgames:validation.arimaa.REPEAT"));
         expect(() => g.move("ee7e8")).to.throw();
     });
+});
+
+describe("Arimaa recorded games", () => {
+    // stored legacy moves from real games replay, and each turn's new notation
+    // resolves strictly to the position played and compares equal to the record
+    const positionOf = (spec: string): Map<string, CellContents> => {
+        const b = new Map<string, CellContents>();
+        for (const t of spec.split(",").filter(Boolean)) {
+            b.set(t.slice(1), [t[0].toUpperCase() as CellContents[0], t[0] === t[0].toUpperCase() ? 1 : 2]);
+        }
+        return b;
+    };
+    for (const rec of arimaaRecords) {
+        it(`replays ${rec.name}`, function () {
+            this.timeout(20000);
+            const g = new ArimaaGame(undefined, rec.variants);
+            if (rec.startingPosition !== undefined) {
+                g.stack[0].board = positionOf(rec.startingPosition);
+                g.load();
+            }
+            rec.moves.forEach((recorded, i) => {
+                const before = g.clone();
+                const setup = g.hands !== undefined && g.hands[g.currplayer - 1].length > 0;
+                g.move(recorded);
+                if (setup) {
+                    return;
+                }
+                const maxSteps = rec.variants.includes("eee") && before.stack.length === 1 ? 2 : 4;
+                const stored = g.lastmove!;
+                if (rec.legacyTurns?.includes(i + 1)) {
+                    // only the legacy validator allows this move, so it keeps the old notation
+                    expect(isLegacy(stored), stored).to.be.true;
+                    expect(stored.replace(/\s+/g, "")).to.equal(recorded.replace(/\s+/g, ""));
+                } else {
+                    expect(isLegacy(stored), stored).to.be.false;
+                    const strict = resolve(before.board, before.currplayer, maxSteps, parseMove(stored).tokens, false);
+                    expect(strict.status, `${recorded} -> ${stored}`).to.equal("resolved");
+                }
+                const replay = before.clone();
+                replay.move(stored);
+                expect(replay.signature(), `${recorded} -> ${stored}`).to.equal(g.signature());
+                expect(g.sameMove(stored, recorded), `${recorded} -> ${stored}`).to.be.true;
+            });
+            expect(g.gameover).to.equal(rec.gameover);
+        });
+    }
 });
