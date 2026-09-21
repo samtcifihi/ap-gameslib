@@ -41,6 +41,8 @@ export interface ParsedMove {
     tokens: Token[];
     /** A trailing bare square: the selected piece awaiting a destination. Input only. */
     pending?: string;
+    /** The selection before `pending`, kept while a second click on `pending` could complete an arrow from it. Input only. */
+    previous?: string;
 }
 
 export class NotationError extends Error {
@@ -140,21 +142,25 @@ export function parseToken(text: string): Token {
 }
 
 /**
- * Parse a whole move. With `allowPending`, a final bare square is returned
- * separately as the pending selection instead of being rejected.
+ * Parse a whole move. With `allowPending`, up to two final bare squares are
+ * returned separately, as the pending selection and the selection before it,
+ * instead of being rejected.
  */
 export function parseMove(m: string, allowPending = false): ParsedMove {
     const parts = tokenize(m);
-    const tokens: Token[] = [];
+    let end = parts.length;
     let pending: string | undefined;
-    parts.forEach((t, i) => {
-        if (allowPending && i === parts.length - 1 && squareRe.test(t)) {
-            pending = t;
-            return;
+    let previous: string | undefined;
+    if (allowPending && end > 0 && squareRe.test(parts[end - 1])) {
+        pending = parts[end - 1];
+        end--;
+        if (end > 0 && squareRe.test(parts[end - 1])) {
+            previous = parts[end - 1];
+            end--;
         }
-        tokens.push(parseToken(t));
-    });
-    return { tokens, pending };
+    }
+    const tokens = parts.slice(0, end).map(parseToken);
+    return { tokens, pending, previous };
 }
 
 export function pieceChar(piece: Piece, owner: playerid): string {
@@ -165,10 +171,13 @@ export function tokenText(t: Token): string {
     return t.text;
 }
 
-/** Rebuild a move string from tokens, keeping any pending square last. */
-export function joinMove(tokens: Token[], pending?: string): string {
+/** Rebuild a move string from tokens, keeping the selections last (the pending square at the very end). */
+export function joinMove(tokens: Token[], pending?: string, previous?: string): string {
     const parts = tokens.map(tokenText);
     if (pending !== undefined) {
+        if (previous !== undefined) {
+            parts.push(previous);
+        }
         parts.push(pending);
     }
     return parts.join(" ");
@@ -178,4 +187,19 @@ export function joinMove(tokens: Token[], pending?: string): string {
 export function arrowToken(piece: Piece, owner: playerid, from: string, to: string): Token {
     const text = `${pieceChar(piece, owner)}${from}${to}`;
     return { spec: { piece, owner, square: from }, prop: { kind: "dest", square: to }, text };
+}
+
+/** A pin: `piece` on `square` ends the turn where it stands (a zero-length arrow). */
+export function pinToken(piece: Piece, owner: playerid, square: string): Token {
+    return arrowToken(piece, owner, square, square);
+}
+
+/** A destination token drawn from a piece's square to another square. */
+export function isArrow(t: Token): boolean {
+    return t.prop.kind === "dest" && t.spec.square !== undefined && t.spec.square !== t.prop.square;
+}
+
+/** A destination token that keeps a piece on its own square. */
+export function isPin(t: Token): boolean {
+    return t.prop.kind === "dest" && t.spec.square !== undefined && t.spec.square === t.prop.square;
 }

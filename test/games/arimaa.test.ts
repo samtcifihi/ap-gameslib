@@ -301,6 +301,12 @@ describe("Arimaa notation parser", () => {
         expect(p.pending).to.equal("e4");
         expect(() => parseMove("Ed4e4 e4")).to.throw(NotationError);
         expect(() => parseMove("e4 Ed4e4", true)).to.throw(NotationError);
+        // two trailing squares: the selection before the current one is kept too
+        const q = parseMove("Ed4e4 d4 e4", true);
+        expect(q.tokens.map(t => t.text)).to.deep.equal(["Ed4e4"]);
+        expect(q.previous).to.equal("d4");
+        expect(q.pending).to.equal("e4");
+        expect(() => parseMove("d4 e4 Ed4e4", true)).to.throw(NotationError);
     });
 });
 
@@ -494,22 +500,27 @@ describe("Arimaa arrow entry", () => {
         r = click(g, r.move, "c4");
         r = click(g, r.move, "e4");
         expect(r.move).to.equal("Ed4c4 e4");
-        // the arrows already form a move, but the dangling selection blocks it
-        expect(r.complete).to.equal(-1);
-        expect(r.message).to.equal(i18next.t("apgames:validation.arimaa.INCOMPLETE"));
+        // the arrows already form a move; the selection only adds a hint
+        expect(r.complete).to.equal(0);
+        expect(r.message).to.contain(i18next.t("apgames:validation.arimaa.INCOMPLETE"));
         r = click(g, r.move, "d4");
         expect(r.move).to.equal("Ed4c4 re4d4");
         g.move(r.move);
         expect(g.lastmove).to.equal("Ec4 rd4");
         expect(annotations(g)).to.have.members(["move:d4>c4", "move:e4>d4"]);
     });
-    it("re-selects, cancels, extends from an arrow head and deletes from its tail", () => {
+    it("re-selects, pins, extends from an arrow head and deletes from its tail", () => {
         const g = position("Ed4,Hf4,Ra1,Cc1", "re4,ra8,ee8");
         let r = click(g, "", "d4");
         r = click(g, r.move, "f4");
-        expect(r.move).to.equal("f4");
+        // another piece re-selects, remembering the first for a second click
+        expect(r.move).to.equal("d4 f4");
         r = click(g, r.move, "f4");
-        expect(r.move).to.equal("");
+        // which sends the first onto this square; the horse has to make way,
+        // and where it goes is still open
+        expect(r.move).to.equal("Ed4f4");
+        expect(r.valid).to.be.true;
+        expect(r.complete).to.equal(-1);
         r = click(g, "d4", "d6");
         expect(r.move).to.equal("Ed4d6");
         r = click(g, r.move, "d6");
@@ -518,8 +529,12 @@ describe("Arimaa arrow entry", () => {
         expect(r.move).to.equal("Ed4e6");
         r = click(g, r.move, "d4");
         expect(r.move).to.equal("d4");
+        // a second click on a selected piece pins it; a click on the pin lifts it
         r = click(g, r.move, "d4");
-        expect(r.move).to.equal("");
+        expect(r.move).to.equal("Ed4d4");
+        expect(r.valid).to.be.true;
+        r = click(g, r.move, "d4");
+        expect(r.move).to.equal("d4");
         // an empty square with nothing selected is a no-op
         r = click(g, "", "b5");
         expect(r.move).to.equal("");
@@ -531,7 +546,7 @@ describe("Arimaa arrow entry", () => {
         expect(r.valid).to.be.false;
         // an occupied, unvacated square is a re-selection, never a destination
         r = click(g, "d4", "e5");
-        expect(r.move).to.equal("e5");
+        expect(r.move).to.equal("d4 e5");
         expect(r.valid).to.be.true;
     });
     it("rejects arrows no turn can satisfy on a full board", () => {
@@ -544,6 +559,83 @@ describe("Arimaa arrow entry", () => {
             expect(r.valid, m).to.be.false;
             expect(r.message, m).to.equal(i18next.t("apgames:validation.arimaa.NO_MOVE"));
         }
+    });
+    it("pins a piece that steps out and back with a second click on it", () => {
+        // the elephant pushes the dog into the trap and returns; without the pin
+        // the arrows read as the three-step turn that leaves it on d6
+        const g = position("Ee6,Cg2,Ra1", "dd6,ra8,ee8");
+        let r = click(g, "", "d6");
+        r = click(g, r.move, "c6");
+        r = click(g, r.move, "g2");
+        r = click(g, r.move, "g3");
+        expect(r.move).to.equal("dd6c6 Cg2g3");
+        expect(r.valid).to.be.true;
+        expect(r.message).to.contain("Ee6d6");
+        r = click(g, r.move, "e6");
+        r = click(g, r.move, "e6");
+        expect(r.move).to.equal("dd6c6 Cg2g3 Ee6e6");
+        expect(r.valid).to.be.true;
+        expect(r.complete).to.equal(1);
+        const preview = g.clone();
+        preview.move(r.move, {partial: true});
+        expect(annotations(preview)).to.include.members(["enter:e6", "move:d6>c6", "exit:c6", "move:g2>g3"]);
+        g.move(r.move);
+        expect(g.lastmove).to.equal("Cg3 dx Ee6");
+        expect(g.board.get("e6")).to.deep.equal(["E", 1]);
+        expect(g.board.has("c6")).to.be.false;
+    });
+    it("completes an arrow onto an occupied square with a second click on it", () => {
+        // a rotation: the elephant pulls one rabbit and pushes the other,
+        // ending where the second one stood
+        const g = position("Eh5,Ra1", "rh6,rg6,ra8,ee8");
+        let r = click(g, "", "h5");
+        r = click(g, r.move, "g6");
+        expect(r.move).to.equal("h5 g6");
+        r = click(g, r.move, "g6");
+        expect(r.move).to.equal("Eh5g6");
+        expect(r.valid).to.be.true;
+        r = click(g, r.move, "g6");
+        expect(r.move).to.equal("Eh5g6 g6");
+        r = click(g, r.move, "h6");
+        r = click(g, r.move, "h6");
+        expect(r.move).to.equal("Eh5g6 rg6h6");
+        r = click(g, r.move, "h6");
+        r = click(g, r.move, "h5");
+        expect(r.move).to.equal("Eh5g6 rg6h6 rh6h5");
+        expect(r.valid).to.be.true;
+        expect(r.complete).to.equal(1);
+        g.move(r.move);
+        expect(g.board.get("g6")).to.deep.equal(["E", 1]);
+        expect(g.board.get("h6")).to.deep.equal(["R", 2]);
+        expect(g.board.get("h5")).to.deep.equal(["R", 2]);
+    });
+    it("pins a blocker so that a piece walks around it", () => {
+        const g = position("Re2,De3,Ra1", "ra8,ee8");
+        let r = click(g, "", "e2");
+        r = click(g, r.move, "e4");
+        expect(r.move).to.equal("Re2e4");
+        // the shorter reading moves the dog aside (to d3 rather than the trap)
+        expect(r.complete).to.equal(0);
+        expect(r.message).to.contain("De3d3");
+        r = click(g, r.move, "e3");
+        r = click(g, r.move, "e3");
+        expect(r.move).to.equal("Re2e4 De3e3");
+        expect(r.valid).to.be.true;
+        expect(r.complete).to.equal(1);
+        g.move(r.move);
+        expect(g.board.get("e4")).to.deep.equal(["R", 1]);
+        expect(g.board.get("e3")).to.deep.equal(["D", 1]);
+        expect(g.lastmove).to.equal("Re4 De3");
+    });
+    it("submits with a piece still selected", () => {
+        const g = position("Ed4,Hf4,Ra1,Cc1", "re4,ra8,ee8");
+        const r = g.validateMove("Ed4c4 f4");
+        expect(r.valid).to.be.true;
+        expect(r.complete).to.equal(0);
+        expect(r.message).to.contain(i18next.t("apgames:validation.arimaa.INCOMPLETE"));
+        g.move("Ed4c4 f4");
+        expect(g.lastmove).to.equal("Ec4");
+        expect(g.board.get("f4")).to.deep.equal(["H", 1]);
     });
     it("accepts a double push with the pusher arrowed", () => {
         const g = position("Ed4,Ra1,Cc1", "re4,ra8,ee8");
