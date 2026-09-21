@@ -458,6 +458,9 @@ describe("Arimaa arrow entry", () => {
         r = click(g, r.move, "c4");
         r = click(g, r.move, "e4");
         expect(r.move).to.equal("Ed4c4 e4");
+        // the arrows already form a move, but the dangling selection blocks it
+        expect(r.complete).to.equal(-1);
+        expect(r.message).to.equal(i18next.t("apgames:validation.arimaa.INCOMPLETE"));
         r = click(g, r.move, "d4");
         expect(r.move).to.equal("Ed4c4 re4d4");
         g.move(r.move);

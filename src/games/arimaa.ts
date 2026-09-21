@@ -1110,7 +1110,7 @@ export class ArimaaGame extends GameBase {
         }
         if (parsed.pending !== undefined) {
             result.complete = -1;
-            result.message = i18next.t("apgames:validation.arimaa.PARTIAL_MOVE");
+            result.message = i18next.t("apgames:validation.arimaa.INCOMPLETE");
             return result;
         }
         const extra = inferred(r.turn, parsed.tokens);
