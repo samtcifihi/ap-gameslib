@@ -426,13 +426,34 @@ export function resolve(board: Map<string, CellContents>, player: playerid, maxS
         return best;
     };
 
+    const rank = (i: number): number => i >> 3;
+    // The mover's rabbits never step backward, and nothing else moves them
+    // during the turn, so a square behind one is out of its reach for good.
+    const behind = (from: number, to: number): boolean => s.player === 1 ? rank(to) < rank(from) : rank(to) > rank(from);
+    const ownRabbit = (p: PieceState): boolean => p.type === "R" && p.owner === s.player;
+    const backwardDir: Dir = s.player === 1 ? "s" : "n";
     // Squares `p` must still cover to satisfy a token: to the specifier's
     // square first if it has not been there, then to the target.
     const squaresTo = (p: PieceState, t: PTok, target: number): number => {
         if (t.sq >= 0 && !p.visited.includes(t.sq)) {
+            if (ownRabbit(p) && (behind(p.cur, t.sq) || behind(t.sq, target))) {
+                return Infinity;
+            }
             return manhattan(p.cur, t.sq) + manhattan(t.sq, target);
         }
+        if (ownRabbit(p) && behind(p.cur, target)) {
+            return Infinity;
+        }
         return manhattan(p.cur, target);
+    };
+
+    // The full price of an own piece covering `d` squares: a frozen piece
+    // cannot step until another piece has, and that step is none of its own.
+    const ownPrice = (p: PieceState, d: number): number => {
+        if (d === 0 || d === Infinity) {
+            return d;
+        }
+        return s.frozen(p.cur) ? d + 1 : d;
     };
 
     // The full price of moving an enemy piece `d` squares: two steps a square
@@ -450,103 +471,171 @@ export function resolve(board: Map<string, CellContents>, player: playerid, maxS
     // combined by max: (1) one step per square for every witness, summed over
     // distinct destinations, which need distinct witnesses; (2) per token, the
     // full price of its cheapest witness, including an enemy's partner and
-    // approach steps.
+    // approach steps, a frozen piece's release, and clearing the destination.
     const heuristic = (): number => {
         let sum = 0;
         let max = 0;
         for (const [dest, group] of destGroups) {
             let groupCost = 0;
-            for (const t of group) {
-                let best = Infinity;
-                let bestFull = Infinity;
+            let groupFull = 0;
+            if (TRAPS.includes(dest)) {
+                // several pieces can end on a trap (captured on it, then another
+                // arrives), so each token finds its own witness
+                for (const t of group) {
+                    let best = Infinity;
+                    let bestFull = Infinity;
+                    for (const p of s.pieces) {
+                        if (!typeMatch(p, t)) {
+                            continue;
+                        }
+                        let c: number;
+                        let full: number;
+                        if (p.cur < 0) {
+                            c = p.capturedAt === dest && visitedOk(p, t) ? 0 : Infinity;
+                            full = c;
+                        } else {
+                            c = squaresTo(p, t, dest);
+                            full = p.owner === s.player ? ownPrice(p, c) : enemyPrice(p, c);
+                        }
+                        if (c < best) {
+                            best = c;
+                        }
+                        if (full < bestFull) {
+                            bestFull = full;
+                        }
+                    }
+                    if (best === Infinity || bestFull === Infinity) {
+                        return Infinity;
+                    }
+                    if (best > groupCost) {
+                        groupCost = best;
+                    }
+                    if (bestFull > groupFull) {
+                        groupFull = bestFull;
+                    }
+                }
+            } else {
+                // only one piece can stand on the square at the end, so a single
+                // witness has to satisfy every token of the group
+                groupCost = Infinity;
+                groupFull = Infinity;
+                const occupant = s.ids[dest];
+                let occCost = Infinity;
+                let occFull = Infinity;
+                let others = Infinity;
                 for (const p of s.pieces) {
-                    if (!typeMatch(p, t)) {
+                    if (p.cur < 0 || !group.every(t => typeMatch(p, t))) {
                         continue;
                     }
-                    let c: number;
-                    let full: number;
-                    if (p.cur < 0) {
-                        c = p.capturedAt === dest && visitedOk(p, t) ? 0 : Infinity;
-                        full = c;
-                    } else {
-                        c = squaresTo(p, t, dest);
-                        full = p.owner === s.player ? c : enemyPrice(p, c);
+                    let c = 0;
+                    for (const t of group) {
+                        const d = squaresTo(p, t, dest);
+                        if (d > c) {
+                            c = d;
+                        }
                     }
-                    if (c < best) {
-                        best = c;
+                    const full = p.owner === s.player ? ownPrice(p, c) : enemyPrice(p, c);
+                    if (c < groupCost) {
+                        groupCost = c;
                     }
-                    if (full < bestFull) {
-                        bestFull = full;
+                    if (full < groupFull) {
+                        groupFull = full;
+                    }
+                    if (p.id === occupant) {
+                        occCost = c;
+                        occFull = full;
+                    } else if (c < others) {
+                        others = c;
                     }
                 }
-                if (best === Infinity || bestFull === Infinity) {
+                if (groupCost === Infinity || groupFull === Infinity) {
                     return Infinity;
                 }
-                if (best > groupCost) {
-                    groupCost = best;
-                }
-                if (bestFull > max) {
-                    max = bestFull;
+                // whatever stands on the destination and does not already satisfy
+                // the group either becomes its witness by leaving and returning or
+                // has to make way: an enemy by being pushed or pulled, an own
+                // piece by a step of its own that is none of the witness's
+                if (occupant >= 0 && occCost !== 0) {
+                    const x = s.pieces[occupant];
+                    const clear = x.owner !== s.player ? enemyPrice(x, 1) : Math.min(occFull, others + 1);
+                    if (clear === Infinity) {
+                        return Infinity;
+                    }
+                    if (clear > groupFull) {
+                        groupFull = clear;
+                    }
                 }
             }
             sum += groupCost;
-            // an enemy standing on the destination has to be pushed or pulled
-            // off it, unless a trap can claim it or it is itself a witness
-            // (a piece pulled onto the square the puller vacated ends there)
-            const occupant = s.ids[dest];
-            if (occupant >= 0 && !TRAPS.includes(dest)) {
-                const x = s.pieces[occupant];
-                if (x.owner !== s.player && !group.some(t => typeMatch(x, t) && visitedOk(x, t))) {
-                    const price = enemyPrice(x, 1);
-                    if (price === Infinity) {
-                        return Infinity;
-                    }
-                    if (price > max) {
-                        max = price;
-                    }
-                }
+            if (groupFull > max) {
+                max = groupFull;
             }
         }
         for (const t of captureToks) {
-            let best = Infinity;
             let bestFull = Infinity;
             for (const p of s.pieces) {
                 if (!typeMatch(p, t)) {
                     continue;
                 }
-                let c: number;
                 let full: number;
                 if (p.cur < 0) {
-                    c = visitedOk(p, t) ? 0 : Infinity;
-                    full = c;
+                    full = visitedOk(p, t) ? 0 : Infinity;
                 } else {
-                    c = Infinity;
+                    // it dies on some trap: after getting there, and once every
+                    // neighbour of the trap of its colour has gone. Own
+                    // neighbours step away; enemy ones are pushed or pulled,
+                    // two dedicated steps each, after a first approach.
+                    full = Infinity;
                     for (const trap of TRAPS) {
                         const d = squaresTo(p, t, trap);
-                        if (d < c) {
-                            c = d;
+                        if (d === Infinity) {
+                            continue;
+                        }
+                        let friends = 0;
+                        let nearest = Infinity;
+                        for (const n of NEIGHBOURS[trap]) {
+                            const q = s.ids[n];
+                            if (q < 0 || q === p.id || s.pieces[q].owner !== p.owner) {
+                                continue;
+                            }
+                            friends++;
+                            if (p.owner !== s.player) {
+                                const a = approach(s.pieces[q]);
+                                if (a < nearest) {
+                                    nearest = a;
+                                }
+                            }
+                        }
+                        let cost: number;
+                        if (p.owner === s.player) {
+                            cost = Math.max(ownPrice(p, d), d + friends);
+                        } else if (friends === 0) {
+                            cost = enemyPrice(p, d);
+                        } else if (nearest === Infinity) {
+                            continue;
+                        } else {
+                            cost = Math.max(enemyPrice(p, d), 2 * (d + friends), 2 * friends + nearest);
+                        }
+                        if (cost < full) {
+                            full = cost;
                         }
                     }
-                    full = p.owner === s.player ? c : enemyPrice(p, c);
-                }
-                if (c < best) {
-                    best = c;
                 }
                 if (full < bestFull) {
                     bestFull = full;
                 }
             }
-            if (best === Infinity || bestFull === Infinity) {
+            if (bestFull === Infinity) {
                 return Infinity;
-            }
-            if (best > max) {
-                max = best;
             }
             if (bestFull > max) {
                 max = bestFull;
             }
         }
         for (const t of stepToks) {
+            if (t.type === "R" && t.owner === s.player && t.dirs.includes(backwardDir)) {
+                return Infinity;
+            }
             const left = t.dirs.length - bestPrefix(t);
             if (left > max) {
                 max = left;

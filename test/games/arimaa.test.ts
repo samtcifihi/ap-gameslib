@@ -374,8 +374,9 @@ describe("Arimaa resolution", () => {
         expect(r2.status).to.equal("resolved");
     });
     it("pruning never changes an answer", function () {
-        this.timeout(60000);
-        // deterministic pseudo-random sparse positions and arrow sets
+        this.timeout(120000);
+        // deterministic pseudo-random positions and token sets: sparse boards
+        // searched four steps deep, then denser ones three steps deep
         let seed = 12345;
         const rnd = (n: number): number => {
             seed = (seed * 1103515245 + 12345) & 0x7fffffff;
@@ -383,36 +384,67 @@ describe("Arimaa resolution", () => {
         };
         const types = ["E", "M", "H", "D", "C", "R"];
         const key = (r: ReturnType<typeof resolve>): string => r.status === "resolved" ? `${r.status}:${r.bucket}:${r.turn.signature}` : r.status === "ambiguous" ? `${r.status}:${r.bucket}:${r.positions}` : r.status;
-        for (let trial = 0; trial < 150; trial++) {
+        const square = (): string => `${"abcdefgh"[rnd(8)]}${1 + rnd(8)}`;
+        const check = (pieces: number, maxSteps: number): void => {
             const b = new Map<string, CellContents>();
-            const n = 4 + rnd(4);
-            for (let i = 0; i < n; i++) {
-                const cell = `${"abcdefgh"[rnd(8)]}${1 + rnd(8)}`;
+            for (let i = 0; i < pieces; i++) {
+                const cell = square();
                 if (!b.has(cell)) {
                     b.set(cell, [types[rnd(6)] as CellContents[0], (1 + rnd(2)) as 1 | 2]);
                 }
             }
             // a legal position has no unsupported piece on a trap
             for (const trap of ["c3", "f3", "c6", "f6"]) {
-                b.delete(trap);
+                if (b.has(trap)) {
+                    const [x, y] = ArimaaGame.algebraic2coords(trap);
+                    const owner = b.get(trap)![1];
+                    const supported = [[x - 1, y], [x + 1, y], [x, y - 1], [x, y + 1]].some(([nx, ny]) => b.get(ArimaaGame.coords2algebraic(nx, ny))?.[1] === owner);
+                    if (!supported) {
+                        b.delete(trap);
+                    }
+                }
             }
             const player = (1 + rnd(2)) as 1 | 2;
-            const tokens: string[] = [];
             const cells = [...b.keys()];
+            const letterOf = (cell: string): string => {
+                const [pc, owner] = b.get(cell)!;
+                return owner === 1 ? pc : pc.toLowerCase();
+            };
+            const tokens: string[] = [];
             for (let k = 0; k < 1 + rnd(2) && cells.length > 0; k++) {
                 const from = cells[rnd(cells.length)];
-                const [pc, owner] = b.get(from)!;
                 // half the destinations are squares other pieces occupy, where the
                 // heuristic's occupancy reasoning is exercised
-                const to = rnd(2) === 0 ? cells[rnd(cells.length)] : `${"abcdefgh"[rnd(8)]}${1 + rnd(8)}`;
-                const kind = rnd(4);
-                const letter = owner === 1 ? pc : pc.toLowerCase();
-                tokens.push(kind === 0 ? `${letter}${from}x` : kind === 1 ? `${letter}${to}` : `${letter}${from}${to}`);
+                const to = rnd(2) === 0 ? cells[rnd(cells.length)] : square();
+                const letter = letterOf(from);
+                switch (rnd(6)) {
+                    case 0:
+                        tokens.push(`${letter}${from}x`);
+                        break;
+                    case 1:
+                        tokens.push(`${letter}${to}`);
+                        break;
+                    case 2:
+                        tokens.push(`${letter}${from}${"nsew"[rnd(4)]}`);
+                        break;
+                    case 3:
+                        // two tokens for one square
+                        tokens.push(`${letter}${from}${to}`, `${letterOf(cells[rnd(cells.length)])}${to}`);
+                        break;
+                    default:
+                        tokens.push(`${letter}${from}${to}`);
+                }
             }
             const parsed = parseMove(tokens.join(" ")).tokens;
-            const pruned = resolve(b, player, 4, parsed, false, true);
-            const full = resolve(b, player, 4, parsed, false, false);
-            expect(key(pruned), `${[...b.entries()].map(([c, [p, o]]) => (o === 1 ? p : p.toLowerCase()) + c).join(" ")} / ${tokens.join(" ")} / player ${player}`).to.equal(key(full));
+            const pruned = resolve(b, player, maxSteps, parsed, false, true);
+            const full = resolve(b, player, maxSteps, parsed, false, false);
+            expect(key(pruned), `${[...b.entries()].map(([c, [p, o]]) => (o === 1 ? p : p.toLowerCase()) + c).join(" ")} / ${tokens.join(" ")} / player ${player} / ${maxSteps} steps`).to.equal(key(full));
+        };
+        for (let trial = 0; trial < 150; trial++) {
+            check(4 + rnd(4), 4);
+        }
+        for (let trial = 0; trial < 60; trial++) {
+            check(9 + rnd(5), 3);
         }
     });
 });
@@ -497,6 +529,17 @@ describe("Arimaa arrow entry", () => {
         r = click(g, "d4", "e5");
         expect(r.move).to.equal("e5");
         expect(r.valid).to.be.true;
+    });
+    it("rejects arrows no turn can satisfy on a full board", () => {
+        const g = new ArimaaGame();
+        g.move("Ee2,Md2,Hb2,Hg2,Dd1,De1,Cc2,Cf2,Ra2,Ra1,Rb1,Rc1,Rf1,Rg1,Rh1,Rh2");
+        g.move("ee7,md7,hb7,hg7,dd8,de8,cc7,cf7,ra7,ra8,rb8,rc8,rf8,rg8,rh8,rh7");
+        // a rabbit backward, two pieces on one square, an enemy out of reach
+        for (const m of ["Ra2a1", "Hb2b3 Ra2b3", "ex", "mx", "Ra2s"]) {
+            const r = g.validateMove(m);
+            expect(r.valid, m).to.be.false;
+            expect(r.message, m).to.equal(i18next.t("apgames:validation.arimaa.NO_MOVE"));
+        }
     });
     it("accepts a double push with the pusher arrowed", () => {
         const g = position("Ed4,Ra1,Cc1", "re4,ra8,ee8");
