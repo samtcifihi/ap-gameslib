@@ -849,9 +849,11 @@ function ownReach(cells: Int8Array, from: number, to: number): number {
  * survivor, one capture token per captured piece (its origin if it moved),
  * nothing for pieces that return home; discriminated until it resolves
  * strictly to the turn's position; then specifiers simplified to the bare
- * piece wherever the resolver confirms the square is redundant.
+ * piece wherever the resolver confirms the square is redundant. Returns
+ * nothing for a turn no legal step sequence reaches, which the resolver can
+ * never denote (the legacy validator accepts a few such moves).
  */
-export function serializeTurn(board: Map<string, CellContents>, player: playerid, maxSteps: number, turn: Turn): string {
+export function serializeTurn(board: Map<string, CellContents>, player: playerid, maxSteps: number, turn: Turn): string | undefined {
     let tokens: Token[] = [];
     for (const tr of turn.trajectories) {
         if (tr.captured) {
@@ -864,23 +866,29 @@ export function serializeTurn(board: Map<string, CellContents>, player: playerid
         const r = resolve(board, player, maxSteps, toks, false);
         return r.status === "resolved" && r.turn.signature === turn.signature;
     };
-    if (!ok(tokens)) {
+    let resolved = ok(tokens);
+    if (!resolved) {
         for (const tr of turn.trajectories) {
             if (!tr.captured && tr.final === tr.start && tr.visited.length > 1) {
                 tokens.push(arrowToken(tr.type, tr.owner, sqName(tr.visited[1]), sqName(tr.start)));
                 if (ok(tokens)) {
+                    resolved = true;
                     break;
                 }
             }
         }
     }
-    if (!ok(tokens)) {
+    if (!resolved) {
         for (const st of turn.steps) {
             tokens.push(stepToken(st));
             if (ok(tokens)) {
+                resolved = true;
                 break;
             }
         }
+    }
+    if (!resolved) {
+        return undefined;
     }
 
     // simplification candidates: the piece type is unique on the board, or

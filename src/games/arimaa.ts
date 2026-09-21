@@ -1163,14 +1163,15 @@ export class ArimaaGame extends GameBase {
             if (setup) {
                 lastmove.push(...this.applySetup(m));
             } else if (isLegacy(m)) {
-                const steps = this.applyLegacy(m);
+                const {steps, legacy} = this.applyLegacy(m);
                 if (!partial) {
-                    lastmove.push(serializeTurn(initial.board, this.currplayer, this.maxSteps(), turnFromSteps(initial.board, this.currplayer, steps)));
+                    // a move only the legacy validator allows keeps the legacy notation
+                    lastmove.push(serializeTurn(initial.board, this.currplayer, this.maxSteps(), turnFromSteps(initial.board, this.currplayer, steps)) ?? legacy.join(", "));
                 }
             } else {
                 const turn = this.applyNotation(m, partial);
                 if (turn !== undefined && !partial) {
-                    lastmove.push(serializeTurn(initial.board, this.currplayer, this.maxSteps(), turn));
+                    lastmove.push(serializeTurn(initial.board, this.currplayer, this.maxSteps(), turn) ?? m);
                 }
             }
         }
@@ -1277,22 +1278,27 @@ export class ArimaaGame extends GameBase {
         return parts;
     }
 
-    // Legacy step list: returns the steps taken, for serialization.
-    private applyLegacy(m: string): Array<{from: string; to: string}> {
+    // Legacy step list: returns the steps taken, for serialization, and each
+    // step written as the pre-notation engine did (with its captures).
+    private applyLegacy(m: string): {steps: Array<{from: string; to: string}>; legacy: string[]} {
         const taken: Array<{from: string; to: string}> = [];
+        const legacy: string[] = [];
         const steps = m.split(",").filter(Boolean).map(mv => ArimaaGame.baseMove(mv));
         for (let i = 0; i < steps.length; i++) {
-            const [, , from, to] = steps[i];
+            const [pc, owner, from, to] = steps[i];
             if (from !== undefined && to !== undefined) {
+                const before = this.results.length;
                 this.applyStep(from, to);
                 taken.push({from, to});
+                const captures = this.results.slice(before).filter(r => r.type === "destroy").map(r => `(x${r.what}${r.where})`).join("");
+                legacy.push(`${owner === 1 ? pc : pc.toLowerCase()}${from}${to}${captures}`);
             } else if (from !== undefined) {
                 this._selected = from;
             } else if (i !== steps.length - 1) {
                 throw new Error("Invalid move detected in the middle of the move.");
             }
         }
-        return taken;
+        return {steps: taken, legacy};
     }
 
     // Lightvector notation: resolve and play the turn. Returns nothing when a
