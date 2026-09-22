@@ -231,6 +231,7 @@ describe("Arimaa", () => {
 import { isLegacy, parseMove, parseToken, NotationError } from "../../src/games/arimaa/notation";
 import { resolve, serializeTurn, sqName, turnFromSteps, type CellContents } from "../../src/games/arimaa/turns";
 import { arimaaRecords } from "../fixtures/arimaa/records";
+import { allTurns, boardOf as coverageBoard, unsupportedOnTrap, type Owner } from "../fixtures/arimaa/coverage";
 
 const rc = (cell: string): [number, number] => {
     const [x, y] = ArimaaGame.algebraic2coords(cell);
@@ -866,6 +867,125 @@ describe("Arimaa recorded games", () => {
                 expect(g.sameMove(stored, recorded), `${recorded} -> ${stored}`).to.be.true;
             });
             expect(g.gameover).to.equal(rec.gameover);
+        });
+    }
+});
+
+
+describe("Arimaa click coverage", () => {
+    // a position to click on, with no hands and the given player to move
+    const ready = (spec: string, player: Owner, eee: boolean): ArimaaGame => {
+        const board = boardOf(spec.replace(/,/g, " "));
+        const g = new ArimaaGame(undefined, eee ? ["eee"] : ["free"]);
+        g.stack[0].board = new Map(board);
+        if (!eee) {
+            g.stack.push({...g.stack[0], _results: [], _timestamp: new Date(), currplayer: player, board: new Map(board), hands: undefined, lastmove: "x"});
+        }
+        g.load();
+        g.hands = undefined;
+        return g;
+    };
+    const perms = <T,>(xs: T[]): T[][] => xs.length <= 1 ? [xs] : xs.flatMap((x, i) => perms([...xs.slice(0, i), ...xs.slice(i + 1)]).map(r => [x, ...r]));
+    // every arrow first: naming every displaced piece is what usually works
+    const subsets = <T,>(xs: T[]): T[][] => xs.reduce<T[][]>((acc, x) => [...acc, ...acc.map(a => [...a, x])], [[]]).sort((a, b) => b.length - a.length);
+
+    // every legal turn from a position must be reachable with clicks alone
+    for (const [name, spec, player, eee] of [
+        ["a frozen-piece tangle", "Ed5,Mf5,Rd3,Ra1,me5,rd4,rf4,ee8,ra8", 2, false],
+        ["a rabbit near goal", "Eb2,Hc4,Rh1,Ra1,rb1,rc2,ed8,ra8", 2, false],
+        ["pieces dying on a trap", "Rb4,Ec2,rc4,ee8,Ra1", 1, false],
+    ] as Array<[string, string, Owner, boolean]>) {
+        it(`enters every legal turn in ${name}`, function () {
+            this.timeout(120000);
+            const board = coverageBoard(spec.replace(/,/g, " "));
+            expect(unsupportedOnTrap(board), "the position itself must be legal").to.be.undefined;
+            const maxSteps = eee ? 2 : 4;
+            const reachable = allTurns(board, player, maxSteps);
+            expect(reachable.size).to.be.greaterThan(20);
+            const missed: string[] = [];
+            for (const [target, stepLists] of reachable.entries()) {
+                const g = ready(spec, player, eee);
+                let entered = false;
+                for (const steps of stepLists) {
+                    if (entered) {
+                        break;
+                    }
+                    const turn = turnFromSteps(board as Map<string, CellContents>, player, steps.map(([from, to]) => ({from, to})));
+                    const arrows = turn.trajectories.filter(t => t.final !== t.start)
+                        .map(t => ({letter: t.owner === 1 ? t.type : t.type.toLowerCase(), from: sqName(t.start), to: sqName(t.final), dies: t.captured}));
+                    const extras = turn.trajectories.filter(t => (t.captured && t.visited.length === 1) || (!t.captured && t.final === t.start && t.visited.length > 1))
+                        .map(t => ({sq: sqName(t.start), mark: t.captured}));
+                    const draw = (order: typeof arrows, pins: typeof extras): string | undefined => {
+                        let m = "";
+                        for (const a of order) {
+                            let r = click(g, m, a.from);
+                            if (!r.valid || !r.move!.endsWith(a.from)) { return undefined; }
+                            m = r.move!;
+                            r = click(g, m, a.to);
+                            if (!r.valid) { return undefined; }
+                            m = r.move!;
+                            if (!m.endsWith(`${a.letter}${a.from}${a.to}`)) {
+                                r = click(g, m, a.to);
+                                if (!r.valid) { return undefined; }
+                                m = r.move!;
+                            }
+                            if (!m.endsWith(`${a.letter}${a.from}${a.to}`)) { return undefined; }
+                            if (a.dies) {
+                                r = click(g, m, a.to);
+                                if (!r.valid) { return undefined; }
+                                m = r.move!;
+                                r = click(g, m, a.to);
+                                if (!r.valid || !r.move!.endsWith(`${a.letter}${a.from}x`)) { return undefined; }
+                                m = r.move!;
+                            }
+                        }
+                        for (const {sq, mark} of pins) {
+                            let r = click(g, m, sq);
+                            if (!r.valid) { return undefined; }
+                            m = r.move!;
+                            r = click(g, m, sq);
+                            if (!r.valid || !r.move!.endsWith(`${sq}${sq}`)) { return undefined; }
+                            m = r.move!;
+                            if (mark) {
+                                r = click(g, m, sq);
+                                if (!r.valid || !r.move!.endsWith(`${sq}x`)) { return undefined; }
+                                m = r.move!;
+                            }
+                        }
+                        return m;
+                    };
+                    for (const subset of subsets(arrows)) {
+                        if (entered) {
+                            break;
+                        }
+                        for (const order of (subset.length <= 4 ? perms(subset) : [subset])) {
+                            for (const pins of [[], extras]) {
+                                const m = draw(order, pins as typeof extras);
+                                if (m === undefined || m.length === 0) {
+                                    continue;
+                                }
+                                const v = g.validateMove(m);
+                                if (!v.valid || v.complete === -1) {
+                                    continue;
+                                }
+                                const preview = g.clone();
+                                preview.move(m, {partial: true});
+                                if (preview.signature() === target) {
+                                    entered = true;
+                                    break;
+                                }
+                            }
+                            if (entered) {
+                                break;
+                            }
+                        }
+                    }
+                }
+                if (!entered) {
+                    missed.push(stepLists[0].map(([f, t]) => f + t).join(" "));
+                }
+            }
+            expect(missed, `${missed.length} of ${reachable.size} turns could not be entered`).to.be.empty;
         });
     }
 });

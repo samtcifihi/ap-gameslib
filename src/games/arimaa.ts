@@ -602,6 +602,9 @@ export class ArimaaGame extends GameBase {
         let previous = parsed.previous;
         const tailOf = (sq: string): number => drawn.findIndex(t => isArrow(t) && t.spec.square === sq);
         const headOf = (sq: string): number => drawn.findIndex(t => isArrow(t) && (t.prop as {square: string}).square === sq);
+        // every arrow ending on this square, latest first: more than one piece
+        // can finish on a trap, the ones that died there and at most one alive
+        const headsOf = (sq: string): Token[] => drawn.filter(t => isArrow(t) && (t.prop as {square: string}).square === sq).reverse();
         const pinOf = (sq: string): number => drawn.findIndex(t => isPin(t) && t.spec.square === sq);
         const markOf = (sq: string): number => drawn.findIndex(t => isMark(t) && t.spec.square === sq);
         // occupancy is judged at the start of the turn; a square whose piece
@@ -610,6 +613,14 @@ export class ArimaaGame extends GameBase {
         const mkArrow = (from: string, to: string): Token => {
             const [pc, owner] = this.board.get(from)!;
             return arrowToken(pc, owner, from, to);
+        };
+        // a capture asserted of an arrow's piece rides with that arrow: it says
+        // the piece dies where the arrow sends it, so it goes when the arrow does
+        const dropMark = (origin: string): void => {
+            const m = markOf(origin);
+            if (m >= 0) {
+                drawn.splice(m, 1);
+            }
         };
         // send what is selected at `from` to `to`: a new arrow from a piece's
         // square, or the extension of the arrow whose head was re-opened
@@ -621,10 +632,11 @@ export class ArimaaGame extends GameBase {
             const h = headOf(from);
             if (h >= 0) {
                 const tail = drawn[h].spec.square!;
+                dropMark(tail);
                 if (tail === to) {
-                    drawn.splice(h, 1);
+                    drawn.splice(headOf(from), 1);
                 } else {
-                    drawn[h] = mkArrow(tail, to);
+                    drawn[headOf(from)] = mkArrow(tail, to);
                 }
             }
         };
@@ -635,6 +647,25 @@ export class ArimaaGame extends GameBase {
                     // the second click on an occupied square sends the
                     // selection before it there; its occupant will have to move
                     complete(previous, clicked);
+                } else if (traps.includes(clicked) && headOf(clicked) >= 0) {
+                    // the second click on an arrow's head, when that head is a
+                    // trap, says the piece dies there rather than surviving on
+                    // it; the arrow stays, because it says which trap. This
+                    // comes before pinning, because whatever still stands on
+                    // the trap cannot survive alongside what is arriving. The
+                    // claim falls on the last arrow drawn to that trap that
+                    // does not carry one yet, and once they all do, clicking
+                    // again takes them all back.
+                    const heads = headsOf(clicked);
+                    const next = heads.find(t => markOf(t.spec.square!) < 0);
+                    if (next === undefined) {
+                        for (const t of heads) {
+                            dropMark(t.spec.square!);
+                        }
+                    } else {
+                        const [pc, owner] = this.board.get(next.spec.square!)!;
+                        drawn.push(captureToken(pc, owner, next.spec.square!));
+                    }
                 } else if (unvacatedPiece(clicked) && pinOf(clicked) < 0 && markOf(clicked) < 0) {
                     // the second click on a selected piece pins it where it stands
                     const [pc, owner] = this.board.get(clicked)!;
@@ -658,7 +689,8 @@ export class ArimaaGame extends GameBase {
             const p = pinOf(clicked);
             if (t >= 0) {
                 // grabbing an arrow's tail removes it and starts a new one
-                drawn.splice(t, 1);
+                dropMark(clicked);
+                drawn.splice(tailOf(clicked), 1);
                 pending = clicked;
             } else if (p >= 0 && traps.includes(clicked)) {
                 // on a trap a pin cannot tell survival from capture, so a
@@ -1357,8 +1389,6 @@ export class ArimaaGame extends GameBase {
         // a selection never blocks a submission: it is simply dropped
         const parsed = parseMove(m, true);
         this._selected = parsed.pending;
-        this._pins = parsed.tokens.filter(isPin).map(t => t.spec.square!);
-        this._marks = parsed.tokens.filter(isMark).map(t => t.spec.square!);
         if (parsed.tokens.length === 0) {
             return undefined;
         }
@@ -1367,7 +1397,10 @@ export class ArimaaGame extends GameBase {
             if (!partial) {
                 throw new UserFacingError("VALIDATION_GENERAL", i18next.t(r.status === "ambiguous" ? "apgames:validation.arimaa.AMBIGUOUS" : "apgames:validation.arimaa.NO_MOVE", {count: r.status === "ambiguous" ? r.positions : 0}));
             }
+            // the move does not yet denote a turn, so draw what was entered
             this._arrows = parsed.tokens.filter(isArrow).map(t => [t.spec.square!, (t.prop as {square: string}).square]);
+            this._pins = parsed.tokens.filter(isPin).map(t => t.spec.square!);
+            this._marks = parsed.tokens.filter(isMark).map(t => t.spec.square!);
             return undefined;
         }
         this.applyTurn(r.turn);
