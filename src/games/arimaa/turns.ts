@@ -844,7 +844,7 @@ function ownReach(cells: Int8Array, from: number, to: number): number {
  * Write `turn` in Lightvector notation: one destination token per displaced
  * survivor, one capture token per captured piece (its origin if it moved),
  * nothing for pieces that return home; discriminated (a returning piece's
- * intermediate square, then pins on pieces the strict reading would move,
+ * intermediate square, then holds on pieces the strict reading would move,
  * then step tokens) until it resolves strictly to the turn's position; then
  * specifiers simplified to the bare
  * piece wherever the resolver confirms the square is redundant. Returns
@@ -878,15 +878,15 @@ export function serializeTurn(board: Map<string, CellContents>, player: playerid
         }
     }
     if (!resolved) {
-        // pin the pieces the strict reading moves or captures that this turn leaves alone
+        // hold the pieces the strict reading moves or captures that this turn leaves alone
         const r = resolve(board, player, maxSteps, tokens, false);
         if (r.status !== "unsatisfiable") {
             const touched = new Set(turn.trajectories.filter(tr => tr.captured || tr.final !== tr.start).map(tr => tr.start));
-            const pinned = new Set<number>();
+            const held = new Set<number>();
             for (const other of r.status === "resolved" ? [r.turn] : r.candidates) {
                 for (const tr of other.trajectories) {
-                    if ((tr.captured || tr.final !== tr.start) && !touched.has(tr.start) && !pinned.has(tr.start)) {
-                        pinned.add(tr.start);
+                    if ((tr.captured || tr.final !== tr.start) && !touched.has(tr.start) && !held.has(tr.start)) {
+                        held.add(tr.start);
                         tokens.push(arrowToken(tr.type, tr.owner, sqName(tr.start), sqName(tr.start)));
                         if (ok(tokens)) {
                             resolved = true;

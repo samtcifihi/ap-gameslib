@@ -189,8 +189,8 @@ export function arrowToken(piece: Piece, owner: playerid, from: string, to: stri
     return { spec: { piece, owner, square: from }, prop: { kind: "dest", square: to }, text };
 }
 
-/** A pin: `piece` on `square` ends the turn where it stands (a zero-length arrow). */
-export function pinToken(piece: Piece, owner: playerid, square: string): Token {
+/** A hold: `piece` on `square` ends the turn where it stands (a zero-length arrow). */
+export function holdToken(piece: Piece, owner: playerid, square: string): Token {
     return arrowToken(piece, owner, square, square);
 }
 
@@ -200,7 +200,7 @@ export function isArrow(t: Token): boolean {
 }
 
 /** A destination token that keeps a piece on its own square. */
-export function isPin(t: Token): boolean {
+export function isHold(t: Token): boolean {
     return t.prop.kind === "dest" && t.spec.square !== undefined && t.spec.square === t.prop.square;
 }
 

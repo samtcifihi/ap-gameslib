@@ -481,7 +481,7 @@ describe("Arimaa arrow entry", () => {
         expect(g.results.filter(x => x.type === "move").length).to.equal(4);
         expect(g.results.filter(x => x.type === "destroy").length).to.equal(1);
     });
-    it("pins an ambiguous push by arrowing the pusher onto the vacated square", () => {
+    it("holds an ambiguous push by arrowing the pusher onto the vacated square", () => {
         const g = position("Ed4,Hf4,Ra1,Cc1", "re4,ra8,ee8");
         let r = click(g, "", "e4");
         r = click(g, r.move, "e5");
@@ -510,7 +510,7 @@ describe("Arimaa arrow entry", () => {
         expect(g.lastmove).to.equal("Ec4 rd4");
         expect(annotations(g)).to.have.members(["move:d4>c4", "move:e4>d4"]);
     });
-    it("re-selects, pins, extends from an arrow head and deletes from its tail", () => {
+    it("re-selects, holds, extends from an arrow head and deletes from its tail", () => {
         const g = position("Ed4,Hf4,Ra1,Cc1", "re4,ra8,ee8");
         let r = click(g, "", "d4");
         r = click(g, r.move, "f4");
@@ -530,7 +530,7 @@ describe("Arimaa arrow entry", () => {
         expect(r.move).to.equal("Ed4e6");
         r = click(g, r.move, "d4");
         expect(r.move).to.equal("d4");
-        // a second click on a selected piece pins it; a click on the pin lifts it
+        // a second click on a selected piece holds it; a click on the hold lifts it
         r = click(g, r.move, "d4");
         expect(r.move).to.equal("Ed4d4");
         expect(r.valid).to.be.true;
@@ -561,8 +561,8 @@ describe("Arimaa arrow entry", () => {
             expect(r.message, m).to.equal(i18next.t("apgames:validation.arimaa.NO_MOVE"));
         }
     });
-    it("pins a piece that steps out and back with a second click on it", () => {
-        // the elephant pushes the dog into the trap and returns; without the pin
+    it("holds a piece that steps out and back with a second click on it", () => {
+        // the elephant pushes the dog into the trap and returns; without the hold
         // the arrows read as the three-step turn that leaves it on d6
         const g = position("Ee6,Cg2,Ra1", "dd6,ra8,ee8");
         let r = click(g, "", "d6");
@@ -610,7 +610,7 @@ describe("Arimaa arrow entry", () => {
         expect(g.board.get("h6")).to.deep.equal(["R", 2]);
         expect(g.board.get("h5")).to.deep.equal(["R", 2]);
     });
-    it("pins a blocker so that a piece walks around it", () => {
+    it("holds a blocker so that a piece walks around it", () => {
         const g = position("Re2,De3,Ra1", "ra8,ee8");
         let r = click(g, "", "e2");
         r = click(g, r.move, "e4");
@@ -646,10 +646,10 @@ describe("Arimaa arrow entry", () => {
         expect(reading.board.has("c3")).to.be.true;
         r = click(g, r.move, "c3");
         r = click(g, r.move, "c3");
-        // the second click pins it, which changes nothing here...
+        // the second click holds it, which changes nothing here...
         expect(r.move).to.equal("Hb3a4 Mb4b3 Rb2c2 Rc3c3");
         expect(r.valid).to.be.true;
-        // ...and on a trap a third click turns the pin into a capture mark
+        // ...and on a trap a third click turns the hold into a capture mark
         r = click(g, r.move, "c3");
         expect(r.move).to.equal("Hb3a4 Mb4b3 Rb2c2 Rc3x");
         expect(r.valid).to.be.true;
@@ -687,7 +687,7 @@ describe("Arimaa arrow entry", () => {
         expect(g.lastmove).to.equal("rc3x Eb4");
     });
     it("draws a past turn from its results, with nothing left over from an entry", () => {
-        // a half-entered move leaves arrows, pins and a selection behind; going
+        // a half-entered move leaves arrows, holds and a selection behind; going
         // back to a committed state must not draw any of them over it
         const committed = (): string[] => {
             const g = position("Ed4,Hf4,Ra1,Cc1", "re4,ra8,ee8");
@@ -915,7 +915,7 @@ describe("Arimaa click coverage", () => {
                         .map(t => ({letter: t.owner === 1 ? t.type : t.type.toLowerCase(), from: sqName(t.start), to: sqName(t.final), dies: t.captured}));
                     const extras = turn.trajectories.filter(t => (t.captured && t.visited.length === 1) || (!t.captured && t.final === t.start && t.visited.length > 1))
                         .map(t => ({sq: sqName(t.start), mark: t.captured}));
-                    const draw = (order: typeof arrows, pins: typeof extras): string | undefined => {
+                    const draw = (order: typeof arrows, holds: typeof extras): string | undefined => {
                         let m = "";
                         for (const a of order) {
                             let r = click(g, m, a.from);
@@ -939,7 +939,7 @@ describe("Arimaa click coverage", () => {
                                 m = r.move!;
                             }
                         }
-                        for (const {sq, mark} of pins) {
+                        for (const {sq, mark} of holds) {
                             let r = click(g, m, sq);
                             if (!r.valid) { return undefined; }
                             m = r.move!;
@@ -959,8 +959,8 @@ describe("Arimaa click coverage", () => {
                             break;
                         }
                         for (const order of (subset.length <= 4 ? perms(subset) : [subset])) {
-                            for (const pins of [[], extras]) {
-                                const m = draw(order, pins as typeof extras);
+                            for (const holds of [[], extras]) {
+                                const m = draw(order, holds as typeof extras);
                                 if (m === undefined || m.length === 0) {
                                     continue;
                                 }

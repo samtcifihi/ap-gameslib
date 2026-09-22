@@ -4,7 +4,7 @@ import { APRenderRep, AreaPieces, BoardBasic, Colourfuncs, Glyph } from "@abstra
 import type { APMoveResult } from "../schemas/moveresults.js";
 import { randomInt, RectGrid, reviver, shuffle, SquareOrthGraph, UserFacingError, cloneState } from "../common/index.js";
 import i18next from "i18next";
-import { arrowToken, captureToken, isArrow, isLegacy, isMark, isPin, joinMove, normalize, parseMove, pieceChar, pinToken, NotationError, type ParsedMove, type Token } from "./arimaa/notation.js";
+import { arrowToken, captureToken, isArrow, isLegacy, isMark, isHold, joinMove, normalize, parseMove, pieceChar, holdToken, NotationError, type ParsedMove, type Token } from "./arimaa/notation.js";
 import { hasAnyMove, inferred, resolve, serializeTurn, sqName, turnFromSteps, type Turn } from "./arimaa/turns.js";
 
 export type playerid = 1|2;
@@ -237,8 +237,8 @@ export class ArimaaGame extends GameBase {
     private _selected: string|undefined;
     // the player's arrows, kept for drawing when they do not yet resolve to a move
     private _arrows: Array<[string, string]>|undefined;
-    // the squares of the player's pins and capture marks, drawn whether or not the move resolves
-    private _pins: string[]|undefined;
+    // the squares of the player's holds and capture marks, drawn whether or not the move resolves
+    private _holds: string[]|undefined;
     private _marks: string[]|undefined;
 
     constructor(state?: IArimaaState | string, variants?: string[]) {
@@ -309,7 +309,7 @@ export class ArimaaGame extends GameBase {
         // partial move belongs to the entry being typed, not to this state
         this._selected = undefined;
         this._arrows = undefined;
-        this._pins = undefined;
+        this._holds = undefined;
         this._marks = undefined;
         return this;
     }
@@ -583,7 +583,7 @@ export class ArimaaGame extends GameBase {
 
     // Movement clicks work on the drawn tokens; the rules are in the branch
     // comments below. The move string holds destination tokens (arrows, and
-    // pins: a piece sent to its own square), capture marks (a pin on a trap,
+    // holds: a piece sent to its own square), capture marks (a hold on a trap,
     // clicked once more), anything typed, and at most two trailing bare
     // squares: the selected piece awaiting a destination and, before it, the
     // selection that a second click on the current one completes an arrow from.
@@ -596,7 +596,7 @@ export class ArimaaGame extends GameBase {
             parsed = {tokens: []};
         }
         const clicked = ArimaaGame.coords2algebraic(col, row);
-        const drawn = parsed.tokens.filter(t => isArrow(t) || isPin(t) || isMark(t));
+        const drawn = parsed.tokens.filter(t => isArrow(t) || isHold(t) || isMark(t));
         const others = parsed.tokens.filter(t => !drawn.includes(t));
         let pending = parsed.pending;
         let previous = parsed.previous;
@@ -605,7 +605,7 @@ export class ArimaaGame extends GameBase {
         // every arrow ending on this square, latest first: more than one piece
         // can finish on a trap, the ones that died there and at most one alive
         const headsOf = (sq: string): Token[] => drawn.filter(t => isArrow(t) && (t.prop as {square: string}).square === sq).reverse();
-        const pinOf = (sq: string): number => drawn.findIndex(t => isPin(t) && t.spec.square === sq);
+        const holdOf = (sq: string): number => drawn.findIndex(t => isHold(t) && t.spec.square === sq);
         const markOf = (sq: string): number => drawn.findIndex(t => isMark(t) && t.spec.square === sq);
         // occupancy is judged at the start of the turn; a square whose piece
         // already has an arrow away from it counts as vacated
@@ -651,7 +651,7 @@ export class ArimaaGame extends GameBase {
                     // the second click on an arrow's head, when that head is a
                     // trap, says the piece dies there rather than surviving on
                     // it; the arrow stays, because it says which trap. This
-                    // comes before pinning, because whatever still stands on
+                    // comes before holding, because whatever still stands on
                     // the trap cannot survive alongside what is arriving. The
                     // claim falls on the last arrow drawn to that trap that
                     // does not carry one yet, and once they all do, clicking
@@ -666,10 +666,10 @@ export class ArimaaGame extends GameBase {
                         const [pc, owner] = this.board.get(next.spec.square!)!;
                         drawn.push(captureToken(pc, owner, next.spec.square!));
                     }
-                } else if (unvacatedPiece(clicked) && pinOf(clicked) < 0 && markOf(clicked) < 0) {
-                    // the second click on a selected piece pins it where it stands
+                } else if (unvacatedPiece(clicked) && holdOf(clicked) < 0 && markOf(clicked) < 0) {
+                    // the second click on a selected piece holds it where it stands
                     const [pc, owner] = this.board.get(clicked)!;
-                    drawn.push(pinToken(pc, owner, clicked));
+                    drawn.push(holdToken(pc, owner, clicked));
                 }
                 // a re-opened arrow head is simply released
                 pending = undefined;
@@ -686,19 +686,19 @@ export class ArimaaGame extends GameBase {
             }
         } else {
             const t = tailOf(clicked);
-            const p = pinOf(clicked);
+            const p = holdOf(clicked);
             if (t >= 0) {
                 // grabbing an arrow's tail removes it and starts a new one
                 dropMark(clicked);
                 drawn.splice(tailOf(clicked), 1);
                 pending = clicked;
             } else if (p >= 0 && traps.includes(clicked)) {
-                // on a trap a pin cannot tell survival from capture, so a
-                // click on it turns the pin into a capture mark
+                // on a trap a hold cannot tell survival from capture, so a
+                // click on it turns the hold into a capture mark
                 const [pc, owner] = this.board.get(clicked)!;
                 drawn[p] = captureToken(pc, owner, clicked);
             } else if (p >= 0 || markOf(clicked) >= 0) {
-                // a pin or a capture mark is lifted like an arrow's tail
+                // a hold or a capture mark is lifted like an arrow's tail
                 drawn.splice(p >= 0 ? p : markOf(clicked), 1);
                 pending = clicked;
             } else if (this.board.has(clicked) || headOf(clicked) >= 0) {
@@ -1239,7 +1239,7 @@ export class ArimaaGame extends GameBase {
         this.results = [];
         this._selected = undefined;
         this._arrows = undefined;
-        this._pins = undefined;
+        this._holds = undefined;
         this._marks = undefined;
         if (m.length > 0) {
             if (setup) {
@@ -1399,7 +1399,7 @@ export class ArimaaGame extends GameBase {
             }
             // the move does not yet denote a turn, so draw what was entered
             this._arrows = parsed.tokens.filter(isArrow).map(t => [t.spec.square!, (t.prop as {square: string}).square]);
-            this._pins = parsed.tokens.filter(isPin).map(t => t.spec.square!);
+            this._holds = parsed.tokens.filter(isHold).map(t => t.spec.square!);
             this._marks = parsed.tokens.filter(isMark).map(t => t.spec.square!);
             return undefined;
         }
@@ -1677,9 +1677,9 @@ export class ArimaaGame extends GameBase {
                 rep.annotations.push({type: "move", targets: [point(from), point(to)]});
             }
         }
-        // pins are drawn as the piece entering its own square, capture marks as it leaving
-        if (this._pins !== undefined) {
-            for (const sq of this._pins) {
+        // holds are drawn as the piece entering its own square, capture marks as it leaving
+        if (this._holds !== undefined) {
+            for (const sq of this._holds) {
                 if (!entered.has(sq)) {
                     rep.annotations.push({type: "enter", targets: [point(sq)]});
                     entered.add(sq);
