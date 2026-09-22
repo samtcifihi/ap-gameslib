@@ -4,7 +4,7 @@ import { APRenderRep, AreaPieces, BoardBasic, Colourfuncs, Glyph } from "@abstra
 import type { APMoveResult } from "../schemas/moveresults.js";
 import { randomInt, RectGrid, reviver, shuffle, SquareOrthGraph, UserFacingError, cloneState } from "../common/index.js";
 import i18next from "i18next";
-import { arrowToken, captureToken, isArrow, isLegacy, isMark, isHold, joinMove, normalize, parseMove, pieceChar, holdToken, NotationError, type ParsedMove, type Token } from "./arimaa/notation.js";
+import { arrowToken, captureToken, isArrow, isLegacy, isMark, isHold, joinMove, normalize, parseMove, pieceChar, holdToken, tokenText, NotationError, type ParsedMove, type Token } from "./arimaa/notation.js";
 import { hasAnyMove, inferred, resolve, serializeTurn, sqName, turnFromSteps, type Turn } from "./arimaa/turns.js";
 
 export type playerid = 1|2;
@@ -1170,7 +1170,7 @@ export class ArimaaGame extends GameBase {
         }
         const r = resolve(this.board, this.currplayer, maxMoves, parsed.tokens, true);
         if (r.status === "unsatisfiable") {
-            result.message = i18next.t("apgames:validation.arimaa.NO_MOVE");
+            result.message = this.explainUnsatisfiable(parsed.tokens, maxMoves);
             return result;
         }
         result.valid = true;
@@ -1209,6 +1209,49 @@ export class ArimaaGame extends GameBase {
         }
         result.message = messages.join(" ");
         return result;
+    }
+
+    // Why nothing matches what was drawn. Two arrows chained through one
+    // square are the old step list typed with spaces; otherwise the first
+    // token that cannot be met on its own is named with the reason a player
+    // can act on, and when each token can be met alone it is the combination
+    // that does not fit. Only ever runs on a rejection.
+    private explainUnsatisfiable(tokens: Token[], maxMoves: number): string {
+        const dest = (t: Token): string|undefined => t.prop.kind === "dest" ? t.prop.square : undefined;
+        for (const a of tokens) {
+            const to = dest(a);
+            if (to === undefined || a.spec.square === undefined || a.spec.piece === undefined) {
+                continue;
+            }
+            const b = tokens.find(t => t !== a && t.spec.square === to && dest(t) !== undefined && (t.spec.piece === undefined || (t.spec.piece === a.spec.piece && t.spec.owner === a.spec.owner)));
+            if (b !== undefined) {
+                const pc = pieceChar(a.spec.piece, a.spec.owner!);
+                return i18next.t("apgames:validation.arimaa.NO_MOVE_CHAIN", {first: tokenText(a), second: tokenText(b), combined: `${pc}${a.spec.square}${dest(b)}`});
+            }
+        }
+        const culprit = tokens.length === 1 ? tokens[0] : tokens.find(t => resolve(this.board, this.currplayer, maxMoves, [t], true).status === "unsatisfiable");
+        if (culprit === undefined) {
+            return i18next.t("apgames:validation.arimaa.NO_MOVE_TOGETHER", {num: maxMoves});
+        }
+        const from = culprit.spec.square;
+        const occupant = from === undefined ? undefined : this.board.get(from);
+        if (from === undefined || occupant === undefined || (culprit.spec.piece !== undefined && (occupant[0] !== culprit.spec.piece || occupant[1] !== culprit.spec.owner))) {
+            return i18next.t("apgames:validation.arimaa.NO_MOVE");
+        }
+        if (occupant[1] !== this.currplayer) {
+            return i18next.t("apgames:validation.arimaa.NO_MOVE_ENEMY", {from, num: maxMoves});
+        }
+        const to = dest(culprit);
+        if (to !== undefined && to !== from && occupant[0] === "R" && (this.currplayer === 1 ? to[1] < from[1] : to[1] > from[1])) {
+            return i18next.t("apgames:validation.arimaa.BACKWARDS");
+        }
+        if (this.isFrozen(from)) {
+            return i18next.t("apgames:validation.arimaa.NO_MOVE_FROZEN", {from});
+        }
+        if (to !== undefined && to !== from) {
+            return i18next.t("apgames:validation.arimaa.NO_MOVE_REACH", {from, to, num: maxMoves});
+        }
+        return i18next.t("apgames:validation.arimaa.NO_MOVE");
     }
 
     public move(m: string, {trusted = false, partial = false} = {}): ArimaaGame {

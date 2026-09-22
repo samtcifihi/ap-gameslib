@@ -550,16 +550,36 @@ describe("Arimaa arrow entry", () => {
         expect(r.move).to.equal("d4 e5");
         expect(r.valid).to.be.true;
     });
-    it("rejects arrows no turn can satisfy on a full board", () => {
+    it("rejects arrows no turn can satisfy on a full board, and says why", () => {
         const g = new ArimaaGame();
         g.move("Ee2,Md2,Hb2,Hg2,Dd1,De1,Cc2,Cf2,Ra2,Ra1,Rb1,Rc1,Rf1,Rg1,Rh1,Rh2");
         g.move("ee7,md7,hb7,hg7,dd8,de8,cc7,cf7,ra7,ra8,rb8,rc8,rf8,rg8,rh8,rh7");
-        // a rabbit backward, two pieces on one square, an enemy out of reach
-        for (const m of ["Ra2a1", "Hb2b3 Ra2b3", "ex", "mx", "Ra2s"]) {
+        const rejected = (m: string): string => {
             const r = g.validateMove(m);
             expect(r.valid, m).to.be.false;
-            expect(r.message, m).to.equal(i18next.t("apgames:validation.arimaa.NO_MOVE"));
+            return r.message!;
+        };
+        // a rabbit backward
+        expect(rejected("Ra2a1")).to.equal(i18next.t("apgames:validation.arimaa.BACKWARDS"));
+        // two pieces on one square: each arrow works alone
+        expect(rejected("Hb2b3 Ra2b3")).to.equal(i18next.t("apgames:validation.arimaa.NO_MOVE_TOGETHER", {num: 4}));
+        // a boxed-in piece, and one on the back rank with the front rank in the way
+        expect(rejected("Rh1h4")).to.equal(i18next.t("apgames:validation.arimaa.NO_MOVE_REACH", {from: "h1", to: "h4", num: 4}));
+        expect(rejected("De1d3")).to.equal(i18next.t("apgames:validation.arimaa.NO_MOVE_REACH", {from: "e1", to: "d3", num: 4}));
+        // an enemy piece nothing can push or pull, which is also what a click
+        // on the wrong side's piece produces
+        expect(rejected("ra7a6")).to.equal(i18next.t("apgames:validation.arimaa.NO_MOVE_ENEMY", {from: "a7", num: 4}));
+        // the old step list typed with spaces reads as two elephants
+        expect(rejected("Ee2e3 Ee3e4")).to.equal(i18next.t("apgames:validation.arimaa.NO_MOVE_CHAIN", {first: "Ee2e3", second: "Ee3e4", combined: "Ee2e4"}));
+        // typed tokens with nothing to point at keep the plain message
+        for (const m of ["ex", "mx", "Ra2s"]) {
+            expect(rejected(m), m).to.equal(i18next.t("apgames:validation.arimaa.NO_MOVE"));
         }
+        // a frozen piece nothing can free in time
+        const f = position("Ma4 Rh1", "ea5 rh8");
+        const fr = f.validateMove("Ma4b4");
+        expect(fr.valid).to.be.false;
+        expect(fr.message).to.equal(i18next.t("apgames:validation.arimaa.NO_MOVE_FROZEN", {from: "a4"}));
     });
     it("holds a piece that steps out and back with a second click on it", () => {
         // the elephant pushes the dog into the trap and returns; without the hold
