@@ -1,12 +1,10 @@
 // Recorded Abstract Play games (moves only), replayed by test/games/arimaa.test.ts.
 // Every stored move is in the pre-notation step format; the replay checks that
 // each turn's new notation resolves to the position played. `legacyTurns` are
-// plies whose move only the legacy validator allows, so they keep that format.
+// plies the rules no longer allow: they replay trusted and keep the old format.
 export interface ArimaaRecord {
     name: string;
     variants: string[];
-    /** the game version the record was played under */
-    version: string;
     startingPosition?: string;
     gameover: boolean;
     legacyTurns?: number[];
@@ -17,7 +15,6 @@ export const arimaaRecords: ArimaaRecord[] = [
     {
         name: "standard game 7 (3 captures, ended by resign)",
         variants: [],
-        version: "20251223",
         gameover: false,
         moves: [
             "Ee2, Mb2, Ha2, Hh2, Dd2, De1, Cb1, Cg2, Rh1, Rg1, Rf1, Rf2, Rc2, Rc1, Rd1, Ra1",
@@ -36,7 +33,6 @@ export const arimaaRecords: ArimaaRecord[] = [
     {
         name: "standard game 81 (16 captures, played out)",
         variants: [],
-        version: "20251223",
         gameover: true,
         moves: [
             "Ee2, Md2, Hb2, Hg2, Ra2, Ra1, Rb1, Rc1, Rf1, Rg1, Rh1, Rh2, Cc2, Df2, Ce1, Dd1",
@@ -126,7 +122,6 @@ export const arimaaRecords: ArimaaRecord[] = [
     {
         name: "endless endgame game 9 (0 captures, played out)",
         variants: ["eee"],
-        version: "20251223",
         startingPosition: "Eg1,Hc1,Dh1,Da1,Rh2,Rb2,Re2,Rd2,Rf1,Rc2,Rd1,Re1,eb8,hf8,da8,dh8,ra7,rg7,rd7,re7,rc8,rf7,re8,rd8",
         gameover: true,
         moves: [
@@ -156,7 +151,6 @@ export const arimaaRecords: ArimaaRecord[] = [
     {
         name: "free placement game 428 (8 captures, ended by resign)",
         variants: ["free"],
-        version: "20251223",
         gameover: false,
         moves: [
             "Ee2, Hb2, Hh2, Cg2, Ca2, Dd2, De1, Ra1, Rc2, Rb1, Rc1, Rd1, Rf1, Rf2, Rg1, Rh1",
@@ -250,7 +244,6 @@ export const arimaaRecords: ArimaaRecord[] = [
     {
         name: "endless endgame game 216 (4 captures, played out, legacy ply 29)",
         variants: ["eee"],
-        version: "20251223",
         startingPosition: "Ed1,Da1,Cg2,Ch1,Rc2,ed8,da8,cg7,ch8,rc7",
         gameover: true,
         legacyTurns: [29],

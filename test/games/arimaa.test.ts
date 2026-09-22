@@ -749,43 +749,47 @@ describe("Arimaa notation compatibility", () => {
             expect(strict.status, g.lastmove).to.equal("resolved");
         }
     });
-    it("keeps the old notation for a move only the legacy validator allows", () => {
-        // games begun under the first version keep the validator's lapses so they replay
-        const legacyEra = (game: ArimaaGame): ArimaaGame => {
-            game.stack[0]._version = "20251223";
-            return game;
-        };
+    it("rejects a submitted move the rules do not allow, but still reads a recorded one", () => {
         // from a recorded game (mirrored so that Gold moves): the rabbit on a2
-        // completes a push of its equal, which the old validator accepts
-        // because the elephant on a4 satisfies the push precondition
-        const fresh = position("De1,Dg2,Cd2,Ch1,Rh2,Ra2,Ra1,Hf2,Mc2,Eb4", "hb8,ca8,rh7,rh8,cf7,ra3,db6,ec4,dd6,mg5");
-        let rejected = fresh.validateMove("Mc2b2, Eb4a4, ra3b3, Ra2a3");
+        // completes a push of its equal, which the validator once accepted
+        // because the elephant on a4 satisfied the push precondition
+        const g = position("De1,Dg2,Cd2,Ch1,Rh2,Ra2,Ra1,Hf2,Mc2,Eb4", "hb8,ca8,rh7,rh8,cf7,ra3,db6,ec4,dd6,mg5");
+        const push = "Mc2b2, Eb4a4, ra3b3, Ra2a3";
+        const rejected = g.validateMove(push);
         expect(rejected.valid).to.be.false;
         expect(rejected.message).to.equal(i18next.t("apgames:validation.arimaa.INVALID_PUSH", {where: "a2"}));
-        const g = legacyEra(position("De1,Dg2,Cd2,Ch1,Rh2,Ra2,Ra1,Hf2,Mc2,Eb4", "hb8,ca8,rh7,rh8,cf7,ra3,db6,ec4,dd6,mg5"));
-        expect(g.validateMove("Mc2b2, Eb4a4, ra3b3, Ra2a3").valid).to.be.true;
+        expect(() => g.move(push)).to.throw();
+        // typing it in the new notation does not get round the rules either
         expect(g.validateMove("Mb2 Ea4 rb3 Ra3").valid).to.be.false;
-        g.move("Mc2b2, Eb4a4, ra3b3, Ra2a3");
-        expect(g.lastmove).to.equal("Mc2b2, Eb4a4, ra3b3, Ra2a3");
+        // but a record replays: no validation, and the notation is kept as it was
+        g.move(push, {trusted: true});
+        expect(g.lastmove).to.equal(push);
         expect(g.board.get("b3")).to.deep.equal(["R", 2]);
+        expect(g.sameMove(g.lastmove!, "Mc2b2,Eb4a4,ra3b3,Ra2a3")).to.be.true;
         // from another: a "pull" that moves the pulled rabbit beside the
-        // vacated square, which the old validator never checked
-        rejected = position("Db3,Cc2,Rb1,Cf7,Ee6", "ef5,db2,re7,cd8,cg4").validateMove("Ee6d6, re7d7, Db3c3, Dc3d3");
-        expect(rejected.valid).to.be.false;
-        expect(rejected.message).to.equal(i18next.t("apgames:validation.arimaa.INVALID_PUSH", {where: "b3"}));
-        const h = legacyEra(position("Db3,Cc2,Rb1,Cf7,Ee6", "ef5,db2,re7,cd8,cg4"));
-        expect(h.validateMove("Ee6d6, re7d7, Db3c3, Dc3d3").valid).to.be.true;
+        // vacated square, which the validator never checked
+        const h = position("Db3,Cc2,Rb1,Cf7,Ee6", "ef5,db2,re7,cd8,cg4");
+        const pull = "Ee6d6, re7d7, Db3c3, Dc3d3";
+        const rejectedPull = h.validateMove(pull);
+        expect(rejectedPull.valid).to.be.false;
+        expect(rejectedPull.message).to.equal(i18next.t("apgames:validation.arimaa.INVALID_PUSH", {where: "b3"}));
         expect(h.validateMove("Ed6 rd7 Dd3").valid).to.be.false;
-        h.move("Ee6d6, re7d7, Db3c3, Dc3d3");
-        expect(h.lastmove).to.equal("Ee6d6, re7d7, Db3c3, Dc3d3");
-        expect(h.sameMove(h.lastmove!, "Ee6d6,re7d7,Db3c3,Dc3d3")).to.be.true;
+        h.move(pull, {trusted: true});
+        expect(h.lastmove).to.equal(pull);
         // a capture along the way is written as the old engine wrote it: the
         // rabbit is "pulled" sideways onto f6 and dies there, and the other
         // two steps leave no room for the legal way to reach that position
-        const k = legacyEra(position("Ee5,Ra1", "re6,ra8,eh8"));
-        k.move("Ee5e4, re6f6, Ra1a2, Ra2a3");
+        const k = position("Ee5,Ra1", "re6,ra8,eh8");
+        k.move("Ee5e4, re6f6, Ra1a2, Ra2a3", {trusted: true});
         expect(k.lastmove).to.equal("Ee5e4, re6f6(xrf6), Ra1a2, Ra2a3");
         expect(k.board.has("f6")).to.be.false;
+    });
+    it("still allows a push and a pull the rules do allow", () => {
+        // a stronger pusher, and a pull into the square the puller vacated
+        const g = position("Ed4,Ra1,Cc1", "re4,ra8,ee8");
+        expect(g.validateMove("re4e5, Ed4e4").valid).to.be.true;
+        const h = position("Ed4,Hf4,Ra1,Cc1", "re4,ra8,ee8");
+        expect(h.validateMove("Ed4c4, re4d4").valid).to.be.true;
     });
     it("refuses a third repetition only after resolving the move", () => {
         const g = position("Ed4,Ra2", "ee8,ra7");
@@ -815,7 +819,6 @@ describe("Arimaa recorded games", () => {
         it(`replays ${rec.name}`, function () {
             this.timeout(20000);
             const g = new ArimaaGame(undefined, rec.variants);
-            g.stack[0]._version = rec.version;
             if (rec.startingPosition !== undefined) {
                 g.stack[0].board = positionOf(rec.startingPosition);
                 g.load();
@@ -823,14 +826,17 @@ describe("Arimaa recorded games", () => {
             rec.moves.forEach((recorded, i) => {
                 const before = g.clone();
                 const setup = g.hands !== undefined && g.hands[g.currplayer - 1].length > 0;
-                g.move(recorded);
+                const illegal = rec.legacyTurns?.includes(i + 1) ?? false;
+                // a record replays trusted, but the rules still judge each move
+                expect(g.validateMove(recorded).valid, recorded).to.equal(!illegal);
+                g.move(recorded, {trusted: true});
                 if (setup) {
                     return;
                 }
                 const maxSteps = rec.variants.includes("eee") && before.stack.length === 1 ? 2 : 4;
                 const stored = g.lastmove!;
-                if (rec.legacyTurns?.includes(i + 1)) {
-                    // only the legacy validator allows this move, so it keeps the old notation
+                if (illegal) {
+                    // no legal turn reaches it, so it keeps the old notation
                     expect(isLegacy(stored), stored).to.be.true;
                     expect(stored.replace(/\s+/g, "")).to.equal(recorded.replace(/\s+/g, ""));
                 } else {
@@ -839,7 +845,7 @@ describe("Arimaa recorded games", () => {
                     expect(strict.status, `${recorded} -> ${stored}`).to.equal("resolved");
                 }
                 const replay = before.clone();
-                replay.move(stored);
+                replay.move(stored, {trusted: true});
                 expect(replay.signature(), `${recorded} -> ${stored}`).to.equal(g.signature());
                 expect(g.sameMove(stored, recorded), `${recorded} -> ${stored}`).to.be.true;
             });
