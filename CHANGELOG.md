@@ -82,6 +82,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 * Streetcar: Made lines just claimed dashed for easy identification.
 * Streetcar: At designer's request, made the drawing of two lines mandatory if a legal second line can be drawn from the first.
 * Alfred's Wyke: Added fill colour to button bar. The lighter colour is the move that will become available next turn.
+* Arimaa: New move entry. Click a piece and the square it should end your turn on, and the engine works out the steps, pushes and pulls included. Moves are now recorded in Lightvector notation, which names pieces and where they finish; older move strings are still read, so existing games are unaffected.
+* Arimaa: The step validator no longer accepts two moves the rules forbid: a push completed by a piece of equal strength, and a pull that moves the pulled piece anywhere but the square the puller vacated. Recorded games that contain one still replay.
 
 ## [1.0.0-beta] - 2023-04-30
 
