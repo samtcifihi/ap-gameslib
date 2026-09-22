@@ -305,6 +305,12 @@ export class ArimaaGame extends GameBase {
         this.lastmove = state.lastmove;
         this.hands = cloneState(state.hands);
         this.results = [...state._results];
+        // what a turn did is drawn from its results; anything left over from a
+        // partial move belongs to the entry being typed, not to this state
+        this._selected = undefined;
+        this._arrows = undefined;
+        this._pins = undefined;
+        this._marks = undefined;
         return this;
     }
 

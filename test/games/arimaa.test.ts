@@ -685,6 +685,22 @@ describe("Arimaa arrow entry", () => {
         expect(g.board.get("b3")).to.deep.equal(["M", 2]);
         expect(g.lastmove).to.equal("rc3x Eb4");
     });
+    it("draws a past turn from its results, with nothing left over from an entry", () => {
+        // a half-entered move leaves arrows, pins and a selection behind; going
+        // back to a committed state must not draw any of them over it
+        const committed = (): string[] => {
+            const g = position("Ed4,Hf4,Ra1,Cc1", "re4,ra8,ee8");
+            return annotations(g);
+        };
+        for (const partial of ["re4e5", "Ed4d4", "d4"]) {
+            const g = position("Ed4,Hf4,Ra1,Cc1", "re4,ra8,ee8");
+            g.move(partial, {partial: true});
+            g.load();
+            expect(annotations(g), partial).to.deep.equal(committed());
+            const markers = (g.render().board as {markers?: Array<{type: string}>}).markers ?? [];
+            expect(markers.filter(m => m.type === "flood"), partial).to.be.empty;
+        }
+    });
     it("submits with a piece still selected", () => {
         const g = position("Ed4,Hf4,Ra1,Cc1", "re4,ra8,ee8");
         const r = g.validateMove("Ed4c4 f4");
