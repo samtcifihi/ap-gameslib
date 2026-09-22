@@ -48,6 +48,14 @@ export function manhattan(a: number, b: number): number {
     return Math.abs((a % 8) - (b % 8)) + Math.abs(Math.floor(a / 8) - Math.floor(b / 8));
 }
 
+/** `DIST[a * 64 + b]` is the manhattan distance between squares `a` and `b`. */
+const DIST = new Int8Array(64 * 64);
+for (let a = 0; a < 64; a++) {
+    for (let b = 0; b < 64; b++) {
+        DIST[a * 64 + b] = manhattan(a, b);
+    }
+}
+
 function dirBetween(from: number, to: number): Dir {
     const d = to - from;
     return d === 8 ? "n" : d === -8 ? "s" : d === 1 ? "e" : "w";
@@ -410,19 +418,39 @@ export function resolve(board: Map<string, CellContents>, player: playerid, maxS
         return best;
     };
 
+    // Pieces a token could be witnessed by, and for a destination group the
+    // pieces every token of it accepts; fixed for the whole search.
+    const cands = new Map<PTok, PieceState[]>();
+    for (const t of toks) {
+        cands.set(t, s.pieces.filter(p => typeMatch(p, t)));
+    }
+    const groupCands = new Map<number, PieceState[]>();
+    for (const [dest, group] of destGroups) {
+        groupCands.set(dest, s.pieces.filter(p => group.every(t => typeMatch(p, t))));
+    }
+
     // Steps before some own piece stronger than `e` is adjacent to it (the
     // precondition for pushing or pulling it); Infinity if there is none.
+    // Cached for the duration of one heuristic evaluation.
+    const approachStamp = new Int32Array(s.pieces.length);
+    const approachValue = new Float64Array(s.pieces.length);
+    let stamp = 0;
     const approach = (e: PieceState): number => {
+        if (approachStamp[e.id] === stamp) {
+            return approachValue[e.id];
+        }
         let best = Infinity;
         for (const q of s.pieces) {
             if (q.owner !== s.player || q.cur < 0 || q.strength <= e.strength) {
                 continue;
             }
-            const d = Math.max(0, manhattan(q.cur, e.cur) - 1);
+            const d = Math.max(0, DIST[q.cur * 64 + e.cur] - 1);
             if (d < best) {
                 best = d;
             }
         }
+        approachStamp[e.id] = stamp;
+        approachValue[e.id] = best;
         return best;
     };
 
@@ -439,12 +467,12 @@ export function resolve(board: Map<string, CellContents>, player: playerid, maxS
             if (ownRabbit(p) && (behind(p.cur, t.sq) || behind(t.sq, target))) {
                 return Infinity;
             }
-            return manhattan(p.cur, t.sq) + manhattan(t.sq, target);
+            return DIST[p.cur * 64 + t.sq] + DIST[t.sq * 64 + target];
         }
         if (ownRabbit(p) && behind(p.cur, target)) {
             return Infinity;
         }
-        return manhattan(p.cur, target);
+        return DIST[p.cur * 64 + target];
     };
 
     // The full price of an own piece covering `d` squares: a frozen piece
@@ -466,13 +494,18 @@ export function resolve(board: Map<string, CellContents>, player: playerid, maxS
         const a = approach(p);
         return a === Infinity ? Infinity : 2 * d + a;
     };
+    // What a full price is at least, before the partner and release steps are
+    // priced: enough to skip a witness that cannot beat the best so far.
+    const atLeast = (p: PieceState, d: number): number => p.owner === s.player ? d : 2 * d;
 
-    // An admissible lower bound on the steps still needed. Two bounds are
+    // An admissible lower bound on the steps still needed, or any value above
+    // `limit` as soon as the bound is known to exceed it. Two bounds are
     // combined by max: (1) one step per square for every witness, summed over
     // distinct destinations, which need distinct witnesses; (2) per token, the
     // full price of its cheapest witness, including an enemy's partner and
     // approach steps, a frozen piece's release, and clearing the destination.
-    const heuristic = (): number => {
+    const heuristic = (limit: number): number => {
+        stamp++;
         let sum = 0;
         let max = 0;
         for (const [dest, group] of destGroups) {
@@ -484,24 +517,27 @@ export function resolve(board: Map<string, CellContents>, player: playerid, maxS
                 for (const t of group) {
                     let best = Infinity;
                     let bestFull = Infinity;
-                    for (const p of s.pieces) {
-                        if (!typeMatch(p, t)) {
-                            continue;
-                        }
+                    for (const p of cands.get(t)!) {
                         let c: number;
-                        let full: number;
                         if (p.cur < 0) {
                             c = p.capturedAt === dest && visitedOk(p, t) ? 0 : Infinity;
-                            full = c;
-                        } else {
-                            c = squaresTo(p, t, dest);
-                            full = p.owner === s.player ? ownPrice(p, c) : enemyPrice(p, c);
+                            if (c < best) {
+                                best = c;
+                            }
+                            if (c < bestFull) {
+                                bestFull = c;
+                            }
+                            continue;
                         }
+                        c = squaresTo(p, t, dest);
                         if (c < best) {
                             best = c;
                         }
-                        if (full < bestFull) {
-                            bestFull = full;
+                        if (atLeast(p, c) < bestFull) {
+                            const full = p.owner === s.player ? ownPrice(p, c) : enemyPrice(p, c);
+                            if (full < bestFull) {
+                                bestFull = full;
+                            }
                         }
                     }
                     if (best === Infinity || bestFull === Infinity) {
@@ -523,8 +559,8 @@ export function resolve(board: Map<string, CellContents>, player: playerid, maxS
                 let occCost = Infinity;
                 let occFull = Infinity;
                 let others = Infinity;
-                for (const p of s.pieces) {
-                    if (p.cur < 0 || !group.every(t => typeMatch(p, t))) {
+                for (const p of groupCands.get(dest)!) {
+                    if (p.cur < 0) {
                         continue;
                     }
                     let c = 0;
@@ -534,18 +570,25 @@ export function resolve(board: Map<string, CellContents>, player: playerid, maxS
                             c = d;
                         }
                     }
-                    const full = p.owner === s.player ? ownPrice(p, c) : enemyPrice(p, c);
                     if (c < groupCost) {
                         groupCost = c;
                     }
-                    if (full < groupFull) {
-                        groupFull = full;
-                    }
                     if (p.id === occupant) {
                         occCost = c;
-                        occFull = full;
-                    } else if (c < others) {
+                        occFull = p.owner === s.player ? ownPrice(p, c) : enemyPrice(p, c);
+                        if (occFull < groupFull) {
+                            groupFull = occFull;
+                        }
+                        continue;
+                    }
+                    if (c < others) {
                         others = c;
+                    }
+                    if (atLeast(p, c) < groupFull) {
+                        const full = p.owner === s.player ? ownPrice(p, c) : enemyPrice(p, c);
+                        if (full < groupFull) {
+                            groupFull = full;
+                        }
                     }
                 }
                 if (groupCost === Infinity || groupFull === Infinity) {
@@ -570,59 +613,57 @@ export function resolve(board: Map<string, CellContents>, player: playerid, maxS
             if (groupFull > max) {
                 max = groupFull;
             }
+            if (sum > limit || max > limit) {
+                return Math.max(sum, max);
+            }
         }
         for (const t of captureToks) {
             let bestFull = Infinity;
-            for (const p of s.pieces) {
-                if (!typeMatch(p, t)) {
+            for (const p of cands.get(t)!) {
+                if (p.cur < 0) {
+                    if (visitedOk(p, t)) {
+                        bestFull = 0;
+                        break;
+                    }
                     continue;
                 }
-                let full: number;
-                if (p.cur < 0) {
-                    full = visitedOk(p, t) ? 0 : Infinity;
-                } else {
-                    // it dies on some trap: after getting there, and once every
-                    // neighbour of the trap of its colour has gone. Own
-                    // neighbours step away; enemy ones are pushed or pulled,
-                    // two dedicated steps each, after a first approach.
-                    full = Infinity;
-                    for (const trap of TRAPS) {
-                        const d = squaresTo(p, t, trap);
-                        if (d === Infinity) {
+                // it dies on some trap: after getting there, and once every
+                // neighbour of the trap of its colour has gone. Own
+                // neighbours step away; enemy ones are pushed or pulled,
+                // two dedicated steps each, after a first approach.
+                for (const trap of TRAPS) {
+                    const d = squaresTo(p, t, trap);
+                    if (d === Infinity || atLeast(p, d) >= bestFull) {
+                        continue;
+                    }
+                    let friends = 0;
+                    let nearest = Infinity;
+                    for (const n of NEIGHBOURS[trap]) {
+                        const q = s.ids[n];
+                        if (q < 0 || q === p.id || s.pieces[q].owner !== p.owner) {
                             continue;
                         }
-                        let friends = 0;
-                        let nearest = Infinity;
-                        for (const n of NEIGHBOURS[trap]) {
-                            const q = s.ids[n];
-                            if (q < 0 || q === p.id || s.pieces[q].owner !== p.owner) {
-                                continue;
+                        friends++;
+                        if (p.owner !== s.player) {
+                            const a = approach(s.pieces[q]);
+                            if (a < nearest) {
+                                nearest = a;
                             }
-                            friends++;
-                            if (p.owner !== s.player) {
-                                const a = approach(s.pieces[q]);
-                                if (a < nearest) {
-                                    nearest = a;
-                                }
-                            }
-                        }
-                        let cost: number;
-                        if (p.owner === s.player) {
-                            cost = Math.max(ownPrice(p, d), d + friends);
-                        } else if (friends === 0) {
-                            cost = enemyPrice(p, d);
-                        } else if (nearest === Infinity) {
-                            continue;
-                        } else {
-                            cost = Math.max(enemyPrice(p, d), 2 * (d + friends), 2 * friends + nearest);
-                        }
-                        if (cost < full) {
-                            full = cost;
                         }
                     }
-                }
-                if (full < bestFull) {
-                    bestFull = full;
+                    let cost: number;
+                    if (p.owner === s.player) {
+                        cost = Math.max(ownPrice(p, d), d + friends);
+                    } else if (friends === 0) {
+                        cost = enemyPrice(p, d);
+                    } else if (nearest === Infinity) {
+                        continue;
+                    } else {
+                        cost = Math.max(enemyPrice(p, d), 2 * (d + friends), 2 * friends + nearest);
+                    }
+                    if (cost < bestFull) {
+                        bestFull = cost;
+                    }
                 }
             }
             if (bestFull === Infinity) {
@@ -630,6 +671,9 @@ export function resolve(board: Map<string, CellContents>, player: playerid, maxS
             }
             if (bestFull > max) {
                 max = bestFull;
+            }
+            if (max > limit) {
+                return max;
             }
         }
         for (const t of stepToks) {
@@ -696,8 +740,27 @@ export function resolve(board: Map<string, CellContents>, player: playerid, maxS
         return true;
     };
 
+    // Everything the search asks of a state, except the order of the steps
+    // that led to it, is in the board and each moved piece's visited squares.
+    // Step tokens are the exception, so the memo is off while any is present.
+    const stateKey = (): string => {
+        let key = s.signature();
+        for (const p of s.pieces) {
+            if (p.visited.length > 1 || p.cur < 0) {
+                key += `|${p.id}:${p.cur < 0 ? p.capturedAt : ""}:${[...p.visited].sort((a, b) => a - b).join(",")}`;
+            }
+        }
+        return key;
+    };
+    const memo = stepToks.length === 0;
+
     for (let k = 1; k <= maxSteps; k++) {
         const found = new Map<string, Turn>();
+        // States already searched with at least as many steps left. Every
+        // shallower iteration came up empty, so reaching a state again with
+        // fewer steps left can only lead to ends found there or ends that
+        // would have satisfied a shallower iteration.
+        const seen = new Map<string, number>();
         const dfs = (remaining: number): void => {
             if (remaining === 0) {
                 const sig = s.signature();
@@ -711,8 +774,16 @@ export function resolve(board: Map<string, CellContents>, player: playerid, maxS
                 }
                 return;
             }
-            if (prune && heuristic() > remaining) {
+            if (prune && heuristic(remaining) > remaining) {
                 return;
+            }
+            if (prune && memo && remaining < k) {
+                const key = stateKey();
+                const best = seen.get(key);
+                if (best !== undefined && best >= remaining) {
+                    return;
+                }
+                seen.set(key, remaining);
             }
             for (const atom of s.atoms(remaining)) {
                 if (atom.length > remaining) {
