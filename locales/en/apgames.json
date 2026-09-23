@@ -4985,8 +4985,8 @@
             "COUNTDOWN": "Plies remaining"
         },
         "mvolcano": {
-            "PYRAMIDSCAPTURED": "Pyramids captured ({{player}})",
-            "UNCAPTUREDCOLOURS": "Colours not yet captured ({{player}})"
+            "PYRAMIDSCAPTURED": "Pyramids captured",
+            "UNCAPTUREDCOLOURS": "Colours not yet captured"
         },
         "pacru": {
             "TARGET": "Tiles to win",
@@ -5010,8 +5010,8 @@
         "SCORES": "Scores",
         "STACKSIZES": "Stack heights",
         "tintas": {
-            "MAJORITIES": "Majorities won ({{player}})",
-            "MONOCHROME": "Monochrome potential ({{player}})"
+            "MAJORITIES": "Majorities won",
+            "MONOCHROME": "Monochrome potential"
         },
         "tumbleweed": "Score (pieces + influence)",
         "ESTIMATEDSCORES": "Estimated scores",

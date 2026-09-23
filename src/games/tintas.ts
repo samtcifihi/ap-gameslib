@@ -853,19 +853,22 @@ export class TintasGame extends GameBase {
     }
 
     public sidebarStatuses(): IStatus[] {
+        // Each aid is a title row followed by one row per player, echoing the scores table
         const statuses: IStatus[] = [];
         // Colours are listed in palette order and drawn as they are on the board.
         const colours = [1, 2, 3, 4, 5, 6, 7] as CellContents[];
         const glyphs = (list: CellContents[]) => list.map(c => ({ glyph: "piece", colour: c }) as StatusValue);
         // A player can still take all seven of a colour only while their opponent has none of it.
+        statuses.push({ key: this.neutralAreaLabel("apgames:status.tintas.MONOCHROME"), value: [] });
         for (const player of [1, 2] as playerid[]) {
             const value = glyphs(colours.filter(c => !this.captured[player % 2].includes(c)));
-            statuses.push({ key: this.seatAreaLabel(player, "apgames:status.tintas.MONOCHROME"), value });
+            statuses.push({ key: this.seatStatusValue(player), value });
         }
         // Four of a colour's seven discs are a majority of it.
+        statuses.push({ key: this.neutralAreaLabel("apgames:status.tintas.MAJORITIES"), value: [] });
         for (const player of [1, 2] as playerid[]) {
             const value = glyphs(colours.filter(c => this.captured[player - 1].filter(n => n === c).length >= 4));
-            statuses.push({ key: this.seatAreaLabel(player, "apgames:status.tintas.MAJORITIES"), value });
+            statuses.push({ key: this.seatStatusValue(player), value });
         }
         return statuses;
     }

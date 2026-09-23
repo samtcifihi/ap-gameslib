@@ -1,16 +1,20 @@
-/* eslint-disable @typescript-eslint/no-unused-expressions */
 import "mocha";
 import { expect } from "chai";
 import { MvolcanoGame, CellContents } from "../../src/games/mvolcano";
 import type { IStatus } from "../../src/games/_base";
 import { isStructuredRenderLabel } from "../../src/common/render-label";
 
-function findStatus(statuses: IStatus[], key: string, seat: number): IStatus {
-    const found = statuses.find((s) =>
-        isStructuredRenderLabel(s.key) && s.key.textKey === key
-        && s.key.actor?.kind === "seat" && s.key.actor.seat === seat);
-    expect(found, `${key} for seat ${seat}`).to.not.be.undefined;
-    return found!;
+// Each aid is a title row with no value, then a row for each seat keyed by the player's name
+function section(statuses: IStatus[], title: string): [unknown[], unknown[]] {
+    const idx = statuses.findIndex((s) => isStructuredRenderLabel(s.key) && s.key.textKey === title);
+    expect(idx, title).to.be.at.least(0);
+    const [head, p1, p2] = statuses.slice(idx, idx + 3);
+    expect(head.value).to.deep.equal([]);
+    [p1, p2].forEach((row, i) => {
+        expect(isStructuredRenderLabel(row.key) && row.key.textKey).to.equal("apgames:status._player");
+        expect(isStructuredRenderLabel(row.key) && row.key.actor).to.deep.equal({ kind: "seat", seat: i + 1 });
+    });
+    return [p1.value, p2.value];
 }
 
 function colours(values: unknown[]): number[] {
@@ -24,11 +28,11 @@ describe("Mega-Volcano", () => {
     describe("sidebarStatuses", () => {
         it("lists every colour as uncaptured and no pyramids captured at the start", () => {
             const statuses = new MvolcanoGame().sidebarStatuses();
-            expect(statuses).to.have.lengthOf(4);
-            for (const seat of [1, 2]) {
-                expect(colours(findStatus(statuses, "apgames:status.mvolcano.UNCAPTUREDCOLOURS", seat).value)).to.deep.equal([1, 2, 3, 4, 5, 6, 7]);
-                expect(findStatus(statuses, "apgames:status.mvolcano.PYRAMIDSCAPTURED", seat).value).to.deep.equal(["0"]);
-            }
+            expect(statuses).to.have.lengthOf(6);
+            const [un1, un2] = section(statuses, "apgames:status.mvolcano.UNCAPTUREDCOLOURS");
+            expect(colours(un1)).to.deep.equal([1, 2, 3, 4, 5, 6, 7]);
+            expect(colours(un2)).to.deep.equal([1, 2, 3, 4, 5, 6, 7]);
+            expect(section(statuses, "apgames:status.mvolcano.PYRAMIDSCAPTURED")).to.deep.equal([["0"], ["0"]]);
         });
 
         it("drops captured colours in palette order and counts white pyramids", () => {
@@ -38,10 +42,10 @@ describe("Mega-Volcano", () => {
                 [["BN", 1]] as CellContents[],
             ];
             const statuses = g.sidebarStatuses();
-            expect(colours(findStatus(statuses, "apgames:status.mvolcano.UNCAPTUREDCOLOURS", 1).value)).to.deep.equal([2, 4, 5, 6, 7]);
-            expect(colours(findStatus(statuses, "apgames:status.mvolcano.UNCAPTUREDCOLOURS", 2).value)).to.deep.equal([1, 2, 3, 4, 5, 6]);
-            expect(findStatus(statuses, "apgames:status.mvolcano.PYRAMIDSCAPTURED", 1).value).to.deep.equal(["4"]);
-            expect(findStatus(statuses, "apgames:status.mvolcano.PYRAMIDSCAPTURED", 2).value).to.deep.equal(["1"]);
+            const [un1, un2] = section(statuses, "apgames:status.mvolcano.UNCAPTUREDCOLOURS");
+            expect(colours(un1)).to.deep.equal([2, 4, 5, 6, 7]);
+            expect(colours(un2)).to.deep.equal([1, 2, 3, 4, 5, 6]);
+            expect(section(statuses, "apgames:status.mvolcano.PYRAMIDSCAPTURED")).to.deep.equal([["4"], ["1"]]);
         });
     });
 

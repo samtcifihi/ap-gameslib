@@ -1008,16 +1008,19 @@ export class MvolcanoGame extends GameBase {
     }
 
     public sidebarStatuses(): IStatus[] {
+        // Each aid is a title row followed by one row per player, echoing the scores table
         const statuses: IStatus[] = [];
         // The non-white colours each player has yet to capture (capturing all seven ends
         // the game), drawn in their customisable colours in palette order.
+        statuses.push({ key: this.neutralAreaLabel("apgames:status.mvolcano.UNCAPTUREDCOLOURS"), value: [] });
         for (const player of [1, 2] as playerid[]) {
             const capped = new Set<string>(this.captured[player - 1].map(p => p[0]));
             const value = allColours.filter(c => !capped.has(c)).map(c => ({ glyph: "piece", colour: allColours.indexOf(c) + 1 }) as StatusValue);
-            statuses.push({ key: this.seatAreaLabel(player, "apgames:status.mvolcano.UNCAPTUREDCOLOURS"), value });
+            statuses.push({ key: this.seatStatusValue(player), value });
         }
+        statuses.push({ key: this.neutralAreaLabel("apgames:status.mvolcano.PYRAMIDSCAPTURED"), value: [] });
         for (const player of [1, 2] as playerid[]) {
-            statuses.push({ key: this.seatAreaLabel(player, "apgames:status.mvolcano.PYRAMIDSCAPTURED"), value: [this.captured[player - 1].length.toString()] });
+            statuses.push({ key: this.seatStatusValue(player), value: [this.captured[player - 1].length.toString()] });
         }
         return statuses;
     }
