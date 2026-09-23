@@ -3240,6 +3240,18 @@ document.addEventListener("DOMContentLoaded", function(event) {
         if (gameSelect && gameSelect.value) {
             gameSelect.dispatchEvent(new Event("change"));
         }
+        // A game restored on page load builds its display options before the locales
+        // arrive, which leaves every label reading "undefined". Rebuild them now. The
+        // saved display choice is kept, since updateDisplayOptions re-reads it.
+        const gamename = window.localStorage.getItem("gamename");
+        const state = window.localStorage.getItem("state");
+        if (gamename && state) {
+            try {
+                updateDisplayOptions(APGames.GameFactory(gamename, state));
+            } catch (err) {
+                console.error("Could not rebuild display options:", err);
+            }
+        }
         renderGame();
     };
     const onPlaygroundI18nReady = () => {
