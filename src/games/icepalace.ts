@@ -1318,7 +1318,7 @@ export class IcePalaceGame extends GameBaseSequenced {
 
     /** A pyramid as it appears in the status panel. */
     private statusGlyph(piece: PieceId): StatusValue {
-        const glyph = this.glyphFor(piece);
+        const glyph = this.glyphFor(piece, "nest");
         return IcePalaceGame.statusGlyph(glyph.name!, glyph.colour as number | string);
     }
 
@@ -1391,19 +1391,17 @@ export class IcePalaceGame extends GameBaseSequenced {
             } else {
                 // Anything else is a board click: an empty cell, or a pyramid already in a
                 // stack there, which arrives with its stack index in `piece`.
-                const cell = this.cellAt(row, col);
+                // Map the click against the board as drawn, which includes any placements
+                // already made in this build; the committed Palace may be smaller.
+                const cell = this.inProgress(current).cellAt(row, col);
                 if (cell === undefined) {
-                    result.move = current;
-                    result.message = i18next.t("apgames:validation.icepalace.OFF_STRUCTURE");
-                    return result;
+                    return this.cancelSelection(current, result, i18next.t("apgames:validation.icepalace.OFF_STRUCTURE"));
                 }
                 newmove = this.appendToken(current, `@${cell}`);
             }
             const validated = this.validateMove(newmove);
             if (!validated.valid) {
-                result.move = current;
-                result.message = validated.message;
-                return result;
+                return this.cancelSelection(current, result, validated.message);
             }
             result.move = newmove;
             result.valid = true;
@@ -1415,6 +1413,43 @@ export class IcePalaceGame extends GameBaseSequenced {
             result.message = i18next.t("apgames:validation._general.GENERIC", { move, row, col, piece, emessage: (e as Error).message });
             return result;
         }
+    }
+
+    /** A copy of the game with the finished placements of a partial build applied. */
+    private inProgress(current: string): IcePalaceGame {
+        if (this.phase !== "build") {
+            return this;
+        }
+        const placed = current.split(";").filter(t => t.includes("@"));
+        if (placed.length === 0) {
+            return this;
+        }
+        const scratch = this.clone();
+        scratch.move(placed.join(";"), { partial: true, trusted: true });
+        return scratch;
+    }
+
+    /**
+     * A board click that cannot take the picked pyramid drops the pick, so the next click
+     * starts afresh. With nothing picked, the click is simply refused.
+     */
+    private cancelSelection(current: string, result: IClickResult, message: string): IClickResult {
+        const parts = current === "" ? [] : current.split(";");
+        const last = parts[parts.length - 1];
+        if (last === undefined || last.includes("@") || last === "pass") {
+            result.move = current;
+            result.message = message;
+            return result;
+        }
+        parts.pop();
+        const remaining = parts.join(";");
+        const validated = this.validateMove(remaining);
+        result.move = remaining;
+        result.valid = validated.valid;
+        result.complete = validated.complete;
+        result.canrender = validated.canrender;
+        result.message = message;
+        return result;
     }
 
     /** Builds up a move string click by click, starting a new placement when one is full. */
@@ -1493,7 +1528,8 @@ export class IcePalaceGame extends GameBaseSequenced {
             : this.seatAreaLabel(this.currplayer, "apgames:icepalace.HAND");
         const areas: (AreaPieces | AreaVolcanoStash)[] = [];
         if (offered.length > 0 && expanding) {
-            const stash = IcePalaceGame.nests(offered).map(nest => nest.map(piece => {
+            // One pyramid per stack, left to right, as the perspective display lays them out.
+            const stash = [...offered].sort(pieceSort).map(piece => [piece]).map(nest => nest.map(piece => {
                 const key = IcePalaceGame.legendKey(piece, "stash");
                 if (!(key in legend)) {
                     legend[key] = this.glyphFor(piece, "nest");
@@ -1566,7 +1602,7 @@ export class IcePalaceGame extends GameBaseSequenced {
             const struct = active === "palace" ? this.palace : this.yard;
             const legal = active === "palace" ? legalPalacePlacement : legalYardPlacement;
             if (region !== undefined) {
-                legend[DOT_KEY] = { name: "piece", colour: "_context_annotations", scale: 0.4 };
+                legend[DOT_KEY] = { name: "piece", colour: "_context_annotations", scale: 0.27, opacity: 0.5 };
                 for (const cell of legalCellsFor(struct, this.selected, legal)) {
                     const [row, col] = IcePalaceGame.drawnAt(layout, region, cell);
                     pieces[row][col].push(DOT_KEY);
