@@ -369,16 +369,27 @@ interface ILegend {
     [key: string]: Glyph | [Glyph, ...Glyph[]];
 }
 
-/** One numbered stone of the on-board batch-size picker. */
-interface ISliceButton {
+/** One numbered stone of an on-board picker. */
+interface IPickerButton {
     cell: string;
     value: number;
 }
 
-interface ISliceLayout {
-    a: ISliceButton[];
-    b: ISliceButton[];
-    labels: [string, string];
+/** A block of numbered stones and the label stone above it. */
+interface IPickerBlock {
+    label: string;
+    buttons: IPickerButton[];
+}
+
+/** A picker as the current phase shows it. */
+interface IPicker {
+    block: IPickerBlock;
+    /** The text on the label stone. */
+    name: string;
+    /** The value currently chosen in this block, if any. */
+    chosen?: number;
+    /** Whether a value fits with what is chosen elsewhere. */
+    allowed: (value: number) => boolean;
 }
 
 export interface IMoveState extends IIndividualState {
@@ -435,7 +446,7 @@ export class KillAllGoGame extends GameBase {
         ],
         variants: [
             { uid: "size-9", group: "board" },
-            { uid: "size-13", group: "board" },
+            { uid: "size-13", group: "board", default: true },
             { uid: "#board" },
             {
                 uid: "#opening",
@@ -687,32 +698,64 @@ export class KillAllGoGame extends GameBase {
     }
 
     /**
-     * The on-board picker offered during the Hoctaph slice: the values 1 to floor(p/12) laid out
-     * in two three-wide blocks, the first batch on the left and the second on the right, each one
-     * intersection in from its corner with a label stone above it. Larger sizes are still typed.
+     * A block of numbered stones for choosing a value with a click: the values from 1 up to `max`,
+     * or as many as fit, in reading order across `cols` from the fourth row down, leaving the
+     * bottom row empty. The label stone sits on the second row over the middle column, with an
+     * empty row on either side of it.
      */
-    private sliceLayout(): ISliceLayout | undefined {
-        const width = 3;
-        const max = Math.floor(this.points / 12);
-        const rows = Math.ceil(max / width);
-        if (max < 1 || rows + 1 > this.boardSize || this.boardSize < 2 * width + 3) {
-            return undefined;
+    private pickerBlock(cols: number[], max: number): IPickerBlock {
+        const width = cols.length;
+        const top = 3;
+        const fits = Math.min(max, width * (this.boardSize - 1 - top));
+        const buttons: IPickerButton[] = [];
+        for (let value = 1; value <= fits; value++) {
+            const idx = value - 1;
+            buttons.push({ cell: this.coords2algebraic(cols[idx % width], top + Math.floor(idx / width)), value });
         }
-        const aCols = [1, 2, 3];
-        const bCols = [this.boardSize - 4, this.boardSize - 3, this.boardSize - 2];
-        const block = (cols: number[]): ISliceButton[] => {
-            const out: ISliceButton[] = [];
-            for (let value = 1; value <= max; value++) {
-                const idx = value - 1;
-                out.push({ cell: this.coords2algebraic(cols[idx % width], 1 + Math.floor(idx / width)), value });
-            }
-            return out;
-        };
+        return { label: this.coords2algebraic(cols[Math.floor(width / 2)], 1), buttons };
+    }
+
+    /**
+     * The picker offered during the Hoctaph slice: the values 1 to floor(p/12) in two three-wide
+     * blocks, one column in from each edge, the first batch on the left and the second on the
+     * right. Larger sizes are still typed.
+     */
+    private sliceLayout(): { a: IPickerBlock; b: IPickerBlock } {
+        const max = Math.floor(this.points / 12);
+        const size = this.boardSize;
         return {
-            a: block(aCols),
-            b: block(bCols),
-            labels: [this.coords2algebraic(aCols[1], 0), this.coords2algebraic(bCols[1], 0)],
+            a: this.pickerBlock([1, 2, 3], max),
+            b: this.pickerBlock([size - 4, size - 3, size - 2], max),
         };
+    }
+
+    /**
+     * The picker offered while the handicap is set: a five-wide block in the middle of the board
+     * holding as many of the handicaps 1 to floor(p/2) as fit. Larger handicaps are still typed.
+     */
+    private handicapLayout(): IPickerBlock {
+        const first = Math.floor((this.boardSize - 5) / 2);
+        return this.pickerBlock([first, first + 1, first + 2, first + 3, first + 4], this.maxSetupStones());
+    }
+
+    /** The on-board pickers of the current phase: the handicap, or the two Hoctaph batch sizes. */
+    private pickers(): IPicker[] {
+        if (this.gameover) {
+            return [];
+        }
+        if (this.phase === "hand-n") {
+            return [{ block: this.handicapLayout(), name: "H", chosen: this.setup?.handicap, allowed: () => true }];
+        }
+        if (this.phase === "hoc-slice") {
+            const layout = this.sliceLayout();
+            const a = this.setup?.a;
+            const b = this.setup?.b;
+            return [
+                { block: layout.a, name: "a", chosen: a, allowed: (v) => b === undefined || this.sliceAllowed(v, b) },
+                { block: layout.b, name: "b", chosen: b, allowed: (v) => a === undefined || this.sliceAllowed(a, v) },
+            ];
+        }
+        return [];
     }
 
     /** The two batch sizes named by a complete or partial slice move. */
@@ -851,7 +894,8 @@ export class KillAllGoGame extends GameBase {
             const cell = this.coords2algebraic(col, row);
             const newmove = this.clickCell(move, cell);
             if (newmove === undefined) {
-                const key = this.phase === "hoc-slice" ? "SLICE_NOT_A_BUTTON" : "NO_CLICKS_NOW";
+                // Only the two pickers ignore clicks, away from their numbered stones.
+                const key = this.phase === "hoc-slice" ? "SLICE_NOT_A_BUTTON" : "HANDICAP_NOT_A_BUTTON";
                 return {
                     move,
                     valid: false,
@@ -879,13 +923,12 @@ export class KillAllGoGame extends GameBase {
         };
         switch (this.phase) {
             case "hand-n":
-                return undefined;
+                return this.handicapLayout().buttons.find((btn) => btn.cell === cell)?.value.toString();
             case "hoc-slice": {
                 const layout = this.sliceLayout();
-                if (layout === undefined) { return undefined; }
-                const hit = layout.a.find((btn) => btn.cell === cell) ?? layout.b.find((btn) => btn.cell === cell);
+                const hit = layout.a.buttons.find((btn) => btn.cell === cell) ?? layout.b.buttons.find((btn) => btn.cell === cell);
                 if (hit === undefined) { return undefined; }
-                const first = layout.a.some((btn) => btn.cell === cell);
+                const first = layout.a.buttons.some((btn) => btn.cell === cell);
                 const [curA, curB] = this.parseSlice(move);
                 // Picking a value the other batch size forbids drops that other choice.
                 if (first) {
@@ -1017,7 +1060,7 @@ export class KillAllGoGame extends GameBase {
         if (n < 1 || n > max) {
             return this.fail(result, i18next.t("apgames:validation.killallgo.HANDICAP_RANGE", { max }));
         }
-        return this.ok(result, 0, i18next.t("apgames:validation.killallgo.HANDICAP_OK", { count: n }));
+        return this.ok(result, 0, i18next.t("apgames:validation.killallgo.HANDICAP_OK", { count: n }), true);
     }
 
     private validateAltPlace(m: string, result: IValidationResult): IValidationResult {
@@ -1462,19 +1505,15 @@ export class KillAllGoGame extends GameBase {
     }
 
     /**
-     * Numbered picker stones for the Hoctaph slice, added to `legend` and returned as a cell map.
-     * A value the batch size already chosen on the other side would forbid is drawn at half
-     * opacity; it stays clickable, and picking it drops that other choice.
+     * The numbered stones of the current pickers, added to `legend` and returned as a cell map,
+     * along with the cells of the values chosen so far. A label stone fades once its block has a
+     * value. In the Hoctaph slice, a value the batch size already chosen on the other side would
+     * forbid is drawn at half opacity too; it stays clickable, and picking it drops that other
+     * choice.
      */
-    private sliceOverlay(legend: ILegend): Map<string, string> {
+    private pickerOverlay(legend: ILegend): { overlay: Map<string, string>; chosen: string[] } {
         const overlay = new Map<string, string>();
-        if (this.gameover || this.phase !== "hoc-slice") {
-            return overlay;
-        }
-        const layout = this.sliceLayout();
-        if (layout === undefined) {
-            return overlay;
-        }
+        const chosen: string[] = [];
         const stone = (text: string, dimmed: boolean): [Glyph, ...Glyph[]] => {
             const piece: Glyph = { name: "piece", colour: 1 };
             const label: Glyph = { text, scale: 0.75, rotate: null };
@@ -1484,22 +1523,21 @@ export class KillAllGoGame extends GameBase {
             }
             return [piece, label];
         };
-        const chosen = { a: this.setup?.a, b: this.setup?.b };
-        for (const [side, buttons] of [["a", layout.a], ["b", layout.b]] as Array<["a" | "b", ISliceButton[]]>) {
-            const other = side === "a" ? chosen.b : chosen.a;
-            for (const btn of buttons) {
-                const allowed = other === undefined
-                    || (side === "a" ? this.sliceAllowed(btn.value, other) : this.sliceAllowed(other, btn.value));
+        for (const picker of this.pickers()) {
+            const labelKey = `l${picker.name.toLowerCase()}`;
+            legend[labelKey] = stone(picker.name, picker.chosen !== undefined);
+            overlay.set(picker.block.label, labelKey);
+            for (const btn of picker.block.buttons) {
+                const allowed = picker.allowed(btn.value);
                 const key = `${allowed ? "n" : "d"}${btn.value}`;
                 legend[key] = stone(btn.value.toString(), !allowed);
                 overlay.set(btn.cell, key);
+                if (btn.value === picker.chosen) {
+                    chosen.push(btn.cell);
+                }
             }
         }
-        legend.la = stone("a", false);
-        legend.lb = stone("b", false);
-        overlay.set(layout.labels[0], "la");
-        overlay.set(layout.labels[1], "lb");
-        return overlay;
+        return { overlay, chosen };
     }
 
     public render(): APRenderRep {
@@ -1507,7 +1545,7 @@ export class KillAllGoGame extends GameBase {
             A: [{ name: "piece", colour: 1 }],
             B: [{ name: "piece", colour: 2 }],
         };
-        const overlay = this.sliceOverlay(legend);
+        const { overlay, chosen } = this.pickerOverlay(legend);
 
         let pstr = "";
         if (overlay.size > 0) {
@@ -1568,6 +1606,9 @@ export class KillAllGoGame extends GameBase {
         }
         if (this.gameover && this.alive !== undefined && this.alive.length > 0) {
             annotations.push({ type: "enter", targets: this.alive.map(toRowCol) as [RowCol, ...RowCol[]] });
+        }
+        for (const cell of chosen) {
+            annotations.push({ type: "enter", targets: [toRowCol(cell)] });
         }
         if (annotations.length > 0) {
             rep.annotations = annotations;

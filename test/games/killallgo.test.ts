@@ -20,6 +20,24 @@ const attackerIsPlayerOne = (variants: string[] = ["size-9"]): KillAllGoGame => 
     return g;
 };
 
+/** Which legend key the rendered board puts on a cell. */
+const keyAt = (g: KillAllGoGame, cell: string): string => {
+    const rows = (g.render().pieces as string).split("\n");
+    const [x, y] = g.algebraic2coords(cell);
+    return rows[y] === "_" ? "-" : rows[y].split(",")[x];
+};
+
+/** The cells the rendered board marks with an `enter` annotation. */
+const entered = (g: KillAllGoGame): string[] =>
+    (g.render().annotations ?? [])
+        .filter((a) => a.type === "enter")
+        .flatMap((a) => (a as { targets: Array<{ row: number; col: number }> }).targets)
+        .map(({ row, col }) => g.coords2algebraic(col, row));
+
+/** Whether a legend entry is drawn at half opacity. */
+const faded = (g: KillAllGoGame, key: string): boolean =>
+    (g.render().legend![key] as Array<{ opacity?: number }>).every((glyph) => glyph.opacity === 0.5);
+
 // `X` = Blue (the colour under test), `O` = Red, `.` = empty; the first row is the top of the board.
 const boardFrom = (rows: string[]): Board => {
     const size = rows.length;
@@ -318,6 +336,13 @@ describe("Kill-All Go", () => {
             expect(handicap?.people?.some((p) => p.name === "MXHero")).to.be.true;
         });
 
+        it("preselects the 13x13 board", () => {
+            const boards = (KillAllGoGame.gameinfo.variants ?? []).filter((v) => v.group === "board");
+            expect(boards.filter((v) => v.default === true).map((v) => v.uid)).to.deep.equal(["size-13"]);
+            // Games created without a board variant are still 19x19.
+            expect(new KillAllGoGame(undefined, []).render().board).to.deep.include({ width: 19, height: 19 });
+        });
+
         it("is experimental and cannot be rated with a handicap", () => {
             const flags = KillAllGoGame.gameinfo.flags ?? [];
             expect(flags).to.include("experimental");
@@ -507,6 +532,60 @@ describe("Kill-All Go", () => {
             expect(g.setup).to.deep.equal({ handicap: 3 });
             expect(g.getPlies().map((p) => p.actor)).to.deep.equal([1, 2, 1]);
         });
+
+        describe("the on-board handicap picker", () => {
+            it("lays the handicaps out five wide in the middle of the board, under an H", () => {
+                const g = new KillAllGoGame(undefined, ["size-9", "handicap"]);
+                // 1 to 5 on the fourth row, 21 to 25 on the row above the empty bottom row.
+                ["c6", "d6", "e6", "f6", "g6"].forEach((cell, i) => expect(keyAt(g, cell), cell).to.equal(`n${i + 1}`));
+                expect(keyAt(g, "c2")).to.equal("n21");
+                expect(keyAt(g, "g2")).to.equal("n25");
+                // The label sits on the second row, with an empty row above and below it.
+                expect(keyAt(g, "e8")).to.equal("lh");
+                expect(g.render().legend!.lh).to.deep.equal([{ name: "piece", colour: 1 }, { text: "H", scale: 0.75, rotate: null }]);
+                for (const cell of ["e9", "e7", "b6", "h6", "e1"]) {
+                    expect(keyAt(g, cell), cell).to.equal("-");
+                }
+                expect(entered(g)).to.deep.equal([]);
+                expect(faded(g, "lh")).to.be.false;
+            });
+
+            it("shows as many handicaps as fit and still accepts larger typed ones", () => {
+                // floor(p/2) is 40, 84 and 180; five columns above the empty bottom row hold 25, 45 and 75.
+                for (const [variants, shown, max] of [[["size-9"], 25, 40], [["size-13"], 45, 84], [[], 75, 180]] as Array<[string[], number, number]>) {
+                    const g = new KillAllGoGame(undefined, [...variants, "handicap"]);
+                    const keys = (g.render().pieces as string).split(/[,\n]/);
+                    expect(keys.includes(`n${shown}`), `shows ${shown}`).to.be.true;
+                    expect(keys.includes(`n${shown + 1}`), `stops at ${shown}`).to.be.false;
+                    expect(g.validateMove(`${max}`).valid, `accepts ${max}`).to.be.true;
+                }
+            });
+
+            it("sets the handicap by clicking, marking the choice and fading the label", () => {
+                const g = new KillAllGoGame(undefined, ["size-9", "handicap"]);
+                const click = g.handleClick("", 4, 3);   // d5 = 7
+                expect(click.valid).to.be.true;
+                expect(click.move).to.equal("7");
+                expect(click.complete).to.equal(0);
+                expect(click.canrender).to.be.true;
+                // Another click replaces the choice.
+                expect(g.handleClick("7", 3, 6).move).to.equal("5");   // g6 = 5
+                g.move("7", { partial: true });
+                expect(entered(g)).to.deep.equal(["d5"]);
+                expect(faded(g, "lh")).to.be.true;
+            });
+
+            it("ignores clicks away from the numbered stones and goes away once the handicap is set", () => {
+                const g = new KillAllGoGame(undefined, ["size-9", "handicap"]);
+                const stray = g.handleClick("", 0, 4);   // e9, above the label
+                expect(stray.valid).to.be.false;
+                expect(stray.move).to.equal("");
+                expect(stray.message).to.equal(i18next.t("apgames:validation.killallgo.HANDICAP_NOT_A_BUTTON"));
+                g.move("7");
+                expect(g.phase).to.equal("alt-place");
+                expect(Object.keys(g.render().legend!)).to.deep.equal(["A", "B"]);
+            });
+        });
     });
 
     describe("simple pie", () => {
@@ -615,34 +694,46 @@ describe("Kill-All Go", () => {
         });
 
         describe("the on-board batch-size picker", () => {
-            // Which legend key the rendered board puts on a cell.
-            const keyAt = (g: KillAllGoGame, cell: string): string => {
-                const rows = (g.render().pieces as string).split("\n");
-                const [x, y] = g.algebraic2coords(cell);
-                return rows[y] === "_" ? "-" : rows[y].split(",")[x];
-            };
             const slicing = (variants: string[], partial?: string): KillAllGoGame => {
                 const g = new KillAllGoGame(undefined, variants);
                 if (partial !== undefined) { g.move(partial, { partial: true }); }
                 return g;
             };
 
-            it("lays the values out in two three-wide blocks with labels above them", () => {
+            it("lays the values out in two three-wide blocks under their labels", () => {
                 const g = slicing(["size-9", "hoctaph"]);
-                // 9x9 offers 1 to floor(81/12) = 6, reading order, one line in from each corner.
-                const first = ["b8", "c8", "d8", "b7", "c7", "d7"];
-                const second = ["f8", "g8", "h8", "f7", "g7", "h7"];
+                // 9x9 offers 1 to floor(81/12) = 6, in reading order from the fourth row, one column in from each edge.
+                const first = ["b6", "c6", "d6", "b5", "c5", "d5"];
+                const second = ["f6", "g6", "h6", "f5", "g5", "h5"];
                 first.forEach((cell, i) => expect(keyAt(g, cell), cell).to.equal(`n${i + 1}`));
                 second.forEach((cell, i) => expect(keyAt(g, cell), cell).to.equal(`n${i + 1}`));
-                expect(keyAt(g, "c9")).to.equal("la");
-                expect(keyAt(g, "g9")).to.equal("lb");
-                // A gap of empty points around each block, and nothing below them.
-                for (const cell of ["a8", "e8", "i8", "b9", "b6", "e5"]) {
+                // The labels sit on the second row, with an empty row above and below them.
+                expect(keyAt(g, "c8")).to.equal("la");
+                expect(keyAt(g, "g8")).to.equal("lb");
+                for (const cell of ["c9", "g9", "c7", "g7", "a6", "e6", "i6", "b4", "e5"]) {
                     expect(keyAt(g, cell), cell).to.equal("-");
                 }
                 const legend = g.render().legend!;
                 expect(legend.n6).to.deep.equal([{ name: "piece", colour: 1 }, { text: "6", scale: 0.75, rotate: null }]);
                 expect(legend.la).to.deep.equal([{ name: "piece", colour: 1 }, { text: "a", scale: 0.75, rotate: null }]);
+            });
+
+            it("marks each chosen size and fades the label of each batch that has one", () => {
+                const none = slicing(["size-9", "hoctaph"]);
+                expect(entered(none)).to.deep.equal([]);
+                expect(faded(none, "la")).to.be.false;
+                const firstOnly = slicing(["size-9", "hoctaph"], "2");
+                expect(entered(firstOnly)).to.deep.equal(["c6"]);
+                expect(faded(firstOnly, "la")).to.be.true;
+                expect(faded(firstOnly, "lb")).to.be.false;
+                const both = slicing(["size-9", "hoctaph"], "2,3");
+                expect(entered(both)).to.deep.equal(["c6", "h6"]);
+                expect(faded(both, "la")).to.be.true;
+                expect(faded(both, "lb")).to.be.true;
+                // A size typed beyond the picker fades its label but has no stone to mark.
+                const typed = slicing(["size-9", "hoctaph"], "10,");
+                expect(entered(typed)).to.deep.equal([]);
+                expect(faded(typed, "la")).to.be.true;
             });
 
             it("stops at floor(p/12) on every board size but still accepts larger typed sizes", () => {
@@ -658,11 +749,11 @@ describe("Kill-All Go", () => {
 
             it("picks the first batch on the left and the second on the right", () => {
                 const g = slicing(["size-9", "hoctaph"]);
-                const first = g.handleClick("", 1, 1);          // b8 = first batch, 1
+                const first = g.handleClick("", 3, 1);          // b6 = first batch, 1
                 expect(first.valid).to.be.true;
                 expect(first.move).to.equal("1");
                 expect(first.complete).to.equal(-1);
-                const second = g.handleClick(first.move, 1, 6); // g8 = second batch, 2
+                const second = g.handleClick(first.move, 3, 6); // g6 = second batch, 2
                 expect(second.move).to.equal("1,2");
                 expect(second.complete).to.equal(0);
                 g.move("1,2");
@@ -674,10 +765,10 @@ describe("Kill-All Go", () => {
                 const g = slicing(["size-9", "hoctaph"], "1");
                 expect(g.setup).to.deep.equal({ a: 1, b: undefined });
                 // With a first batch of 1, a second batch may only be 1 or 2.
-                expect(keyAt(g, "f8")).to.equal("n1");
-                expect(keyAt(g, "g8")).to.equal("n2");
-                expect(keyAt(g, "h8")).to.equal("d3");
-                expect(keyAt(g, "d7")).to.equal("n6");
+                expect(keyAt(g, "f6")).to.equal("n1");
+                expect(keyAt(g, "g6")).to.equal("n2");
+                expect(keyAt(g, "h6")).to.equal("d3");
+                expect(keyAt(g, "d5")).to.equal("n6");
                 const legend = g.render().legend!;
                 expect(legend.d3).to.deep.equal([
                     { name: "piece", colour: 1, opacity: 0.5 },
@@ -687,15 +778,15 @@ describe("Kill-All Go", () => {
 
             it("lets a shaded value be picked, dropping the choice that forbade it", () => {
                 const g = slicing(["size-9", "hoctaph"], "1");
-                const click = g.handleClick("1", 1, 7);   // h8 = second batch, 3, shaded while the first is 1
+                const click = g.handleClick("1", 3, 7);   // h6 = second batch, 3, shaded while the first is 1
                 expect(click.valid).to.be.true;
                 expect(click.move).to.equal(",3");
                 const after = slicing(["size-9", "hoctaph"], ",3");
                 expect(after.setup).to.deep.equal({ a: undefined, b: 3 });
                 // A second batch of 3 now forbids a first batch of 1.
-                expect(keyAt(after, "b8")).to.equal("d1");
-                expect(keyAt(after, "c8")).to.equal("n2");
-                expect(after.handleClick(",3", 1, 2).move).to.equal("2,3");
+                expect(keyAt(after, "b6")).to.equal("d1");
+                expect(keyAt(after, "c6")).to.equal("n2");
+                expect(after.handleClick(",3", 3, 2).move).to.equal("2,3");
             });
 
             it("ignores clicks away from the blocks and shows the picker only while slicing", () => {
