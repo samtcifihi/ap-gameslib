@@ -123,7 +123,7 @@ export class MorphosGame extends GameBase {
             {uid: "double", group: "rules"},
             {uid: "replace", group: "rules"},
         ],
-        categories: ["goal>connect", "mechanic>place", "mechanic>capture", "board>shape>rect", "board>connect>rect", "components>simple>1per"],
+        categories: ["goal>connect", "mechanic>place", "mechanic>capture", "mechanic>convert", "board>shape>rect", "board>connect>rect", "components>simple>1per"],
         flags: ["no-moves", "custom-randomization", "pie", "custom-buttons"]
     };
 

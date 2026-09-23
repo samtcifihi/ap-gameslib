@@ -47,7 +47,7 @@ export class OnagerGame extends GameBase {
                 apid: "46f6da78-be02-4469-94cb-52f17078e9c1",
             },
         ],
-        categories: ["goal>breakthrough", "mechanic>capture",  "mechanic>move", "board>shape>hex", "board>connect>hex", "components>simple>3c"],
+        categories: ["goal>breakthrough", "goal>immobilize", "mechanic>capture", "mechanic>move", "mechanic>stack", "board>shape>hex", "board>connect>hex", "components>simple>3c"],
         flags: ["check", "perspective", "pie"],
         variants: [
             // { uid: "size-7", group: "board" },

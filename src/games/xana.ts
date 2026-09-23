@@ -80,7 +80,7 @@ export class XanaGame extends GameBase {
                 explanation: "Colour of wall"
             },
         ],
-        categories: ["goal>area", "mechanic>place", "mechanic>move", "mechanic>stack", "mechanic>enclose", "board>shape>hex", "board>connect>hex", "components>simple>3c"],
+        categories: ["goal>area", "mechanic>place", "mechanic>move", "mechanic>stack", "mechanic>enclose", "mechanic>capture", "mechanic>block", "mechanic>share", "board>shape>hex", "board>connect>hex", "components>simple>3c"],
         flags: ["pie", "no-moves", "custom-buttons", "custom-colours", "scores"],
     };
 

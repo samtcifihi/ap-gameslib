@@ -53,7 +53,7 @@ export class VoloGame extends GameBase {
             { uid: "#board", },
             { uid: "size-8", group: "board" },
         ],
-        categories: ["goal>unify", "mechanic>place", "mechanic>move>group", "board>shape>hex", "board>connect>hex", "components>simple>1per"],
+        categories: ["goal>unify", "mechanic>place", "mechanic>move>group", "mechanic>capture", "board>shape>hex", "board>connect>hex", "components>simple>1per"],
         flags: ["automove"],
     };
 

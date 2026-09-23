@@ -93,7 +93,7 @@ export class PacruGame extends GameBase {
                 apid: "124dd3ce-b309-4d14-9c8e-856e56241dfe",
             },
         ],
-        categories: ["goal>area", "mechanic>place", "mechanic>move", "mechanic>convert", "mechanic>capture", "board>shape>rect", "board>connect>rect", "components>special", "other>2+players"],
+        categories: ["goal>area", "goal>annihilate", "goal>score>race", "mechanic>place", "mechanic>move", "mechanic>convert", "mechanic>capture", "board>shape>rect", "board>connect>rect", "components>special", "other>2+players"],
         flags: ["no-moves", "custom-randomization"]
     };
 

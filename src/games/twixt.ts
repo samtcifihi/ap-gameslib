@@ -59,7 +59,7 @@ export class TwixtGame extends GameBase {
                 group: "ruleset",
             }
         ],
-        categories: ["goal>connect", "mechanic>place",  "mechanic>block", "board>shape>rect", "board>connect>rect", "components>special"],
+        categories: ["goal>connect", "mechanic>place", "mechanic>block", "board>shape>rect", "board>connect>rect", "components>special", "components>simple>pnp"],
         flags: ["pie"],
         displays: [{uid: "hide-diagonals"}],
     };

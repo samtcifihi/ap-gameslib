@@ -53,7 +53,7 @@ export class SploofGame extends GameBase {
         variants: [
             { uid: "size-5", group: "board" },
         ],
-        categories: ["goal>arrange", "mechanic>place", "board>shape>rect", "board>connect>rect", "components>simple>3c", "components>shibumi", "board>3d"],
+        categories: ["goal>arrange", "goal>immobilize", "mechanic>place", "board>shape>rect", "board>connect>rect", "components>simple>3c", "components>shibumi", "board>3d"],
         flags: [],
         displays: [{ uid: "orb-3d" }],
     };

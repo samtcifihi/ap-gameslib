@@ -53,7 +53,7 @@ export class ChurnGame extends GameBase {
             {uid: "limping-446", group: "board"},
             {uid: "hex5", group: "board"},
         ],
-        categories: ["goal>area", "mechanic>place", "mechanic>capture", "board>shape>hex", "board>connect>hex", "components>simple>1per"],
+        categories: ["goal>area", "goal>majority", "mechanic>place", "mechanic>capture", "board>shape>hex", "board>connect>hex", "components>simple>1per"],
         flags: ["pie", "scores", "automove"]
     };
 

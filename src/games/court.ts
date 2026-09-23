@@ -51,7 +51,7 @@ export class CourtGame extends GameBase {
                 apid: "9228bccd-a1bd-452b-b94f-d05380e6638f",
             },
         ],
-        categories: ["goal>annihilate", "mechanic>move", "mechanic>capture", "board>shape>rect", "board>connect>rect", "components>simple>1per"],
+        categories: ["goal>annihilate", "goal>cripple", "goal>immobilize", "mechanic>move", "mechanic>capture", "mechanic>differentiate", "board>shape>rect", "board>connect>rect", "components>simple>1per"],
         flags: ["perspective", "player-stashes"]
     };
 

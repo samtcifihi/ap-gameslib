@@ -51,7 +51,7 @@ export class SlydeGame extends GameBase {
             { uid: "#board", },
             // { uid: "size-16", group: "board" },
         ],
-        categories: ["goal>majority", "mechanic>move", "board>shape>rect", "board>connect>rect", "components>simple>3c"],
+        categories: ["goal>score>eog", "mechanic>move", "mechanic>coopt", "board>shape>rect", "board>connect>rect", "components>simple>3c"],
         flags: ["scores"],
     };
 

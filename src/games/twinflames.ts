@@ -47,7 +47,7 @@ export class TwinFlamesGame extends GameBase {
                 apid: "9228bccd-a1bd-452b-b94f-d05380e6638f",
             },
         ],
-        categories: ["goal>score>eog", "mechanic>place", "board>shape>hex", "board>connect>hex", "mechanic>random>setup", "components>simple>1per"],
+        categories: ["goal>score>eog", "mechanic>place", "board>shape>hex", "board>connect>hex", "mechanic>random>setup", "mechanic>coopt", "components>simple>1per"],
         variants: [
             { uid: "#board", },
             { uid: "size-7", group: "board" },

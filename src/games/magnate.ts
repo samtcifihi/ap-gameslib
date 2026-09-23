@@ -97,7 +97,7 @@ export class MagnateGame extends GameBase {
             { uid: "stacked", requires: ["mega"] }, //stacking the deck(s)
             { uid: "taxtax" }, //double taxation
         ],
-        categories: ["goal>area", "goal>score>eog", "mechanic>place", "mechanic>economy", "mechanic>hidden", "mechanic>random>play", "board>none", "components>decktet"],
+        categories: ["goal>area", "goal>score>eog", "mechanic>place", "mechanic>economy", "mechanic>hidden", "mechanic>random>play", "mechanic>random>setup", "board>none", "components>decktet"],
         flags: ["custom-randomization", "no-explore", "no-moves", "perspective", "scores"],
     };
 

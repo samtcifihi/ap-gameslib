@@ -57,7 +57,7 @@ export class UrbinoGame extends GameBase {
                 uid: "monuments"
             }
         ],
-        categories: ["goal>score>eog", "mechanic>place",  "mechanic>move", "mechanic>share", "board>shape>rect", "board>connect>rect", "components>simple>1per"],
+        categories: ["goal>score>eog", "mechanic>place", "mechanic>move", "mechanic>share", "mechanic>differentiate", "board>shape>rect", "board>connect>rect", "components>simple>1per", "components>special"],
         flags: ["player-stashes", "automove", "scores"]
     };
 

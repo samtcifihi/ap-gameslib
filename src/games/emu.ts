@@ -403,7 +403,7 @@ export class EmuGame extends GameBase {
             { uid: "both", group: "deck" },
             { uid: "none", group: "deck" },
         ],
-        categories: ["goal>score>eog", "mechanic>place", "mechanic>hidden", "mechanic>random>setup", "mechanic>random>play", "board>none", "components>decktet"],
+        categories: ["goal>score>eog", "mechanic>place", "mechanic>hidden", "mechanic>random>setup", "mechanic>random>play", "mechanic>set", "board>none", "components>decktet"],
         flags: ["no-explore", "scores", "custom-buttons", "autopass"],
     };
 

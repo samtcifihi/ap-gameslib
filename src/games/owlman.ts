@@ -45,7 +45,7 @@ export class OwlmanGame extends GameBase {
                 apid: "124dd3ce-b309-4d14-9c8e-856e56241dfe",
             },
         ],
-        categories: ["goal>annihilate", "goal>royal-escape", "mechanic>asymmetry", "mechanic>move", "mechanic>capture", "board>shape>rect", "board>connect>rect", "components>simple>1per"],
+        categories: ["goal>annihilate", "goal>royal-escape", "goal>royal-capture", "goal>immobilize", "mechanic>asymmetry", "mechanic>move", "mechanic>capture", "mechanic>differentiate", "board>shape>rect", "board>connect>rect", "components>simple>1per"],
         flags: ["automove"]
     };
     public static coords2algebraic(x: number, y: number): string {

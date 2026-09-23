@@ -77,11 +77,13 @@ export class ElOsoGame extends GameBase {
         ],
         categories: [
             "goal>score>eog",
+            "goal>evacuate",
             "mechanic>move",
             "mechanic>capture",
             "mechanic>stack",
             "mechanic>random>setup",
             "mechanic>random>play",
+            "mechanic>bearoff",
             "board>shape>rect",
             "board>connect>rect",
             "components>simple>1per",

@@ -77,7 +77,7 @@ export class CannonGame extends GameBase {
                 explanation: "Symbol colour on top of Player 2's colour"
             },
         ],
-        categories: ["goal>royal-capture", "mechanic>capture", "mechanic>move>group", "board>shape>rect", "board>connect>rect", "components>simple>1per"],
+        categories: ["goal>royal-capture", "goal>immobilize", "mechanic>capture", "mechanic>move>group", "mechanic>differentiate", "board>shape>rect", "board>connect>rect", "components>simple>1per"],
         flags: ["perspective", "check"],
         displays: [{uid: "hide-threatened"}],
     };

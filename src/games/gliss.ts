@@ -60,7 +60,7 @@ export class GlissGame extends GameBase {
             { uid: "#board" },
             { uid: "size-19", group: "board" },
         ],
-        categories: ["goal>annihilate", "goal>score>race", "mechanic>place", "mechanic>capture", "mechanic>move", "board>shape>rect", "board>connect>rect", "components>simple>1per"],
+        categories: ["goal>annihilate", "goal>score>race", "goal>cripple", "mechanic>place", "mechanic>capture", "mechanic>move", "mechanic>convert", "mechanic>move>group", "board>shape>rect", "board>connect>rect", "components>simple>1per"],
         flags: ["no-moves", "custom-randomization"],
     };
 

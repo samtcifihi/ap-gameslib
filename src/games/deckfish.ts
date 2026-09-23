@@ -72,7 +72,7 @@ export class DeckfishGame extends GameBase {
                 experimental: true
             }
         ],
-        categories: ["goal>score>eog", "mechanic>move", "mechanic>place", "mechanic>random>setup", "mechanic>set", "mechanic>economy", "board>shape>rect", "board>connect>rect", "components>decktet"],
+        categories: ["goal>score>eog", "mechanic>move", "mechanic>place", "mechanic>random>setup", "mechanic>set", "mechanic>economy", "mechanic>displace", "board>shape>rect", "board>connect>rect", "components>decktet"],
         flags: ["scores", "random-start", "custom-randomization", "autopass"],
     };
     public coords2algebraic(x: number, y: number): string {

@@ -42,7 +42,7 @@ export class ConspirateursGame extends GameBase {
             },
         ],
         variants: [{uid: "quick", group: "setup"}, {uid: "strict", group: "movement"}],
-        categories: ["goal>evacuate", "other>traditional", "mechanic>place", "mechanic>move", "board>shape>rect", "board>connect>rect", "components>simple>1per", "other>2+players"],
+        categories: ["goal>evacuate", "other>traditional", "mechanic>place", "mechanic>move", "mechanic>random>setup", "board>shape>rect", "board>connect>rect", "components>simple>1per", "other>2+players"],
         flags: ["no-moves", "custom-randomization"]
     };
 

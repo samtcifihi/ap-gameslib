@@ -59,7 +59,7 @@ export class MajoritiesGame extends GameBase {
             { uid: "no-blocked" },
             { uid: "capture" },
         ],
-        categories: ["goal>majority", "mechanic>place", "board>shape>hex", "board>connect>hex", "components>simple"],
+        categories: ["goal>majority", "mechanic>place", "mechanic>capture", "board>shape>hex", "board>connect>hex", "components>simple>1per"],
         flags: [],
     };
 

@@ -47,7 +47,7 @@ export class SwarmGame extends GameBase {
                 apid: "9228bccd-a1bd-452b-b94f-d05380e6638f",
             },
         ],
-        categories: ["goal>score>eog", "mechanic>place", "mechanic>stack", "mechanic>capture", "board>shape>hex", "board>connect>hex", "components>simple>1per"],
+        categories: ["goal>score>eog", "mechanic>place", "mechanic>stack", "mechanic>capture", "mechanic>merge", "board>shape>hex", "board>connect>hex", "components>simple>1per"],
         variants: [
             { uid: "#board", }, // hexhex3
             { uid: "size-4", group: "board" },

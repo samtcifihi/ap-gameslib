@@ -68,7 +68,7 @@ export class TerraceGame extends GameBase {
             },
         ],
         displays: [{ uid: "flat", group: "projection" }],
-        categories: ["goal>royal-escape", "goal>royal-capture", "mechanic>move", "mechanic>capture", "board>3d", "board>shape>rect", "board>connect>rect", "components>special"],
+        categories: ["goal>royal-escape", "goal>royal-capture", "mechanic>move", "mechanic>capture", "mechanic>differentiate", "board>3d", "board>shape>rect", "board>connect>rect", "components>special"],
         flags: ["perspective"],
         variants: [
             {

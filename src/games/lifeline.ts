@@ -68,7 +68,7 @@ export class LifelineGame extends GameBase {
             },
         ],
         flags: ["pie"],
-        categories: ["goal>annihilate", "mechanic>place", "mechanic>capture","board>shape>hex", "components>simple>1per"],
+        categories: ["goal>annihilate", "mechanic>place", "mechanic>capture", "mechanic>enclose", "board>shape>hex", "board>connect>hex", "components>simple>1per"],
         variants: [
             {uid: "size-6", group: "board"},
             {uid: "size-7", group: "board"},

@@ -58,7 +58,7 @@ export class AccastaGame extends GameBase {
                 uid: "pari",
             },
         ],
-        categories: ["goal>breakthrough", "mechanic>move", "mechanic>stack", "mechanic>coopt", "board>shape>hex", "board>connect>hex", "components>simple>1per", "components>special"],
+        categories: ["goal>breakthrough", "goal>immobilize", "mechanic>move", "mechanic>stack", "mechanic>coopt", "mechanic>differentiate", "board>shape>hex", "board>connect>hex", "components>simple>1per", "components>special"],
         flags: ["perspective"]
     };
 

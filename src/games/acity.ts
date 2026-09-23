@@ -91,7 +91,7 @@ export class ACityGame extends GameBase {
                 player: 2
             },
         ],
-        categories: ["goal>score>eog", "mechanic>network", "mechanic>place", "mechanic>random>setup", "board>shape>rect", "board>connect>rect", "components>pyramids", "components>piecepack"],
+        categories: ["goal>score>eog", "mechanic>network", "mechanic>place", "mechanic>random>setup", "mechanic>share", "board>shape>rect", "board>connect>rect", "components>pyramids", "components>piecepack"],
         flags: ["player-stashes", "scores", "no-moves", "custom-colours", "random-start", "custom-buttons", "custom-randomization"]
     };
 

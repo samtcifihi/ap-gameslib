@@ -41,7 +41,7 @@ export class KonaneGame extends GameBase {
                 apid: "a82c4aa8-7d43-4661-b027-17afd1d1586f",
             },
         ],
-        categories: ["goal>immobilize", "mechanic>capture", "other>traditional", "board>shape>rect"],
+        categories: ["goal>immobilize", "mechanic>capture", "mechanic>move", "other>traditional", "board>shape>rect", "board>connect>rect", "components>simple>1per"],
         flags: ["automove"],
         variants: [
             {

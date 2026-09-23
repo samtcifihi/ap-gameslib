@@ -52,7 +52,7 @@ export class TakeGame extends GameBase {
                 apid: "a82c4aa8-7d43-4661-b027-17afd1d1586f",
             },
         ],
-        categories: ["goal>annihilate", "mechanic>place",  "mechanic>enclose", "mechanic>capture", "mechanic>move", "board>shape>hex", "board>connect>hex", "components>simple>3c"],
+        categories: ["goal>annihilate", "mechanic>place", "mechanic>enclose", "mechanic>capture", "board>shape>hex", "board>connect>hex", "components>simple>3c"],
         flags: [],
         variants: [
             {

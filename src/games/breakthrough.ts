@@ -56,7 +56,7 @@ export class BreakthroughGame extends GameBase {
                 uid: "bombardment"
             }
         ],
-        categories: ["goal>breakthrough", "mechanic>capture", "mechanic>move", "board>shape>rect", "board>connect>rect", "components>simple>1per"],
+        categories: ["goal>breakthrough", "goal>annihilate", "mechanic>capture", "mechanic>move", "board>shape>rect", "board>connect>rect", "components>simple>1per"],
         flags: ["perspective", ]
     };
     public static coords2algebraic(x: number, y: number): string {

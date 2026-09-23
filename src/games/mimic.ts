@@ -46,7 +46,7 @@ export class MimicGame extends GameBase {
                 apid: "a82c4aa8-7d43-4661-b027-17afd1d1586f",
             },
         ],
-        categories: ["goal>breakthrough", "mechanic>displace",  "mechanic>move", "board>shape>rect", "board>connect>rect", "components>simple>1per"],
+        categories: ["goal>breakthrough", "goal>immobilize", "mechanic>displace", "mechanic>move", "mechanic>capture", "board>shape>rect", "board>connect>rect", "components>simple>1per"],
         flags: ["perspective"]
     };
 

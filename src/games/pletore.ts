@@ -53,7 +53,7 @@ export class PletoreGame extends GameBase {
                 apid: "a82c4aa8-7d43-4661-b027-17afd1d1586f",
             },
         ],
-        categories: ["goal>area", "mechanic>place",  "mechanic>capture", "board>shape>rect"],
+        categories: ["goal>area", "mechanic>place", "mechanic>capture", "mechanic>convert", "board>shape>rect", "board>connect>rect", "components>simple>1per"],
         flags: ["automove", "custom-buttons"],
         variants: [
             {

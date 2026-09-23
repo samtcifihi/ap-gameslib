@@ -50,7 +50,7 @@ export class IntermediumGame extends GameBase {
                 apid: "9228bccd-a1bd-452b-b94f-d05380e6638f",
             },
         ],
-        categories: ["goal>royal-capture", "goal>cripple", "mechanic>move>sow", "mechanic>capture", "mechanic>stack", "mechanic>enclose","board>shape>rect", "board>connect>rect", "components>simple>1per"],
+        categories: ["goal>royal-capture", "goal>cripple", "goal>immobilize", "mechanic>move>sow", "mechanic>capture", "mechanic>stack", "mechanic>enclose", "board>shape>rect", "board>connect>rect", "components>simple>1per"],
         flags: ["no-moves"],
         displays: [{uid: "hide-diagonals"}],
     };

@@ -54,7 +54,7 @@ export class WitchGame extends GameBase {
                 apid: "124dd3ce-b309-4d14-9c8e-856e56241dfe",
             },
         ],
-        categories: ["goal>score>race", "mechanic>capture",  "mechanic>random>setup", "board>shape>rect", "board>connect>rect", "components>simple>4c"],
+        categories: ["goal>score>race", "mechanic>capture", "mechanic>random>setup", "mechanic>share", "board>shape>rect", "board>connect>rect", "components>simple>4c"],
         flags: ["shared-pieces", "player-stashes", "scores", "random-start"]
     };
 

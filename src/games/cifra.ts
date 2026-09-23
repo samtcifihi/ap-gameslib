@@ -83,7 +83,7 @@ export class CifraGame extends GameBase {
                 player: 2
             }
         ],
-        categories: ["goal>royal-capture", "goal>royal-escape", "goal>score>eog", "mechanic>place", "mechanic>move", "mechanic>capture", "mechanic>random>setup", "board>shape>rect", "board>connect>rect", "components>special"],
+        categories: ["goal>royal-capture", "goal>royal-escape", "goal>score>eog", "goal>breakthrough", "mechanic>place", "mechanic>move", "mechanic>capture", "mechanic>random>setup", "mechanic>differentiate", "board>shape>rect", "board>connect>rect", "components>special"],
         flags: ["automove", "custom-buttons", "custom-colours", "scores", "custom-randomization"]
     };
 

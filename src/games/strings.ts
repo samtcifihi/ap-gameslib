@@ -57,7 +57,7 @@ export class StringsGame extends GameBaseSimultaneous {
                 apid: "124dd3ce-b309-4d14-9c8e-856e56241dfe",
             },
         ],
-        categories: ["goal>area", "mechanic>displace",  "mechanic>share", "mechanic>simultaneous", "mechanic>stack", "board>shape>rect", "board>connect>rect", "components>simple>1c"],
+        categories: ["goal>area", "goal>score>race", "mechanic>displace", "mechanic>share", "mechanic>simultaneous", "mechanic>stack", "board>shape>rect", "board>connect>rect", "components>simple>1c"],
         flags: ["simultaneous", "scores", "custom-rotation"]
     };
 

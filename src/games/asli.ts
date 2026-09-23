@@ -69,7 +69,7 @@ export class AsliGame extends GameBase {
             {uid: "area", fans: true },
             {uid: "setkomi", group: "komi"},
         ],
-        categories: ["goal>immobilize", "goal>area", "mechanic>place", "mechanic>capture", "board>shape>rect", "board>connect>rect", "components>simple>1per"],
+        categories: ["goal>immobilize", "goal>area", "mechanic>place", "mechanic>capture", "mechanic>enclose", "board>shape>rect", "board>connect>rect", "components>simple>1per"],
         flags: ["custom-buttons", "no-moves", "custom-randomization", "custom-colours"],
         displays: [{uid: "swap-prison"}]
     };

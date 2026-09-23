@@ -115,7 +115,7 @@ export class RealmGame extends GameBase {
                 experimental: true,
             }
         ],
-        categories: ["goal>area", "mechanic>block", "mechanic>differentiate", "mechanic>move", "mechanic>place", "board>shape>rect", "board>connect>rect", "components>special"],
+        categories: ["goal>area", "mechanic>block", "mechanic>differentiate", "mechanic>move", "mechanic>place", "mechanic>capture", "mechanic>coopt", "board>shape>rect", "board>connect>rect", "components>special"],
         flags: ["player-stashes", "no-moves"]
     };
 

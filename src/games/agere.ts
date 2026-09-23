@@ -66,7 +66,7 @@ export class AgereGame extends GameBase {
             {uid: "slanted-8", group: "board"},
             {uid: "slanted-10", group: "board"},
         ],
-        categories: ["goal>connect", "mechanic>place", "mechanic>stack", "mechanic>move", "mechanic>coopt", "board>shape>circle", "board>connect>rect", "board>shape>tri", "board>connect>hex", "components>simple>1per"],
+        categories: ["goal>connect", "mechanic>place", "mechanic>stack", "mechanic>move", "mechanic>coopt", "board>shape>circle", "board>connect>rect", "board>shape>tri", "board>shape>rect", "board>shape>hex", "board>connect>hex", "components>simple>1per"],
         flags: ["pie", "check", "custom-rotation"]
     };
 

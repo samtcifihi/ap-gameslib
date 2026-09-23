@@ -47,7 +47,7 @@ export class BitesizeGame extends GameBase {
                 apid: "9228bccd-a1bd-452b-b94f-d05380e6638f",
             },
         ],
-        categories: ["goal>score>eog", "mechanic>place", "mechanic>capture", "board>shape>hex", "board>connect>hex", "components>simple>1per"],
+        categories: ["goal>score>eog", "goal>score>race", "mechanic>place", "mechanic>capture", "board>shape>hex", "board>connect>hex", "components>simple>1per"],
         variants: [
             { uid: "size-5", group: "board" }
         ],

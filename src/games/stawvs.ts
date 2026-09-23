@@ -85,7 +85,7 @@ export class StawvsGame extends GameBase {
             {uid: "finalfree"},
             {uid: "pieces-2"}
         ],
-        categories: ["goal>score>eog", "mechanic>set", "board>shape>rect", "board>connect>rect", "components>pyramids", "other>2+players"],
+        categories: ["goal>score>eog", "mechanic>set", "mechanic>place", "mechanic>move", "mechanic>random>setup", "mechanic>share", "board>shape>rect", "board>connect>rect", "components>pyramids", "other>2+players"],
         flags: ["scores", "autopass"]
     };
 

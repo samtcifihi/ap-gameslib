@@ -90,7 +90,7 @@ export class LoggerGame extends GameBase {
                 explanation: "Protester colour"
             },
         ],
-        categories: ["goal>score>eog", "mechanic>place", "mechanic>move", "mechanic>block", "mechanic>share", "mechanic>capture", "board>shape>rect", "board>connect>rect", "components>pyramids", "other>2+players"],
+        categories: ["goal>score>eog", "mechanic>place", "mechanic>move", "mechanic>block", "mechanic>share", "mechanic>capture", "mechanic>differentiate", "board>shape>rect", "board>connect>rect", "components>pyramids", "other>2+players"],
         flags: ["scores", "no-moves", "custom-randomization", "perspective", "custom-colours"]
     };
 

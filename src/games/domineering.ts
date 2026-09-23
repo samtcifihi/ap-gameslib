@@ -45,7 +45,7 @@ export class DomineeringGame extends GameBase {
                 apid: "9228bccd-a1bd-452b-b94f-d05380e6638f",
             },
         ],
-        categories: ["goal>immobilize", "mechanic>place", "board>shape>rect", "components>simple>1per"],
+        categories: ["goal>immobilize", "mechanic>place", "board>shape>rect", "board>connect>rect", "components>simple>1per"],
         variants: [
             { uid: "size-6",  group: "board" },
             { uid: "size-7",  group: "board" },

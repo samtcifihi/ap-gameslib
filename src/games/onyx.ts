@@ -52,7 +52,7 @@ export class OnyxGame extends GameBase {
             { uid: "size-20", group: "board" },
             { uid: "head-start", group: "setup" },
         ],
-        categories: ["goal>connect", "mechanic>place", "mechanic>capture", "board>shape>rect", "components>simple"],
+        categories: ["goal>connect", "mechanic>place", "mechanic>capture", "board>shape>rect", "board>connect>snub", "components>simple>1per"],
         flags: ["pie"],
         displays: [{ uid: "hide-threatened" }],
     };

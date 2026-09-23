@@ -56,7 +56,7 @@ export class ShiftyGame extends GameBase {
         variants: [
             { uid: "size-13", group: "board" },
         ],
-        categories: ["goal>connect", "mechanic>move", "mechanic>place", "board>shape>rect", "board>connect>rect", "components>simple"],
+        categories: ["goal>connect", "mechanic>move", "mechanic>place", "board>shape>rect", "board>connect>rect", "components>simple>1per"],
         flags: ["pie"],
     };
 

@@ -50,7 +50,7 @@ export class BugGame extends GameBase {
             { uid: "#board", },
             { uid: "size-5", group: "board" },
         ],
-        categories: ["goal>immobilize", "mechanic>place", "mechanic>capture", "board>shape>hex", "board>connect>hex", "components>simple"],
+        categories: ["goal>immobilize", "mechanic>place", "mechanic>capture", "board>shape>hex", "board>connect>hex", "components>simple>1per"],
         flags: ["no-moves", "custom-randomization"],
         displays: [{uid: "hide-moves"}],
     };

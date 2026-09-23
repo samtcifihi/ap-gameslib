@@ -62,6 +62,7 @@ export class CircleOfLifeGame extends GameBase {
             "mechanic>place",
             "mechanic>capture",
             "board>shape>hex",
+            "board>connect>hex",
             "components>simple>1per",
         ],
         flags: ["scores"],

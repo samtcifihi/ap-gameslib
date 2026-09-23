@@ -92,7 +92,7 @@ export class RincalaGame extends GameBase {
                 apid: "124dd3ce-b309-4d14-9c8e-856e56241dfe",
             },
         ],
-        categories: ["goal>score>eog", "mechanic>move>sow", "mechanic>capture", "board>shape>circle", "board>connect>linear", "components>simple>4c"],
+        categories: ["goal>score>eog", "mechanic>move>sow", "mechanic>capture", "mechanic>random>setup", "mechanic>stack", "board>shape>circle", "board>connect>linear", "components>simple>4c"],
         flags: ["no-moves", "custom-randomization", "scores", "random-start"]
     };
 

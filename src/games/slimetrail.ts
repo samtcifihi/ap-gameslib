@@ -52,8 +52,8 @@ export class SlimetrailGame extends GameBase {
             { uid: "#board" },
             { uid: "rhombus11", group: "board" },
         ],
-        categories: ["goal>breakthrough", "mechanic>move", "mechanic>block",
-                     "board>shape>rect", "board>shape>hex", "components>simple>1per"],
+        categories: ["goal>breakthrough", "goal>immobilize", "mechanic>move",
+                     "mechanic>block", "mechanic>share", "board>shape>rect", "board>shape>hex", "board>connect>rect", "board>connect>hex", "components>simple>2c"],
         flags: ["automove"]
     };
 

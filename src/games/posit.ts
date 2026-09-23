@@ -70,7 +70,7 @@ export class PositGame extends GameBase {
                 explanation: "Colour of neutral piece"
             },
         ],
-        categories: ["goal>immobilize", "mechanic>move", "mechanic>place", "mechanic>stack", "board>shape>rect", "board>connect>rect", "components>simple>1per"],
+        categories: ["goal>immobilize", "mechanic>move", "mechanic>place", "mechanic>stack", "mechanic>block", "board>shape>rect", "board>connect>rect", "components>simple>3c"],
         flags: ["no-moves"],
         variants: []
     };

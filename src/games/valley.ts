@@ -67,7 +67,7 @@ export class ValleyGame extends GameBase {
                 uid: "king-swap"
             }
         ],
-        categories: ["goal>royal-escape", "mechanic>move", "board>shape>rect", "board>connect>rect", "components>simple>1per"],
+        categories: ["goal>royal-escape", "goal>immobilize", "mechanic>move", "mechanic>differentiate", "mechanic>share", "mechanic>block", "board>shape>rect", "board>connect>rect", "components>simple>1per"],
         flags: ["perspective", ]
     };
 

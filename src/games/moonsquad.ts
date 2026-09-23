@@ -73,7 +73,7 @@ export class MoonSquadGame extends GameBase {
             {uid: "limping", group: "board"},
             {uid: "hex5", group: "board"},
         ],
-        categories: ["goal>connect", "mechanic>place", "mechanic>capture", "board>shape>circle", "board>shape>hex", "board>connect>hex", "components>simple>7c"],
+        categories: ["goal>connect", "mechanic>place", "mechanic>capture", "mechanic>random>setup", "mechanic>move", "mechanic>set", "mechanic>differentiate", "board>shape>circle", "board>shape>hex", "board>connect>hex", "components>simple>7c"],
         flags: ["pie", "check", "custom-rotation", "random-start", "no-moves", "custom-randomization"]
     };
 

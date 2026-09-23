@@ -53,7 +53,7 @@ export class SponnectGame extends GameBase {
         variants: [
             { uid: "size-5", group: "board" },
         ],
-        categories: ["goal>connect", "mechanic>place", "board>shape>rect", "board>connect>rect", "components>simple", "components>shibumi", "board>3d"],
+        categories: ["goal>connect", "mechanic>place", "board>shape>rect", "board>connect>rect", "components>shibumi", "components>simple>3c", "board>3d"],
         flags: ["pie"],
         displays: [{ uid: "orb-3d" }],
     };

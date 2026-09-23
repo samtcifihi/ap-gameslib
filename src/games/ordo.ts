@@ -54,7 +54,7 @@ export class OrdoGame extends GameBase {
                 apid: "124dd3ce-b309-4d14-9c8e-856e56241dfe",
             },
         ],
-        categories: ["goal>breakthrough", "mechanic>capture",  "mechanic>move", "board>shape>rect", "board>connect>rect", "components>simple>1per"],
+        categories: ["goal>breakthrough", "goal>immobilize", "mechanic>capture", "mechanic>move", "mechanic>move>group", "board>shape>rect", "board>connect>rect", "components>simple>1per"],
         flags: ["perspective", ]
     };
 

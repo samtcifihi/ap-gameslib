@@ -50,7 +50,7 @@ export class CatsDogsGame extends GameBase {
                 apid: "9228bccd-a1bd-452b-b94f-d05380e6638f",
             },
         ],
-        categories: ["goal>immobilize", "mechanic>move", "board>shape>rect", "components>simple>1per"],
+        categories: ["goal>immobilize", "mechanic>place", "board>shape>rect", "board>connect>rect", "components>simple>1per"],
         variants: [
             { uid: "#ruleset", },  // Huntoon's variant
             { uid: "original",   group: "ruleset" },

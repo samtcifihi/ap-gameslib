@@ -65,7 +65,7 @@ export class PrudhGame extends GameBase {
                 player: 2
             },
         ],
-        categories: ["goal>score>eog", "mechanic>move", "mechanic>move>sow", "mechanic>share", "board>shape>rect", "board>connect>rect", "components>simple>1c"],
+        categories: ["goal>score>eog", "mechanic>move", "mechanic>move>sow", "mechanic>share", "mechanic>stack", "mechanic>capture", "board>shape>rect", "board>connect>rect", "components>simple>1c"],
         flags: ["scores", "perspective", "pie", "custom-colours", "automove"],
     };
     public static coords2algebraic(x: number, y: number): string {

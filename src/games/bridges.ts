@@ -49,7 +49,7 @@ export class BridgesGame extends GameBase {
                 apid: "a82c4aa8-7d43-4661-b027-17afd1d1586f",
             },
         ],
-        categories: ["goal>score>eog", "mechanic>place", "board>shape>hex", "board>connect>hex"],
+        categories: ["goal>score>eog", "mechanic>place", "board>shape>hex", "board>connect>hex", "components>special"],
         flags: ["automove"]
     };
 

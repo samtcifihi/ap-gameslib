@@ -52,7 +52,7 @@ export class DragonEyesGame extends GameBase {
                 apid: "a82c4aa8-7d43-4661-b027-17afd1d1586f",
             },
         ],
-        categories: ["goal>score>eog", "mechanic>capture", "mechanic>move", "board>shape>hex", "board>connect>hex", "components>simple>1per"],
+        categories: ["goal>score>eog", "goal>annihilate", "goal>immobilize", "mechanic>capture", "mechanic>move", "mechanic>random>play", "mechanic>hidden", "board>shape>hex", "board>connect>hex", "components>simple>1per"],
         flags: ["automove", "custom-buttons"],
         variants: [{uid: "claimdraw", group: "rules"}]
     };

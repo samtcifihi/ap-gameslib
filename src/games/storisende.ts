@@ -103,7 +103,7 @@ export class StorisendeGame extends GameBase {
                 explanation: "The fill colour at 50% opacity appears underneath the slanted wall"
             },
         ],
-        categories: ["goal>area", "mechanic>coopt", "mechanic>move", "mechanic>place", "mechanic>stack", "mechanic>capture", "board>dynamic", "board>connect>hex", "components>special"],
+        categories: ["goal>area", "goal>annihilate", "mechanic>coopt", "mechanic>move", "mechanic>place", "mechanic>stack", "mechanic>capture", "mechanic>random>setup", "mechanic>enclose", "board>shape>hex", "board>dynamic", "board>connect>hex", "components>special"],
         flags: ["pie", "scores", "automove", "custom-rotation", "random-start", "custom-randomization"],
     };
 

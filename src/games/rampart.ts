@@ -54,7 +54,7 @@ export class RampartGame extends GameBase {
             { uid: "hex7", group: "board" },
             { uid: "custom", group: "setup", unrated: true },
         ],
-        categories: ["goal>annihilate", "mechanic>place",  "mechanic>capture", "board>shape>rect", "board>connect>rect", "board>shape>hex", "board>connect>hex", "components>simple>1per"],
+        categories: ["goal>annihilate", "mechanic>place", "mechanic>capture", "mechanic>enclose", "board>shape>rect", "board>connect>rect", "board>shape>hex", "board>connect>hex", "components>simple>1per"],
         flags: ["automove"]
     };
 

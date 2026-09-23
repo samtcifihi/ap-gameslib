@@ -61,7 +61,7 @@ export class SentinelGame extends GameBase {
                 apid: "9228bccd-a1bd-452b-b94f-d05380e6638f",
             },
         ],
-        categories: ["goal>annihilate", "goal>vigil", "mechanic>capture",  "mechanic>move", "mechanic>move>sow", "mechanic>stack", "board>shape>rect", "board>connect>rect", "components>simple>2c"],
+        categories: ["goal>annihilate", "goal>vigil", "mechanic>capture", "mechanic>move", "mechanic>move>sow", "mechanic>stack", "board>shape>rect", "board>connect>rect", "components>simple>1per"],
         flags: []
     };
 

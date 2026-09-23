@@ -59,7 +59,7 @@ export class ChameleonGame extends GameBase {
                 apid: "124dd3ce-b309-4d14-9c8e-856e56241dfe",
             },
         ],
-        categories: ["goal>annihilate", "goal>breakthrough", "mechanic>asymmetry", "mechanic>capture", "mechanic>move", "board>shape>rect", "board>connect>rect", "components>simple>1per"],
+        categories: ["goal>annihilate", "goal>breakthrough", "mechanic>asymmetry", "mechanic>capture", "mechanic>move", "mechanic>differentiate", "board>shape>rect", "board>connect>rect", "components>simple>1per"],
         flags: ["perspective", "automove", "custom-rotation"],
     };
     public static coords2algebraic(x: number, y: number): string {

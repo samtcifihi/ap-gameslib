@@ -76,7 +76,7 @@ export class MutternlandGame extends GameBase {
                 explanation: "Colour of nuts"
             },
         ],
-        categories: ["goal>score>eog", "mechanic>place", "mechanic>move", "mechanic>stack", "mechanic>random>setup", "board>shape>hex", "board>connect>hex", "components>simple>1c"],
+        categories: ["goal>score>eog", "goal>score>race", "mechanic>place", "mechanic>move", "mechanic>stack", "mechanic>random>setup", "mechanic>share", "mechanic>displace", "mechanic>capture", "board>shape>hex", "board>connect>hex", "components>simple>3c"],
         flags: ["no-moves", "custom-buttons", "scores", "random-start"],
     };
 

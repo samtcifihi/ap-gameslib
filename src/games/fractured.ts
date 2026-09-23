@@ -81,7 +81,7 @@ export class FracturedGame extends GameBase {
             { num: 7, default: 7, explanation: "Player 2", player: 2 },
             { num: 8, default: "#fff", explanation: "City colour" },
         ],
-        categories: ["goal>score>race", "mechanic>place", "mechanic>move", "board>other", "board>connect>other", "components>simple>1per"],
+        categories: ["goal>score>race", "goal>score>eog", "mechanic>place", "mechanic>move", "board>other", "board>connect>other", "components>simple>1per"],
         flags: ["scores", "custom-colours"],
     };
 

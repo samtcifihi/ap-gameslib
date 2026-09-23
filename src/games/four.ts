@@ -54,7 +54,7 @@ export class FourGame extends GameBase {
         variants: [
             {uid: "simplified"}
         ],
-        categories: ["goal>immobilize", "mechanic>place", "board>shape>rect", "board>connect>rect", "board>dynamic", "components>poly"],
+        categories: ["goal>immobilize", "mechanic>place", "mechanic>share", "board>shape>rect", "board>connect>rect", "board>dynamic", "components>poly"],
         flags: ["shared-pieces"]
     };
 

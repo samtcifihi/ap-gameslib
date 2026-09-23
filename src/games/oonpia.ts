@@ -61,7 +61,7 @@ export class OonpiaGame extends GameBase {
             },
         ],
         flags: ["pie", "custom-buttons", "no-moves", "custom-randomization", "custom-colours"],
-        categories: ["mechanic>place", "mechanic>capture", "mechanic>enclose", "board>shape>hex", "board>connect>hex", "components>simple>2per"],
+        categories: ["goal>annihilate", "mechanic>place", "mechanic>capture", "mechanic>enclose", "board>shape>hex", "board>connect>hex", "components>simple>2per"],
         variants: [
             { uid: "size-5", group: "board" },
             { uid: "#board", },

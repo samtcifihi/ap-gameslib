@@ -45,7 +45,7 @@ export class SoccolotGame extends GameBase {
                 apid: "9228bccd-a1bd-452b-b94f-d05380e6638f",
             },
         ],
-        categories: ["goal>breakthrough", "mechanic>move", "board>shape>rect", "board>connect>rect", "components>simple>1per"],
+        categories: ["goal>breakthrough", "mechanic>move", "mechanic>share", "board>shape>rect", "board>connect>rect", "components>simple>3c"],
         variants: [
             { uid: "#board", }, // Speed Soccolot
             { uid: "original", group: "ruleset" },

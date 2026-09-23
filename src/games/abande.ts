@@ -69,7 +69,7 @@ export class AbandeGame extends GameBase {
                 group: "board",
             }
         ],
-        categories: ["goal>score>eog", "mechanic>place", "mechanic>stack", "board>shape>rect", "board>shape>hex", "board>connect>rect", "board>connect>hex", "board>connect>snub", "components>simple>1per"],
+        categories: ["goal>score>eog", "mechanic>place", "mechanic>stack", "mechanic>move", "board>shape>rect", "board>shape>hex", "board>connect>rect", "board>connect>hex", "board>connect>snub", "board>dynamic", "components>simple>1per"],
         flags: ["scores", "automove"]
     };
 

@@ -111,7 +111,7 @@ export class HomeworldsGame extends GameBaseSkipTurn {
             {uid: "passFree", group: "rules", default: true},
             {uid: "#rules"},
         ],
-        categories: ["goal>cripple", "mechanic>capture", "mechanic>move", "mechanic>convert", "mechanic>economy", "mechanic>place", "mechanic>share", "board>none", "components>pyramids", "other>2+players"],
+        categories: ["goal>cripple", "mechanic>capture", "mechanic>move", "mechanic>convert", "mechanic>economy", "mechanic>place", "mechanic>share", "mechanic>differentiate", "board>none", "components>pyramids", "other>2+players"],
         flags: ["shared-pieces", "perspective", "rotate90", "no-moves", "custom-rotation"]
     };
 

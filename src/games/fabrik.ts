@@ -58,7 +58,7 @@ export class FabrikGame extends GameBase {
                 uid: "arbeiter"
             }
         ],
-        categories: ["goal>arrange", "mechanic>place", "mechanic>move", "mechanic>share", "board>shape>rect", "board>connect>rect", "components>simple>3c"],
+        categories: ["goal>arrange", "goal>immobilize", "mechanic>place", "mechanic>move", "mechanic>share", "board>shape>rect", "board>connect>rect", "components>simple>3c"],
         flags: ["automove"]
     };
 

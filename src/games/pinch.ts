@@ -66,7 +66,7 @@ export class PinchGame extends GameBase {
             { uid: "size-21", group: "board" },
             { uid: "original", group: "ruleset" },
         ],
-        categories: ["goal>connect", "mechanic>place", "mechanic>capture", "board>shape>rect", "board>connect>rect", "components>simple>1per"],
+        categories: ["goal>connect", "mechanic>place", "mechanic>capture", "mechanic>coopt", "mechanic>convert", "mechanic>displace", "board>shape>rect", "board>connect>rect", "components>simple>1per"],
         flags: ["pie", "no-moves"]
     };
 

@@ -145,12 +145,14 @@ export class BaghChalGame extends GameBase {
         categories: [
             "goal>score>race",
             "goal>immobilize",
+            "goal>cripple",
             "mechanic>place",
             "mechanic>move",
             "mechanic>capture",
             "mechanic>asymmetry",
+            "other>traditional",
             "board>shape>rect",
-            "board>connect>rect",
+            "board>connect>other",
             "components>simple>1per",
         ],
         flags: [

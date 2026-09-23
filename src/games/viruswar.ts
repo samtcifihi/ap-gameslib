@@ -53,7 +53,7 @@ export class VirusWarGame extends GameBase {
             { uid: "size-25", group: "board" }, // 5 moves
             { uid: "#board", }, // 30x30, 6 moves
         ],
-        categories: ["goal>immobilize", "other>traditional", "mechanic>place", "mechanic>capture", "board>shape>rect", "board>connect>rect", "components>simple>pnp", "components>simple>2per"],
+        categories: ["goal>immobilize", "other>traditional", "mechanic>place", "mechanic>capture", "mechanic>convert", "board>shape>rect", "board>connect>rect", "components>simple>pnp", "components>simple>2per"],
         flags: ["no-moves"]
     };
 

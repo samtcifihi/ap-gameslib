@@ -47,7 +47,7 @@ export class FocusGame extends GameBase {
                 apid: "124dd3ce-b309-4d14-9c8e-856e56241dfe",
             },
         ],
-        categories: ["goal>immobilize", "mechanic>capture", "mechanic>coopt", "mechanic>move", "mechanic>stack", "board>shape>oct", "board>connect>rect", "components>simple>1per"],
+        categories: ["goal>immobilize", "mechanic>capture", "mechanic>coopt", "mechanic>move", "mechanic>stack", "mechanic>place", "board>shape>oct", "board>connect>rect", "components>simple>1per"],
         flags: []
     };
     public static coords2algebraic(x: number, y: number): string {

@@ -67,7 +67,7 @@ export class GoGame extends GameBase {
             { uid: "size-37", group: "board" },
             { uid: "positional", group: "ruleset" },
         ],
-        categories: ["goal>area", "mechanic>place", "mechanic>capture", "mechanic>enclose", "board>shape>rect", "components>simple>1per"],
+        categories: ["goal>area", "mechanic>place", "mechanic>capture", "mechanic>enclose", "other>traditional", "board>shape>rect", "board>connect>rect", "components>simple>1per"],
         flags: ["scores", "custom-buttons", "custom-colours"],
         displays: [{uid: "show-controlled-areas"}],
     };

@@ -53,7 +53,7 @@ export class BluestoneGame extends GameBase {
                 apid: "a82c4aa8-7d43-4661-b027-17afd1d1586f",
             },
         ],
-        categories: ["goal>score>eog", "mechanic>place",  "mechanic>capture", "board>shape>pent", "board>connect>hex"],
+        categories: ["goal>score>eog", "mechanic>place", "mechanic>capture", "mechanic>enclose", "board>shape>pent", "board>connect>hex", "components>simple>3c"],
         flags: ["scores", "automove", "custom-colours"],
         variants: [{
             uid: "size-8",

@@ -53,7 +53,7 @@ export class TricouleurGame extends GameBase {
             { uid: "hex-9",  group: "board" },
             { uid: "hex-10", group: "board" },
         ],
-        categories: ["goal>majority", "mechanic>move", "mechanic>convert",  "board>shape>hex", "board>connect>hex", "components>simple>1per"],
+        categories: ["goal>majority", "mechanic>move", "mechanic>convert", "mechanic>capture", "mechanic>differentiate", "board>shape>hex", "board>connect>hex", "components>simple>1per", "components>special"],
         flags: ["no-moves", "custom-buttons", "scores"],
     };
 

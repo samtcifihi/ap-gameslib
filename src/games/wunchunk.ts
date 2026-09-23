@@ -67,7 +67,7 @@ export class WunchunkGame extends GameBase {
             { uid: "hex8", group: "board" },
             { uid: "open" },
         ],
-        categories: ["goal>score>eog", "mechanic>place", "mechanic>share", "board>shape>hex", "board>connect>hex", "components>simple>1per", "other>2+players"],
+        categories: ["goal>score>eog", "goal>unify", "mechanic>place", "mechanic>share", "board>shape>hex", "board>connect>hex", "components>simple>1per", "other>2+players"],
         flags: ["no-moves", "custom-randomization", "custom-buttons", "scores", "custom-colours"]
     };
 

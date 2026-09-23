@@ -52,7 +52,7 @@ export class NexGame extends GameBase {
                 apid: "46f6da78-be02-4469-94cb-52f17078e9c1",
             },
         ],
-        categories: ["goal>connect", "mechanic>place", "board>shape>rect", "board>connect>hex", "components>simple>3c"],
+        categories: ["goal>connect", "mechanic>place", "mechanic>convert", "mechanic>share", "board>shape>rect", "board>connect>hex", "components>simple>3c"],
         flags: ["pie"],
         variants: [
             { uid: "size-9", group: "board" },

@@ -84,7 +84,7 @@ export class EvenAtOddsGame extends GameBase {
         urls: ["https://boardgamegeek.com/boardgame/458452/even-at-odds"],
         bggid: "458452",
         displays: [{ uid: "flat", group: "projection" }],
-        categories: ["goal>area", "mechanic>place", "mechanic>stack", "board>3d", "board>dynamic", "components>dominoes"],
+        categories: ["goal>area", "mechanic>place", "mechanic>stack", "mechanic>hidden", "mechanic>random>setup", "mechanic>random>play", "board>3d", "board>dynamic", "components>dominoes"],
         flags: ["scores", "custom-buttons"],
         customizations: [{num: 3, default: "#aaaaaa", explanation: "Colour of the blank ends"}],
     };

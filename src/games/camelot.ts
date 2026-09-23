@@ -62,7 +62,7 @@ export class CamelotGame extends GameBase {
             { uid: "river", group: "board" },
             { uid: "anti" },
         ],
-        categories: ["goal>breakthrough", "goal>annihilate", "mechanic>capture", "mechanic>differentiate", "mechanic>move>group", "board>shape>rect", "board>connect>rect", "components>simple>1per"],
+        categories: ["goal>breakthrough", "goal>annihilate", "goal>immobilize", "mechanic>capture", "mechanic>differentiate", "mechanic>move", "board>shape>rect", "board>connect>rect", "components>simple>1per"],
         flags: ["perspective", "custom-buttons", "automove"],
     };
 

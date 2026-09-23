@@ -130,7 +130,7 @@ export class ChaseGame extends GameBase {
                 apid: "124dd3ce-b309-4d14-9c8e-856e56241dfe",
             },
         ],
-        categories: ["goal>cripple", "mechanic>move", "mechanic>displace", "mechanic>merge", "board>shape>rect", "board>connect>hex", "components>dice"],
+        categories: ["goal>cripple", "mechanic>move", "mechanic>displace", "mechanic>merge", "mechanic>capture", "mechanic>differentiate", "board>shape>rect", "board>connect>hex", "components>dice"],
         flags: ["perspective"]
     };
 

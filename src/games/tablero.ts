@@ -56,7 +56,7 @@ export class TableroGame extends GameBase {
             },
         ],
         variants: [{uid: "5-10", group: "scoring", fans: true}, {uid: "abba", fans: true}],
-        categories: ["goal>score>eog", "mechanic>place",  "mechanic>move", "mechanic>coopt", "mechanic>random>play", "mechanic>stack", "board>shape>rect", "board>connect>rect", "components>simple>1per"],
+        categories: ["goal>score>eog", "mechanic>place", "mechanic>move", "mechanic>coopt", "mechanic>random>play", "mechanic>stack", "mechanic>move>sow", "board>shape>rect", "board>connect>rect", "components>simple>1per", "components>dice"],
         flags: ["perspective", "scores", "automove", "no-explore", "custom-rotation"]
     };
     public static coords2algebraic(x: number, y: number): string {

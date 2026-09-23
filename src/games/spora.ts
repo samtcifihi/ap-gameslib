@@ -67,7 +67,7 @@ export class SporaGame extends GameBase {
             { uid: "size-19", group: "board" },
             { uid: "size-25", group: "board" }
         ],
-        categories: ["goal>area", "mechanic>place", "mechanic>move>sow", "mechanic>capture", "mechanic>stack", "mechanic>enclose", "board>shape>rect", "board>connect>rect", "components>simple>2c"],
+        categories: ["goal>area", "mechanic>place", "mechanic>move>sow", "mechanic>capture", "mechanic>stack", "mechanic>enclose", "board>shape>rect", "board>connect>rect", "components>simple>1per"],
         flags: ["scores", "no-moves", "custom-buttons", "custom-colours"],
     };
 

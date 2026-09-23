@@ -54,7 +54,7 @@ export class EmergoGame extends GameBase {
         ],
         variants: [
         ],
-        categories: ["goal>annihilate", "mechanic>capture", "mechanic>move", "board>shape>rect", "board>connect>rect", "components>simple>1per"],
+        categories: ["goal>annihilate", "mechanic>capture", "mechanic>move", "mechanic>place", "mechanic>stack", "mechanic>coopt", "board>shape>rect", "board>connect>rect", "components>simple>1per"],
         flags: ["perspective", "automove", ]
     };
 

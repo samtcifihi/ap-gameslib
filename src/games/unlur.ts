@@ -69,7 +69,7 @@ export class UnlurGame extends GameBase {
             { uid: "#board", },
             {uid: "size-10", group: "board"},
         ],
-        categories: ["goal>connect", "mechanic>place", "mechanic>asymmetry", "board>shape>hex", "board>connect>hex", "components>simple"],
+        categories: ["goal>connect", "mechanic>place", "mechanic>asymmetry", "board>shape>hex", "board>connect>hex", "components>simple>1per"],
         flags: ["custom-colours"],
     };
 

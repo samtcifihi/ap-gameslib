@@ -62,7 +62,7 @@ export class SynapseGame extends GameBase {
                 apid: "9228bccd-a1bd-452b-b94f-d05380e6638f",
             },
         ],
-        categories: ["goal>immobilize", "mechanic>place", "board>shape>rect", "board>connect>rect", "components>pyramids"],
+        categories: ["goal>immobilize", "mechanic>place", "mechanic>differentiate", "board>shape>rect", "board>connect>rect", "components>pyramids"],
         flags: ["player-stashes", "automove"]
     };
 

@@ -82,7 +82,7 @@ export class BloqueoGame extends GameBase {
                 player: 2
             },
         ],
-        categories: ["goal>score>eog", "mechanic>share", "mechanic>move", "mechanic>place", "mechanic>displace", "board>shape>rect", "board>connect>rect", "components>simple>5c"],
+        categories: ["goal>score>eog", "mechanic>share", "mechanic>move", "mechanic>place", "mechanic>displace", "mechanic>stack", "board>shape>rect", "board>connect>rect", "components>simple>5c"],
         flags: ["scores", "custom-colours", "automove"]
     };
     public static coords2algebraic(x: number, y: number): string {

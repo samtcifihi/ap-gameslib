@@ -72,7 +72,7 @@ export class CanoeGame extends GameBase {
                 apid: "124dd3ce-b309-4d14-9c8e-856e56241dfe",
             },
         ],
-        categories: ["goal>score>eog", "mechanic>move", "mechanic>capture", "mechanic>random>setup", "mechanic>random>play", "board>shape>rect", "board>connect>rect", "components>special", "components>dice"],
+        categories: ["goal>score>eog", "mechanic>move", "mechanic>capture", "mechanic>random>setup", "mechanic>random>play", "mechanic>bearoff", "mechanic>merge", "board>shape>rect", "board>connect>rect", "components>special", "components>dice"],
         flags: ["no-explore", "custom-buttons", "scores", "automove"],
         variants: [
             {

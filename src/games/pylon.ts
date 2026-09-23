@@ -69,7 +69,7 @@ export class PylonGame extends GameBase {
                 group: "setup",
             }
         ],
-        categories: ["goal>score>eog", "mechanic>place", "mechanic>move", "mechanic>stack", "mechanic>share", "board>shape>rect", "board>connect>rect", "components>pyramids"],
+        categories: ["goal>score>eog", "goal>majority", "mechanic>place", "mechanic>move", "mechanic>stack", "mechanic>share", "mechanic>random>setup", "mechanic>coopt", "mechanic>differentiate", "board>shape>rect", "board>connect>rect", "components>pyramids"],
         flags: ["scores", "random-start", "automove"]
     };
 

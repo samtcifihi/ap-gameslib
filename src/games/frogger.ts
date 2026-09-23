@@ -96,7 +96,7 @@ export class FroggerGame extends GameBase {
             { uid: "refills", group: "market", default: true }, //the official rule
             { uid: "continuous", group: "market", experimental: true }, //continuous small refills
         ],
-        categories: ["goal>evacuate", "mechanic>move", "mechanic>bearoff", "mechanic>block", "mechanic>random>setup", "mechanic>random>play", "board>shape>rect", "board>connect>rect", "components>decktet", "other>2+players"],
+        categories: ["goal>evacuate", "mechanic>move", "mechanic>bearoff", "mechanic>block", "mechanic>random>setup", "mechanic>random>play", "mechanic>hidden", "mechanic>displace", "board>shape>rect", "board>connect>rect", "components>decktet", "other>2+players"],
         flags: ["autopass", "custom-randomization", "random-start"],
         displays: [{ uid: "frog-pieces", group: "piece" }]
     };

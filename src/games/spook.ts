@@ -63,7 +63,7 @@ export class SpookGame extends GameBase {
             { uid: "size-5", group: "board" },
             { uid: "random", group: "setup" },
         ],
-        categories: ["goal>evacuate", "mechanic>place", "mechanic>capture", "mechanic>random>setup", "board>shape>rect", "board>connect>rect", "components>simple>3c", "components>shibumi", "board>3d"],
+        categories: ["goal>evacuate", "mechanic>place", "mechanic>capture", "mechanic>random>setup", "mechanic>move", "mechanic>share", "board>shape>rect", "board>connect>rect", "components>simple>3c", "components>shibumi", "board>3d"],
         flags: ["perspective", "rotate90", "random-start"],
         displays: [{ uid: "orb-3d" }],
     };

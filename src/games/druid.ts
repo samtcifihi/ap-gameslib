@@ -101,7 +101,7 @@ export class DruidGame extends GameBase {
             },
         ],
         displays: [{ uid: "flat", group: "projection" }],
-        categories: ["goal>connect", "mechanic>place", "mechanic>move", "board>3d", "board>shape>rect", "board>connect>rect", "components>special"],
+        categories: ["goal>connect", "goal>royal-escape", "mechanic>place", "mechanic>move", "mechanic>bearoff", "mechanic>differentiate", "mechanic>stack", "board>3d", "board>shape>rect", "board>shape>tri", "board>shape>hex", "board>connect>rect", "board>connect>hex", "components>special"],
         flags: ["pie", "automove"],
     };
 

@@ -114,7 +114,7 @@ export class ArimaaGame extends GameBase {
                 explanation: "Traps are the `fill` colour at 50% opacity"
             },
         ],
-        categories: ["goal>breakthrough", "goal>cripple", "goal>immobilize", "mechanic>capture", "mechanic>move", "mechanic>coopt", "mechanic>random>setup", "board>shape>rect", "board>connect>rect", "components>chess"],
+        categories: ["goal>breakthrough", "goal>cripple", "goal>immobilize", "mechanic>capture", "mechanic>move", "mechanic>coopt", "mechanic>random>setup", "mechanic>differentiate", "mechanic>displace", "board>shape>rect", "board>connect>rect", "components>chess"],
         flags: ["perspective", "no-moves", "custom-buttons", "random-start", "custom-colours"]
     };
     public static coords2algebraic(x: number, y: number): string {

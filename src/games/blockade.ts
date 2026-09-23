@@ -51,7 +51,7 @@ export class BlockadeGame extends GameBase {
             { uid: "back-rank", group: "goal" },
             { uid: "single-step", group: "step-count" }
         ],
-        categories: ["goal>breakthrough", "mechanic>place", "mechanic>move", "mechanic>block", "board>shape>rect", "board>connect>rect", "components>special"],
+        categories: ["goal>breakthrough", "mechanic>place", "mechanic>move", "mechanic>block", "mechanic>capture", "board>shape>rect", "board>connect>rect", "components>special"],
         flags: ["perspective", "player-stashes"],
         displays: [{uid: "differentiated-walls"}],
     };

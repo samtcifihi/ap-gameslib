@@ -76,7 +76,7 @@ export class KnightLineGame extends GameBase {
             { uid: "#size" },
             { uid: "size-24", group: "size" },
         ],
-        categories: ["goal>arrange", "mechanic>merge", "board>dynamic", "board>shape>rect", "board>connect>rect", "other>2+players"],
+        categories: ["goal>arrange", "mechanic>merge", "mechanic>stack", "mechanic>move", "board>dynamic", "board>shape>rect", "board>connect>rect", "other>2+players", "components>simple>1per"],
         flags: ["autopass"],
     };
 

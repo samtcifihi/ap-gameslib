@@ -69,7 +69,7 @@ export class AnacheGame extends GameBase {
             { uid: "#board", },
             { uid: "size-15", group: "board", fans: true },
         ],
-        categories: ["goal>breakthrough", "goal>immobilize", "mechanic>move>group", "mechanic>capture", "board>shape>rect", "board>connect>rect", "components>simple"],
+        categories: ["goal>breakthrough", "goal>immobilize", "mechanic>move>group", "mechanic>capture", "mechanic>differentiate", "board>shape>rect", "board>connect>rect", "components>simple>1per"],
         flags: ["perspective", "no-moves"],
         displays: [{uid: "hide-frozen"}],
     };

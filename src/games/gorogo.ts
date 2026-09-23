@@ -60,7 +60,7 @@ export class GorogoGame extends GameBase {
                 apid: "124dd3ce-b309-4d14-9c8e-856e56241dfe",
             },
         ],
-        categories: ["goal>score>eog", "mechanic>place", "mechanic>capture", "board>shape>rect", "board>connect>rect", "components>simple>3c"],
+        categories: ["goal>score>eog", "mechanic>place", "mechanic>capture", "mechanic>share", "mechanic>enclose", "board>shape>rect", "board>connect>rect", "components>simple>3c"],
         flags: ["scores"]
     };
     public static coords2algebraic(x: number, y: number): string {

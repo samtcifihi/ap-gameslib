@@ -55,7 +55,7 @@ export class AlfredsWykeGame extends GameBase {
                 group: "size",
             }
         ],
-        categories: ["goal>arrange", "mechanic>asymmetry",  "mechanic>capture", "mechanic>economy", "mechanic>place", "mechanic>share", "mechanic>stack", "board>shape>rect", "board>connect>rect", "components>simple>3c"],
+        categories: ["goal>arrange", "goal>score>race", "mechanic>asymmetry", "mechanic>capture", "mechanic>economy", "mechanic>place", "mechanic>share", "mechanic>stack", "board>shape>rect", "board>connect>rect", "components>simple>3c"],
         flags: ["no-moves"]
     };
 

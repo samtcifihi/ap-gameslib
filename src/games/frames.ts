@@ -44,7 +44,7 @@ export class FramesGame extends GameBaseSimultaneous {
                 apid: "124dd3ce-b309-4d14-9c8e-856e56241dfe",
             },
         ],
-        categories: ["goal>score>race", "mechanic>place",  "mechanic>enclose", "mechanic>simultaneous", "board>shape>rect", "board>connect>rect", "components>simple>1c"],
+        categories: ["goal>score>race", "mechanic>place", "mechanic>enclose", "mechanic>simultaneous", "board>shape>rect", "board>connect>rect", "components>simple>3c"],
         flags: ["simultaneous", "scores"]
     };
 

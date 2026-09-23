@@ -53,7 +53,7 @@ export class BoxesGame extends GameBase {
             { uid: "size-5x7", group: "board" },
             { uid: "size-7x7", group: "board" },
         ],
-        categories: ["goal>majority", "mechanic>place", "board>shape>rect", "board>connect>rect", "components>special"],
+        categories: ["goal>majority", "mechanic>place", "mechanic>enclose", "other>traditional", "board>shape>rect", "board>connect>rect", "components>simple>pnp"],
         flags: ["scores", "custom-randomization", "no-moves"],
     };
 

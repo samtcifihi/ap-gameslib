@@ -144,7 +144,7 @@ export class CrosshairsGame extends GameBase {
                 apid: "e5e9c762-f75f-4300-8aac-e623aed63409",
             },
         ],
-        categories: ["goal>annihilate", "mechanic>move", "mechanic>capture", "mechanic>block", "board>shape>hex", "board>connect>hex", "components>special"],
+        categories: ["goal>annihilate", "goal>cripple", "mechanic>move", "mechanic>capture", "mechanic>block", "mechanic>random>setup", "mechanic>place", "board>shape>hex", "board>connect>hex", "components>special"],
         flags: ["no-moves", "custom-randomization", "custom-rotation", "custom-buttons"],
         variants: [
             {

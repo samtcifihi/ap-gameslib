@@ -54,7 +54,7 @@ export class HulaGame extends GameBase {
         ],
         flags: ["pie"],
         dateAdded: "2024-10-19",
-        categories: ["goal>connect", "mechanic>place", "board>shape>hex", "components>simple>3c"],
+        categories: ["goal>connect", "mechanic>place", "mechanic>share", "board>shape>hex", "board>connect>hex", "components>simple>3c"],
         variants: [
             {uid: "size-5", group: "board"},
             { uid: "#board", },

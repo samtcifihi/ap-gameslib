@@ -72,7 +72,7 @@ export class TraxGame extends GameBase {
             { uid: "size-8", group: "variant" },
             { uid: "loop", group: "variant" },
         ],
-        categories: ["goal>connect", "mechanic>place", "board>dynamic", "board>shape>rect", "board>connect>rect", "components>special"],
+        categories: ["goal>connect", "mechanic>place", "mechanic>share", "board>dynamic", "board>shape>rect", "board>connect>rect", "components>special"],
         flags: [],
         displays: [{ uid: "show-origin" }],
     };

@@ -91,7 +91,7 @@ export class MchessGame extends GameBase {
                 group: "movement"
             }
         ],
-        categories: ["goal>score>eog", "mechanic>share", "mechanic>capture", "mechanic>move", "mechanic>convert", "mechanic>differentiate", "board>shape>rect", "board>connect>rect", "components>pyramids"],
+        categories: ["goal>score>eog", "goal>score>race", "mechanic>share", "mechanic>capture", "mechanic>move", "mechanic>convert", "mechanic>differentiate", "mechanic>merge", "board>shape>rect", "board>connect>rect", "components>pyramids"],
         flags: ["scores", "perspective"],
     };
 

@@ -48,7 +48,7 @@ export class ShapeChessGame extends GameBase {
                 apid: "9228bccd-a1bd-452b-b94f-d05380e6638f",
             },
         ],
-        categories: ["goal>score>race", "mechanic>place",  "board>shape>rect", "board>connect>rect", "components>simple>1per"],
+        categories: ["goal>score>race", "goal>arrange", "mechanic>place", "mechanic>move", "mechanic>displace", "board>shape>rect", "board>connect>rect", "components>simple>1per"],
         variants: [
             { uid: "size-10", group: "board" },
             { uid: "#board", }, // 12x12

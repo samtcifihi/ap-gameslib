@@ -52,7 +52,7 @@ export class PonteDDGame extends GameBase {
             {uid: "#board"},
             {uid: "size-12", group: "board"},
         ],
-        categories: ["goal>score>eog", "mechanic>place", "board>shape>rect", "board>connect>rect", "components>special"],
+        categories: ["goal>score>eog", "mechanic>place", "mechanic>network", "board>shape>rect", "board>connect>rect", "components>special"],
         flags: ["pie", "scores", "no-moves", "custom-randomization", "custom-buttons"],
     };
 

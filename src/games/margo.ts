@@ -57,7 +57,7 @@ export class MargoGame extends GameBase {
             { uid: "#board", },
             { uid: "size-9", group: "board" },
         ],
-        categories: ["goal>score>eog", "mechanic>place", "mechanic>capture", "mechanic>enclose", "board>shape>rect", "board>connect>rect", "components>simple", "components>shibumi", "board>3d"],
+        categories: ["goal>score>eog", "goal>majority", "mechanic>place", "mechanic>capture", "mechanic>enclose", "board>shape>rect", "board>connect>rect", "components>shibumi", "components>simple>1per", "board>3d"],
         flags: ["pie", "scores"],
         displays: [{ uid: "orb-3d" }],
     };

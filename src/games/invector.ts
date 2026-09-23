@@ -46,7 +46,7 @@ export class InvectorGame extends GameBase {
                 apid: "9228bccd-a1bd-452b-b94f-d05380e6638f",
             },
         ],
-        categories: ["goal>unify", "mechanic>move", "mechanic>capture", "board>shape>rect", "board>connect>rect", "components>simple>1per"],
+        categories: ["goal>unify", "goal>annihilate", "mechanic>move", "mechanic>capture", "board>shape>rect", "board>connect>rect", "components>simple>1per"],
         variants: [
             { uid: "size-6",  group: "board" }, // 5x6
             { uid: "#board", }, // 7 rows x 8 cols

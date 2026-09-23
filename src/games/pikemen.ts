@@ -61,7 +61,7 @@ export class PikemenGame extends GameBase {
                 group: "eog"
             }
         ],
-        categories: ["goal>score>race", "mechanic>capture",  "mechanic>move", "mechanic>block", "board>shape>rect", "board>connect>rect", "components>pyramids"],
+        categories: ["goal>score>race", "mechanic>capture", "mechanic>move", "mechanic>block", "mechanic>differentiate", "board>shape>rect", "board>connect>rect", "components>pyramids"],
         flags: ["scores", "perspective"]
     };
 
