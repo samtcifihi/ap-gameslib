@@ -1611,6 +1611,7 @@ export class IcePalaceGame extends GameBaseSequenced {
             }
         }
 
+        const blocked = expanding ? IcePalaceGame.unreachable(layout, this.palace, this.yard) : [];
         const rep: APRenderRep = {
             renderer: expanding ? "stacking-expanding" : "stacking-3D",
             options: ["hide-labels"],
@@ -1619,6 +1620,7 @@ export class IcePalaceGame extends GameBaseSequenced {
                 width: layout.width,
                 height: layout.height,
                 stackOffset: expanding ? undefined : STACK_OFFSET,
+                blocked: blocked.length > 0 ? blocked as [{ row: number; col: number }, ...{ row: number; col: number }[]] : undefined,
             },
             legend,
             pieces: pieces as [string[][], ...string[][][]],
@@ -1670,6 +1672,39 @@ export class IcePalaceGame extends GameBaseSequenced {
             pieces: null,
             areas: [column],
         };
+    }
+
+    /**
+     * The cells nothing can ever go into right now, for the top-down display to leave
+     * blank: the gap between the structures, and every empty cell with no pyramid beside
+     * it orthogonally. An empty structure keeps only its centre, where the lead goes. The
+     * perspective renderer draws its own grid and ignores blocked cells, so only the
+     * top-down display uses this.
+     */
+    private static unreachable(layout: ILayout, palace: Structure, yard: Structure): { row: number; col: number }[] {
+        const open = new Set<string>();
+        for (const region of layout.regions) {
+            const struct = region.which === "palace" ? palace : yard;
+            const keep: Cell[] = struct.size === 0 ? [cellOf(0, 0)] : [...struct.keys()];
+            if (struct.size > 0) {
+                for (const cell of struct.keys()) {
+                    keep.push(...neighbours(cell));
+                }
+            }
+            for (const cell of keep) {
+                const [row, col] = IcePalaceGame.drawnAt(layout, region, cell);
+                open.add(`${row},${col}`);
+            }
+        }
+        const blocked: { row: number; col: number }[] = [];
+        for (let row = 0; row < layout.height; row++) {
+            for (let col = 0; col < layout.width; col++) {
+                if (!open.has(`${row},${col}`)) {
+                    blocked.push({ row, col });
+                }
+            }
+        }
+        return blocked;
     }
 
     /** Where a structure cell lands on the board, as `[row, col]`. */

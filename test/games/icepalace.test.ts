@@ -658,6 +658,27 @@ describe("Ice Palace: expanding display", () => {
         expect(rep.areas![0].stash).to.deep.equal([["s1S"], ["s3M"], ["s3L"]]);
     });
 
+    it("blanks out cells nothing can reach, leaving stacks and their orthogonal neighbours", () => {
+        const g = rig(new IcePalaceGame(3), [["1M"], ["2S"], ["3S"]], fatPool());
+        // An empty Yard keeps only its centre, where the lead goes.
+        let board = expanding(g).board as unknown as { width: number; height: number; blocked: { row: number; col: number }[] };
+        expect(board.blocked).to.have.length(board.width * board.height - 1);
+        expect(board.blocked).to.not.deep.include({ row: 3, col: 3 });
+        g.move("1M@0,0");
+        board = expanding(g).board as unknown as typeof board;
+        const open = [];
+        for (let row = 0; row < board.height; row++) {
+            for (let col = 0; col < board.width; col++) {
+                if (!board.blocked.some(b => b.row === row && b.col === col)) {
+                    open.push(`${row},${col}`);
+                }
+            }
+        }
+        expect(open.sort()).to.deep.equal(["2,3", "3,2", "3,3", "3,4", "4,3"]);
+        // The perspective display draws its own grid and ignores blocking, so it sends none.
+        expect((g.render() as unknown as { board: { blocked?: unknown } }).board.blocked).to.be.undefined;
+    });
+
     it("accepts the display as a list of active uids, as the front now sends it", () => {
         const g = new IcePalaceGame(3);
         expect((g.render({ altDisplays: ["expanding"] }) as unknown as Rep).renderer).to.equal("stacking-expanding");
