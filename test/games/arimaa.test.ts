@@ -351,6 +351,15 @@ describe("Arimaa resolution", () => {
             expect(r.turn.signature).to.equal(turn.signature);
         }
     });
+    it("does not count a piece that steps out and dies back on its start square", () => {
+        // net displacement: the cat's final square is the trap it started on
+        const b = boardOf("Cc3 Rc2 Ra1 ee8 ra8");
+        const turn = turnFromSteps(b, 1, [{from: "c3", to: "b3"}, {from: "c2", to: "d2"}, {from: "b3", to: "c3"}]);
+        const cat = turn.trajectories.find(tr => tr.type === "C")!;
+        expect(cat.captured).to.be.true;
+        expect(cat.final).to.equal(cat.start);
+        expect(turn.displaced).to.equal(1);
+    });
     it("orders step tokens as written", () => {
         // Lightvector's example, shifted off the traps: the same four tokens
         // in another order name a different sequence, here one nobody can play
@@ -576,10 +585,38 @@ describe("Arimaa arrow entry", () => {
             expect(rejected(m), m).to.equal(i18next.t("apgames:validation.arimaa.NO_MOVE"));
         }
         // a frozen piece nothing can free in time
-        const f = position("Ma4 Rh1", "ea5 rh8");
+        const f = position("Ma4,Rh1", "ea5,rh8");
         const fr = f.validateMove("Ma4b4");
         expect(fr.valid).to.be.false;
         expect(fr.message).to.equal(i18next.t("apgames:validation.arimaa.NO_MOVE_FROZEN", {from: "a4"}));
+    });
+    it("charges a destination for its longest arrow only, since one piece can answer for all of them", () => {
+        // three steps by one elephant, however many of its squares are named
+        const g = position("Ed4,Ra1", "ee8,ra8");
+        for (const m of ["Ed4g4 Ee4g4", "Ed4g4 Ed4g4", "Ed4g4 Ef4g4"]) {
+            const r = g.validateMove(m);
+            expect(r.valid, m).to.be.true;
+            expect(r.complete, m).to.equal(0);
+        }
+        // one rabbit can visit c3 on its way, once the other steps aside
+        const h = position("Rc2,Rc3,Ra1", "ee8,ra8");
+        expect(h.validateMove("Rc3c5 Rc2c5").valid).to.be.true;
+        // distinct destinations are distinct pieces, whose steps still add up
+        const r = g.validateMove("Ed4g4 Ed4a4");
+        expect(r.valid).to.be.false;
+        expect(r.message).to.equal(i18next.t("apgames:validation.arimaa.TOO_LONG", {num: 4}));
+    });
+    it("keeps a hold visible once the move resolves", () => {
+        const g = position("Ed4,Cc4,Ra1", "ee8,ra8");
+        let r = click(g, "", "d4");
+        r = click(g, r.move, "e4");
+        r = click(g, r.move, "c4");
+        r = click(g, r.move, "c4");
+        expect(r.move).to.equal("Ed4e4 Cc4c4");
+        expect(r.valid).to.be.true;
+        g.move(r.move, {partial: true});
+        expect(annotations(g)).to.include("move:d4>e4");
+        expect(annotations(g)).to.include("enter:c4");
     });
     it("holds a piece that steps out and back with a second click on it", () => {
         // the elephant pushes the dog into the trap and returns; without the hold

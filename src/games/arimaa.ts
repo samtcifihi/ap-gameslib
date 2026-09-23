@@ -1113,12 +1113,17 @@ export class ArimaaGame extends GameBase {
         return 4;
     }
 
-    // Steps the player's arrows must take at the very least. Every piece needs
-    // a step per square, and those add up; an enemy piece needs two per square,
-    // but its partner's steps may be an arrowed own piece's own steps (a pusher
-    // that follows it), so that price stands alone rather than being added.
+    // Steps the player's arrows must take at the very least. A piece ending on
+    // a square needs a step for each square between the one it was seen on and
+    // that one; pieces ending on distinct squares are distinct, so their steps
+    // add up, but arrows onto one square may all describe a single piece that
+    // visited every one of their squares (`Ed4g4 Ee4g4` is three steps by one
+    // elephant), so a destination costs only its longest arrow. An enemy piece
+    // needs two steps per square, but its partner's steps may be an arrowed
+    // own piece's own steps (a pusher that follows it), so that price stands
+    // alone rather than being added.
     private static arrowBudget(tokens: Token[], player: playerid): number {
-        let sum = 0;
+        const longest = new Map<string, number>();
         let enemy = 0;
         for (const t of tokens) {
             if (t.prop.kind !== "dest" || t.spec.square === undefined || t.spec.owner === undefined) {
@@ -1127,10 +1132,14 @@ export class ArimaaGame extends GameBase {
             const [fx, fy] = ArimaaGame.algebraic2coords(t.spec.square);
             const [tx, ty] = ArimaaGame.algebraic2coords(t.prop.square);
             const dist = Math.abs(fx - tx) + Math.abs(fy - ty);
-            sum += dist;
+            longest.set(t.prop.square, Math.max(longest.get(t.prop.square) ?? 0, dist));
             if (t.spec.owner !== player) {
                 enemy = Math.max(enemy, 2 * dist);
             }
+        }
+        let sum = 0;
+        for (const dist of longest.values()) {
+            sum += dist;
         }
         return Math.max(sum, enemy);
     }
@@ -1447,6 +1456,12 @@ export class ArimaaGame extends GameBase {
             return undefined;
         }
         this.applyTurn(r.turn);
+        if (partial) {
+            // the turn's own results draw its arrows and captures, but a held
+            // piece leaves no trace in them, and the player needs to see that
+            // the hold is there (a click on it lifts it)
+            this._holds = parsed.tokens.filter(isHold).map(t => t.spec.square!);
+        }
         return r.turn;
     }
 
@@ -1723,7 +1738,7 @@ export class ArimaaGame extends GameBase {
         // holds are drawn as the piece entering its own square, capture marks as it leaving
         if (this._holds !== undefined) {
             for (const sq of this._holds) {
-                if (!entered.has(sq)) {
+                if (!entered.has(sq) && !exited.has(sq)) {
                     rep.annotations.push({type: "enter", targets: [point(sq)]});
                     entered.add(sq);
                 }
