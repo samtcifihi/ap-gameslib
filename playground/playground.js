@@ -1146,9 +1146,6 @@ function isPerPlayerStatusLabel(status) {
 }
 
 function formatSidebarScoreValue(value, playerNames, glyphRenderOptions) {
-    if (Array.isArray(value)) {
-        return value.map(v => formatSidebarStatusValue(v, playerNames, glyphRenderOptions)).join(" ");
-    }
     if (APGames?.isStructuredRenderLabel?.(value)) {
         return APGames.resolveRenderLabel(value, playerNames, playgroundTranslate);
     }
@@ -1409,14 +1406,7 @@ function _renderScoresSection(game, gamename, playerNames, gameFlags, glyphRende
                         playerDiv.appendChild(swatch);
 
                         const scoreTextSpan = document.createElement('span');
-                        const scoreText = formatSidebarScoreValue(playerScore, playerNames, glyphRenderOptions);
-                        if (Array.isArray(playerScore)) {
-                            // A row of status values may hold glyph markup
-                            scoreTextSpan.textContent = `${playerName}: `;
-                            scoreTextSpan.insertAdjacentHTML('beforeend', scoreText);
-                        } else {
-                            scoreTextSpan.textContent = `${playerName}: ${scoreText}`;
-                        }
+                        scoreTextSpan.textContent = `${playerName}: ${formatSidebarScoreValue(playerScore, playerNames, glyphRenderOptions)}`;
                         playerDiv.appendChild(scoreTextSpan);
                         scoresBlockHTML += playerDiv.outerHTML;
                     });
