@@ -290,10 +290,13 @@ class Search {
         this.steps.pop();
     }
 
+    // Net displacement: pieces whose final square, the trap for a captured
+    // one, is not their start square. A round trip does not count, nor does
+    // a capture in place, nor a piece that steps out and dies back home.
     public displaced(): number {
         let n = 0;
         for (const p of this.pieces) {
-            if (p.visited.length > 1 && (p.cur < 0 || p.cur !== p.start)) {
+            if (p.visited.length > 1 && (p.cur < 0 ? p.capturedAt : p.cur) !== p.start) {
                 n++;
             }
         }
