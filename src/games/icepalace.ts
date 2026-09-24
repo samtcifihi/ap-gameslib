@@ -1399,6 +1399,40 @@ export class IcePalaceGame extends GameBaseSequenced {
         });
     }
 
+    /**
+     * The Pool for the perspective display: a stash column per colour, bottom first, with
+     * each pyramid's base a fixed distance above the one below and an extra step between
+     * sizes, so the columns overlap evenly as in the top-down display.
+     *
+     * The stash raises each index by 0.15 of a cell, and a 3D glyph's base already sits one
+     * such step higher for each size down (large 0.80, medium 0.65, small 0.50), so heights
+     * are whole steps. `"-"` placeholders spend the steps.
+     */
+    private static perspectivePool(sorted: PieceId[]): string[][] {
+        const between = 2;
+        const betweenSizes = 2;
+        return IcePalaceGame.nests(sorted).map(nest => {
+            const column: string[] = [];
+            let lastBase: number | undefined;
+            let lastSize: number | undefined;
+            for (const piece of nest) {
+                // Where this size's base sits unraised, in steps below a small's.
+                const own = sizeOf(piece) - 1;
+                const target = lastBase === undefined
+                    ? own
+                    : lastBase - between - (sizeOf(piece) !== lastSize ? betweenSizes : 0);
+                const index = own - target;
+                while (column.length < index) {
+                    column.push("-");
+                }
+                column.push(IcePalaceGame.legendKey(piece, "pool"));
+                lastBase = target;
+                lastSize = sizeOf(piece);
+            }
+            return column;
+        });
+    }
+
     /** The offered pyramids gathered into nests, one per colour, largest at the bottom. */
     private static nests(offered: PieceId[]): PieceId[][] {
         const byColour = new Map<string, PieceId[]>();
@@ -1578,18 +1612,17 @@ export class IcePalaceGame extends GameBaseSequenced {
             }));
             areas.push({ type: "localStash", label, stash });
         } else if (offered.length > 0) {
-            for (const piece of offered) {
-                // The pyramid sits on an invisible square, so a click anywhere in its cell
-                // picks it rather than only a click on the thin outline itself. It has its
-                // own key: on the board the square would reach into neighbouring cells.
-                legend[IcePalaceGame.legendKey(piece, "hand")] = [BLANK, this.glyphFor(piece)];
-            }
-            areas.push({
-                type: "pieces",
-                pieces: offered.map(piece => IcePalaceGame.legendKey(piece, "hand")) as [string, ...string[]],
-                label,
-                ownerMark: this.currplayer,
+            // A stash rather than a pieces area: the renderer puts both directly under the
+            // board, so the hand must be a stash too once the Pool is one. One pyramid per
+            // stack, each on an invisible square, so a click anywhere in its cell picks it
+            // rather than only a click on the thin outline itself. The hand has its own keys:
+            // on the board the square would reach into neighbouring cells.
+            const stash = [...offered].sort(pieceSort).map(piece => {
+                const key = IcePalaceGame.legendKey(piece, "hand");
+                legend[key] = [BLANK, this.glyphFor(piece)];
+                return [key];
             });
+            areas.push({ type: "localStash", label, stash });
         }
 
         // Below that, everything still in the Pool, for reference. Draws are made at random
@@ -1610,21 +1643,7 @@ export class IcePalaceGame extends GameBaseSequenced {
             if (expanding) {
                 areas.push({ type: "localStash", label: poolLabel, stash: columns });
             } else {
-                // A pieces area only wraps rows, so lay the columns out row by row, top row
-                // first, with the columns aligned at the bottom and padded with spacers.
-                const height = Math.max(...columns.map(c => c.length));
-                const grid: string[] = [];
-                for (let row = height - 1; row >= 0; row--) {
-                    for (const column of columns) {
-                        grid.push(column[row] ?? GAP_KEY);
-                    }
-                }
-                areas.push({
-                    type: "pieces",
-                    pieces: grid as [string, ...string[]],
-                    label: poolLabel,
-                    width: columns.length,
-                });
+                areas.push({ type: "localStash", label: poolLabel, stash: IcePalaceGame.perspectivePool(sorted) });
             }
         }
 

@@ -440,7 +440,8 @@ describe("Ice Palace: board interaction", () => {
     it("offers the current hand while a hand is played, and the stock while building", () => {
         const g = rig(new IcePalaceGame(3), [["1L", "1M"], ["2L", "2S"], ["3L"]], fatPool());
         g.move("1M@0,0");
-        expect((g.render() as Rep).areas?.[0].pieces).to.deep.equal(["h2L", "h2S"]);
+        // The hand is a stash of one-pyramid stacks, labelled with the player's name.
+        expect((g.render() as Rep).areas?.[0].stash?.flat()).to.deep.equal(["h2S", "h2L"]);
         g.move("pass");
         g.move("pass");
         g.move("1L@0,0");
@@ -448,7 +449,7 @@ describe("Ice Palace: board interaction", () => {
             g.move("pass");
         }
         expect(g.phase).to.equal("build");
-        expect((g.render() as Rep).areas?.[0].pieces.sort()).to.deep.equal(["h1L", "h1M"]);
+        expect((g.render() as Rep).areas?.[0].stash?.flat().sort()).to.deep.equal(["h1L", "h1M"]);
     });
 
     it("stacks pyramids the way Volcano does, one index above the last", () => {
@@ -501,17 +502,14 @@ describe("Ice Palace: board interaction", () => {
 
     it("shows the Pool below the hand for reference, and ignores clicks on it", () => {
         const g = rig(new IcePalaceGame(3), [["1M"], ["2S"], ["3S"]], ["2S", "1L", "WM", "1S"]);
-        const rep = g.render() as Rep & { areas: { type?: string; pieces?: string[]; label?: { textKey?: string } }[] };
+        const rep = g.render() as Rep & { areas: { type?: string; stash?: string[][]; label?: { textKey?: string } }[] };
         expect(rep.areas).to.have.length(2);
-        expect(rep.areas[1].type).to.equal("pieces");
+        expect(rep.areas[0].type).to.equal("localStash");
+        expect(rep.areas[1].type).to.equal("localStash");
         expect(rep.areas[1].label?.textKey).to.equal("apgames:icepalace.POOL");
-        // One column per colour, bottom-aligned, largest at the bottom, a gap between sizes.
-        expect(rep.areas[1].pieces).to.deep.equal([
-            "b1S", "gap", "gap",
-            "gap", "gap", "gap",
-            "b1L", "b2S", "bWM",
-        ]);
-        expect((rep.areas[1] as { width?: number }).width).to.equal(3);
+        // One stash column per colour, largest at the bottom. Placeholders raise each
+        // pyramid a fixed distance above the last, with an extra step between sizes.
+        expect(rep.areas[1].stash).to.deep.equal([["b1L", "-", "b1S"], ["b2S"], ["bWM"]]);
         // A hand pyramid sits on an invisible square that widens its click target.
         const legend = (g.render() as unknown as { legend: Record<string, unknown> }).legend;
         expect(legend.h1M).to.be.an("array").with.length(2);
