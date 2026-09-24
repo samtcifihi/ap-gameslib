@@ -558,8 +558,6 @@ const DOT_KEY = "dot";
  */
 const BLACK: Colourfuncs = { func: "custom", default: "#000000", palette: 8 };
 const WHITE: Colourfuncs = { func: "custom", default: "#ffffff", palette: 9 };
-/** How large the top-down Pool's diamonds are drawn, which sets how much they overlap. */
-const POOL_TOP_SCALE = 0.8;
 /** Empty steps added above each perspective stash column, to clear the area's label. */
 const STASH_HEADROOM = 2;
 /** Legend key of an invisible spacer, used to lay the Pool out in columns with gaps. */
@@ -1651,13 +1649,10 @@ export class IcePalaceGame extends GameBaseSequenced {
                 const key = IcePalaceGame.legendKey(piece, "pool");
                 if (!(key in legend)) {
                     // Seen from above in the top-down display, turned to diamonds and opaque.
-                    // The renderer's step between stacked pieces is fixed, so drawing them a
-                    // little smaller is what opens up the spacing.
                     const glyph = this.glyphFor(piece, expanding ? "top" : "3D");
                     if (expanding) {
                         delete glyph.opacity;
                         glyph.rotate = 45;
-                        glyph.scale = POOL_TOP_SCALE;
                     }
                     legend[key] = glyph;
                 }
@@ -1666,7 +1661,10 @@ export class IcePalaceGame extends GameBaseSequenced {
             // One column per colour, largest at the bottom, with a space between sizes.
             const columns = IcePalaceGame.poolColumns(sorted);
             if (expanding) {
-                areas.push({ type: "localStash", label: poolLabel, stash: columns });
+                // A spacer column between colours: the renderer sets stash columns a fixed
+                // slot apart, so an empty one is the only way to widen the gap.
+                const spaced = columns.flatMap((column, i) => i === 0 ? [column] : [[GAP_KEY], column]);
+                areas.push({ type: "localStash", label: poolLabel, stash: spaced });
             } else {
                 areas.push({ type: "localStash", label: poolLabel, stash: IcePalaceGame.perspectivePool(sorted) });
             }

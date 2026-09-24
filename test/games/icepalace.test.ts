@@ -708,9 +708,10 @@ describe("Ice Palace: expanding display", () => {
         const rep = expanding(g);
         const pool = rep.areas![1];
         expect(pool.type).to.equal("localStash");
-        expect(pool.stash).to.deep.equal([["b1L", "b1L", "gap", "b1S"], ["b2S"], ["bWM"]]);
-        // Pool pyramids are seen from above, as opaque diamonds drawn a little small.
-        expect(rep.legend!.b1L).to.deep.equal({ name: "pyramid-up-large-upscaled", colour: 1, rotate: 45, scale: 0.8 });
+        // A spacer column sits between each pair of colours.
+        expect(pool.stash).to.deep.equal([["b1L", "b1L", "gap", "b1S"], ["gap"], ["b2S"], ["gap"], ["bWM"]]);
+        // Pool pyramids are seen from above, as opaque diamonds.
+        expect(rep.legend!.b1L).to.deep.equal({ name: "pyramid-up-large-upscaled", colour: 1, rotate: 45 });
     });
 
     it("still dots the legal cells once a pyramid is picked", () => {
