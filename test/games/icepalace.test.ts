@@ -357,13 +357,75 @@ describe("Ice Palace: board interaction", () => {
         expect(click.move).to.equal("1S@1,0");
     });
 
-    it("refuses clicks on the Palace while a hand is being played", () => {
+    it("never places on the Palace during a hand; a click there drops the pick", () => {
         const g = rig(new IcePalaceGame(3), [["1M"], ["1S"], ["3S"]], fatPool());
         g.palace = new Map([["0,0", ["2L"]]]);
         g.move("1M@0,0");
         const [row, col] = drawnAt(g.render() as Rep, "2L");
         const click = g.handleClick("1S", row, col, "0");
-        expect(click.valid).to.be.false;
+        expect(click.move).to.equal("");
+        // With nothing picked, the same click is simply refused.
+        expect(g.handleClick("", row, col, "0").valid).to.be.false;
+    });
+
+    it("switches the pick when another pyramid is clicked", () => {
+        const g = rig(new IcePalaceGame(3), [["1M"], ["1S", "2L"], ["3S"]], fatPool());
+        g.move("1M@0,0");
+        const click = g.handleClick("1S", -1, -1, "p2L");
+        expect(click.valid).to.be.true;
+        expect(click.move).to.equal("2L");
+        // During a build, only the unplaced pick is switched.
+        const b = rig(new IcePalaceGame(3), [["1M", "1S"], ["2S"], ["3S"]], fatPool());
+        b.move("1M@0,0");
+        b.move("pass");
+        b.move("pass");
+        b.move("1S@1,0");
+        b.move("pass");
+        b.move("pass");
+        b.move("pass");
+        expect(b.phase).to.equal("build");
+        expect(b.handleClick("1M@0,0;1M", -1, -1, "p1S").move).to.equal("1M@0,0;1S");
+    });
+
+    it("maps build clicks against the Palace as drawn, pending placements included", () => {
+        const b = rig(new IcePalaceGame(3), [["1M", "1S"], ["2S"], ["3S"]], fatPool());
+        b.palace = new Map([["0,0", ["1L"]], ["1,0", ["1L"]], ["2,0", ["1L"]]]);
+        b.move("1M@0,0");
+        b.move("pass");
+        b.move("pass");
+        b.move("1S@1,0");
+        b.move("pass");
+        b.move("pass");
+        b.move("pass");
+        expect(b.phase).to.equal("build");
+        // Founding at 3,0 widens the Palace by a column, shifting the board as drawn.
+        const partial = b.clone();
+        partial.move("1M@3,0;1S", { partial: true });
+        const rep = partial.render() as Rep;
+        const [row, col] = drawnAt(rep, "1M");
+        const click = b.handleClick("1M@3,0;1S", row, col, "");
+        expect(click.move).to.equal("1M@3,0;1S@3,0");
+    });
+
+    it("drops the pick when clicking a cell it cannot go to, keeping earlier placements", () => {
+        const g = rig(new IcePalaceGame(3), [["1M"], ["2S"], ["3S"]], fatPool());
+        g.move("1M@0,0");
+        // A player-2 small cannot found beside a player-1 medium; the Yard origin is row 3, col 3.
+        const click = g.handleClick("2S", 3, 4, "");
+        expect(click.valid).to.be.true;
+        expect(click.move).to.equal("");
+        const b = rig(new IcePalaceGame(3), [["1M", "1S"], ["2S"], ["3S"]], fatPool());
+        b.move("1M@0,0");
+        b.move("pass");
+        b.move("pass");
+        b.move("1S@1,0");
+        b.move("pass");
+        b.move("pass");
+        b.move("pass");
+        // A far corner of the Palace touches nothing the small could found beside.
+        const cancel = b.handleClick("1M@0,0;1S", 0, 0, "");
+        expect(cancel.move).to.equal("1M@0,0");
+        expect(cancel.valid).to.be.true;
     });
 
     it("selects a pyramid when its entry in the pieces area is clicked", () => {
@@ -378,7 +440,7 @@ describe("Ice Palace: board interaction", () => {
     it("offers the current hand while a hand is played, and the stock while building", () => {
         const g = rig(new IcePalaceGame(3), [["1L", "1M"], ["2L", "2S"], ["3L"]], fatPool());
         g.move("1M@0,0");
-        expect((g.render() as Rep).areas?.[0].pieces).to.deep.equal(["p2L", "p2S"]);
+        expect((g.render() as Rep).areas?.[0].pieces).to.deep.equal(["h2L", "h2S"]);
         g.move("pass");
         g.move("pass");
         g.move("1L@0,0");
@@ -386,7 +448,7 @@ describe("Ice Palace: board interaction", () => {
             g.move("pass");
         }
         expect(g.phase).to.equal("build");
-        expect((g.render() as Rep).areas?.[0].pieces.sort()).to.deep.equal(["p1L", "p1M"]);
+        expect((g.render() as Rep).areas?.[0].pieces.sort()).to.deep.equal(["h1L", "h1M"]);
     });
 
     it("stacks pyramids the way Volcano does, one index above the last", () => {
@@ -443,7 +505,19 @@ describe("Ice Palace: board interaction", () => {
         expect(rep.areas).to.have.length(2);
         expect(rep.areas[1].type).to.equal("pieces");
         expect(rep.areas[1].label?.textKey).to.equal("apgames:icepalace.POOL");
-        expect(rep.areas[1].pieces).to.deep.equal(["b1S", "b1L", "b2S", "bWM"]);
+        // One column per colour, bottom-aligned, largest at the bottom, a gap between sizes.
+        expect(rep.areas[1].pieces).to.deep.equal([
+            "b1S", "gap", "gap",
+            "gap", "gap", "gap",
+            "b1L", "b2S", "bWM",
+        ]);
+        expect((rep.areas[1] as { width?: number }).width).to.equal(3);
+        // A hand pyramid sits on an invisible square that widens its click target.
+        const legend = (g.render() as unknown as { legend: Record<string, unknown> }).legend;
+        expect(legend.h1M).to.be.an("array").with.length(2);
+        expect((legend.h1M as { opacity?: number }[])[0].opacity).to.equal(0);
+        // Clicking a spacer is like clicking the Pool.
+        expect(g.handleClick("", -1, -1, "gap").valid).to.be.false;
         // A click on the Pool changes nothing, whether or not a pyramid is picked.
         let click = g.handleClick("", -1, -1, "b1S");
         expect(click.valid).to.be.false;
@@ -485,7 +559,7 @@ describe("Ice Palace: board interaction", () => {
         expect(statuses[0].value[0]).to.deep.equal({ glyph: "piece", colour: 7 });
         expect(statuses[1].value.length).to.equal(1);
         // The front reads a status glyph's name from `glyph`, as Catapult's dagger does.
-        expect(statuses[1].value[0]).to.deep.equal({ glyph: "pyramid-up-small-3D", colour: 2 });
+        expect(statuses[1].value[0]).to.deep.equal({ glyph: "pyramid-flattened-small", colour: 2 });
         expect(statuses[2].value.length).to.equal(3);
         g.lead = 2;
         expect(g.sidebarStatuses()[0].value.length).to.equal(2);
@@ -568,10 +642,14 @@ describe("Ice Palace: expanding display", () => {
         // The hand, then the Pool.
         expect(rep.areas).to.have.length(2);
         expect(rep.areas![0].type).to.equal("localStash");
-        // Player 2's hand: a nest per colour, largest at the bottom, in colour order.
-        expect(rep.areas![0].stash).to.deep.equal([["s1L"], ["s2L", "s2S", "s2S"], ["sWS"]]);
+        // Player 2's hand, one pyramid per stack, left to right.
+        expect(rep.areas![0].stash).to.deep.equal([["s1L"], ["s2S"], ["s2S"], ["s2L"], ["sWS"]]);
         expect(rep.legend!.s2L).to.deep.equal({ name: "pyramid-flattened-large", colour: 2 });
-        expect(rep.legend!.sWS).to.deep.equal({ name: "pyramid-flattened-small", colour: "#ffffff" });
+        // White is white by default, or palette slot 9 for a viewer with a saved palette.
+        expect(rep.legend!.sWS).to.deep.equal({
+            name: "pyramid-flattened-small",
+            colour: { func: "custom", default: "#ffffff", palette: 9 },
+        });
         // A click on a nested pyramid picks it, like a click in the pieces area.
         expect(g.handleClick("", -1, -1, "s2S").move).to.equal("2S");
         // During the build the stock is offered the same way.
@@ -581,7 +659,35 @@ describe("Ice Palace: expanding display", () => {
         g.buildMin = 0;
         rep = expanding(g);
         expect(rep.areas![0].type).to.equal("localStash");
-        expect(rep.areas![0].stash).to.deep.equal([["s1S"], ["s3L", "s3M"]]);
+        expect(rep.areas![0].stash).to.deep.equal([["s1S"], ["s3M"], ["s3L"]]);
+    });
+
+    it("blanks out cells nothing can reach, leaving stacks and their orthogonal neighbours", () => {
+        const g = rig(new IcePalaceGame(3), [["1M"], ["2S"], ["3S"]], fatPool());
+        // An empty Yard keeps only its centre, where the lead goes.
+        let board = expanding(g).board as unknown as { width: number; height: number; blocked: { row: number; col: number }[] };
+        expect(board.blocked).to.have.length(board.width * board.height - 1);
+        expect(board.blocked).to.not.deep.include({ row: 3, col: 3 });
+        g.move("1M@0,0");
+        board = expanding(g).board as unknown as typeof board;
+        const open = [];
+        for (let row = 0; row < board.height; row++) {
+            for (let col = 0; col < board.width; col++) {
+                if (!board.blocked.some(b => b.row === row && b.col === col)) {
+                    open.push(`${row},${col}`);
+                }
+            }
+        }
+        expect(open.sort()).to.deep.equal(["2,3", "3,2", "3,3", "3,4", "4,3"]);
+        // The perspective display draws its own grid and ignores blocking, so it sends none.
+        expect((g.render() as unknown as { board: { blocked?: unknown } }).board.blocked).to.be.undefined;
+    });
+
+    it("documents every palette slot it uses, Black and White included", () => {
+        const slots = (IcePalaceGame.gameinfo.customizations as { num: number; default: string | number }[]);
+        expect(slots.map(c => c.num)).to.deep.equal([1, 2, 3, 4, 5, 6, 7, 8, 9]);
+        expect(slots.find(c => c.num === 8)!.default).to.equal("#000000");
+        expect(slots.find(c => c.num === 9)!.default).to.equal("#ffffff");
     });
 
     it("accepts the display as a list of active uids, as the front now sends it", () => {
@@ -595,7 +701,7 @@ describe("Ice Palace: expanding display", () => {
         const rep = expanding(g);
         const pool = rep.areas![1];
         expect(pool.type).to.equal("localStash");
-        expect(pool.stash).to.deep.equal([["b1L", "b1L", "b1S"], ["b2S"], ["bWM"]]);
+        expect(pool.stash).to.deep.equal([["b1L", "b1L", "gap", "b1S"], ["b2S"], ["bWM"]]);
         expect(rep.legend!.b1L).to.deep.equal({ name: "pyramid-flattened-large", colour: 1 });
     });
 
