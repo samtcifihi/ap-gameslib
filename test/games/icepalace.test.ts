@@ -565,14 +565,15 @@ describe("Ice Palace: board interaction", () => {
         expect(statuses.length).to.be.greaterThan(3);
         // Seat 1 leads the first hand, so its row starts with the button.
         expect(statuses[0].value.length).to.equal(3);
-        expect(statuses[0].value[0]).to.deep.equal({ glyph: "piece", colour: 7 });
+        // The button is a meeple in the leader's colour.
+        expect(statuses[0].value[0]).to.deep.equal({ glyph: "meeple", colour: 1 });
         expect(statuses[1].value.length).to.equal(1);
         // The front reads a status glyph's name from `glyph`, as Catapult's dagger does.
         expect(statuses[1].value[0]).to.deep.equal({ glyph: "pyramid-flattened-small", colour: 2 });
         expect(statuses[2].value.length).to.equal(3);
         g.lead = 2;
         expect(g.sidebarStatuses()[0].value.length).to.equal(2);
-        expect(g.sidebarStatuses()[1].value[0]).to.deep.equal({ glyph: "piece", colour: 7 });
+        expect(g.sidebarStatuses()[1].value[0]).to.deep.equal({ glyph: "meeple", colour: 2 });
     });
 
     it("dots the legal cells once a pyramid is picked, and only then", () => {
@@ -654,10 +655,10 @@ describe("Ice Palace: top-down display", () => {
         // Player 2's hand, one pyramid per stack, left to right.
         expect(rep.areas![0].stash).to.deep.equal([["s1L"], ["s2S"], ["s2S"], ["s2L"], ["sWS"]]);
         expect(rep.legend!.s2L).to.deep.equal({ name: "pyramid-flattened-large", colour: 2 });
-        // White is white by default, or palette slot 9 for a viewer with a saved palette.
+        // White is white by default, or palette slot 8 for a viewer with a saved palette.
         expect(rep.legend!.sWS).to.deep.equal({
             name: "pyramid-flattened-small",
-            colour: { func: "custom", default: "#ffffff", palette: 9 },
+            colour: { func: "custom", default: "#ffffff", palette: 8 },
         });
         // A click on a nested pyramid picks it, like a click in the pieces area.
         expect(g.handleClick("", -1, -1, "s2S").move).to.equal("2S");
@@ -694,9 +695,9 @@ describe("Ice Palace: top-down display", () => {
 
     it("documents every palette slot it uses, Black and White included", () => {
         const slots = (IcePalaceGame.gameinfo.customizations as { num: number; default: string | number }[]);
-        expect(slots.map(c => c.num)).to.deep.equal([1, 2, 3, 4, 5, 6, 7, 8, 9]);
-        expect(slots.find(c => c.num === 8)!.default).to.equal("#000000");
-        expect(slots.find(c => c.num === 9)!.default).to.equal("#ffffff");
+        expect(slots.map(c => c.num)).to.deep.equal([1, 2, 3, 4, 5, 6, 7, 8]);
+        expect(slots.find(c => c.num === 7)!.default).to.equal("#000000");
+        expect(slots.find(c => c.num === 8)!.default).to.equal("#ffffff");
     });
 
     it("switches to perspective when asked, in either form the front sends", () => {

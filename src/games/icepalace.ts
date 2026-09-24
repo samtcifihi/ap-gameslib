@@ -554,10 +554,10 @@ const STACK_OFFSET = 0.15;
 const DOT_KEY = "dot";
 /**
  * Black and White are black and white unless the viewer has a palette saved for this
- * game, in which case they take palette slots 8 and 9, as documented in `customizations`.
+ * game, in which case they take palette slots 7 and 8, as documented in `customizations`.
  */
-const BLACK: Colourfuncs = { func: "custom", default: "#000000", palette: 8 };
-const WHITE: Colourfuncs = { func: "custom", default: "#ffffff", palette: 9 };
+const BLACK: Colourfuncs = { func: "custom", default: "#000000", palette: 7 };
+const WHITE: Colourfuncs = { func: "custom", default: "#ffffff", palette: 8 };
 /** Empty steps added above each perspective stash column, to clear the area's label. */
 const STASH_HEADROOM = 2;
 /** Legend key of an invisible spacer, used to lay the Pool out in columns with gaps. */
@@ -675,9 +675,8 @@ export class IcePalaceGame extends GameBaseSequenced {
             { num: 4, default: 4, explanation: "Colour of player 4's pyramids", player: 4 },
             { num: 5, default: 5, explanation: "Colour of player 5's pyramids", player: 5 },
             { num: 6, default: 6, explanation: "Colour of player 6's pyramids", player: 6 },
-            { num: 7, default: 7, explanation: "Colour of the button, which marks who leads the hand" },
-            { num: 8, default: "#000000", explanation: "Colour of the Black pyramids" },
-            { num: 9, default: "#ffffff", explanation: "Colour of the White pyramids" },
+            { num: 7, default: "#000000", explanation: "Colour of the Black pyramids" },
+            { num: 8, default: "#ffffff", explanation: "Colour of the White pyramids" },
         ],
         displays: [{ uid: "perspective" }],
     };
@@ -1296,9 +1295,8 @@ export class IcePalaceGame extends GameBaseSequenced {
             const value: StatusValue[] = this.hands[p - 1].map(piece => this.statusGlyph(piece));
             if (p === this.lead) {
                 // The button, as in poker, marks who leads the hand; it moves on after each
-                // build. There is no dedicated glyph, so it is a plain piece in the seventh
-                // colour, which no seat holds, so players can customise it on its own.
-                value.unshift(IcePalaceGame.statusGlyph("piece", 7));
+                // build. It is a meeple in the leading player's own colour.
+                value.unshift(IcePalaceGame.statusGlyph("meeple", p));
             }
             statuses.push({ key: this.seatStatusValue(p), value });
         }
