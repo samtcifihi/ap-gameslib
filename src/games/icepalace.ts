@@ -1,7 +1,7 @@
 import { IAPGameState, IClickResult, IIndividualState, IRenderOpts, IScores, IStatus, IValidationResult, StatusValue, type ChatLogCollectContext, type ChatLogLine } from "./_base.js";
 import { GameBaseSequenced } from "./_turn-sequenced.js";
 import type { APGamesInformation } from "../schemas/gameinfo.js";
-import { APRenderRep, AreaPieces, AreaStackingExpanded, AreaVolcanoStash, Glyph } from "@abstractplay/renderer/build/schemas/schema";
+import { APRenderRep, AreaPieces, AreaStackingExpanded, AreaVolcanoStash, Colourfuncs, Glyph } from "@abstractplay/renderer/build/schemas/schema";
 import type { APMoveResult } from "../schemas/moveresults.js";
 import { reviver, UserFacingError } from "../common/index.js";
 import i18next from "i18next";
@@ -552,6 +552,12 @@ const MIN_REACH = 2;
 const STACK_OFFSET = 0.15;
 /** Legend key of the marker drawn on every legal cell once a pyramid is picked. */
 const DOT_KEY = "dot";
+/**
+ * Black and White are black and white unless the viewer has a palette saved for this
+ * game, in which case they take palette slots 8 and 9, as documented in `customizations`.
+ */
+const BLACK: Colourfuncs = { func: "custom", default: "#000000", palette: 8 };
+const WHITE: Colourfuncs = { func: "custom", default: "#ffffff", palette: 9 };
 /** Legend key of an invisible spacer, used to lay the Pool out in columns with gaps. */
 const GAP_KEY = "gap";
 /** An invisible cell-sized square: a spacer, and a larger click target behind a pyramid. */
@@ -660,6 +666,17 @@ export class IcePalaceGame extends GameBaseSequenced {
             "other>2+players",
         ],
         flags: ["experimental", "scores", "autopass", "stacking-expanding", "custom-rotation"],
+        customizations: [
+            { num: 1, default: 1, explanation: "Colour of player 1's pyramids", player: 1 },
+            { num: 2, default: 2, explanation: "Colour of player 2's pyramids", player: 2 },
+            { num: 3, default: 3, explanation: "Colour of player 3's pyramids", player: 3 },
+            { num: 4, default: 4, explanation: "Colour of player 4's pyramids", player: 4 },
+            { num: 5, default: 5, explanation: "Colour of player 5's pyramids", player: 5 },
+            { num: 6, default: 6, explanation: "Colour of player 6's pyramids", player: 6 },
+            { num: 7, default: 7, explanation: "Colour of the button, which marks who leads the hand" },
+            { num: 8, default: "#000000", explanation: "Colour of the Black pyramids" },
+            { num: 9, default: "#ffffff", explanation: "Colour of the White pyramids" },
+        ],
         displays: [{ uid: "expanding" }],
     };
 
@@ -1315,7 +1332,7 @@ export class IcePalaceGame extends GameBaseSequenced {
      * helper and reads the glyph's name from `glyph`, not `name`, as Catapult and Entropy
      * do; so a status value is not quite a legend glyph.
      */
-    private static statusGlyph(name: string, colour: number | string): StatusValue {
+    private static statusGlyph(name: string, colour: number | string | Colourfuncs): StatusValue {
         const value = { glyph: name, colour };
         return value as StatusValue;
     }
@@ -1323,7 +1340,7 @@ export class IcePalaceGame extends GameBaseSequenced {
     /** A pyramid as it appears in the status panel. */
     private statusGlyph(piece: PieceId): StatusValue {
         const glyph = this.glyphFor(piece, "nest");
-        return IcePalaceGame.statusGlyph(glyph.name!, glyph.colour as number | string);
+        return IcePalaceGame.statusGlyph(glyph.name!, glyph.colour as number | string | Colourfuncs);
     }
 
     /**
@@ -1355,7 +1372,7 @@ export class IcePalaceGame extends GameBaseSequenced {
         const colour = colourOf(piece);
         const glyph: Glyph = {
             name,
-            colour: colour === NULL_COLOUR ? "#000000" : colour === WILD_COLOUR ? "#ffffff" : Number(colour),
+            colour: colour === NULL_COLOUR ? BLACK : colour === WILD_COLOUR ? WHITE : Number(colour),
         };
         if (view === "top") {
             glyph.opacity = TOP_OPACITY;

@@ -645,7 +645,11 @@ describe("Ice Palace: expanding display", () => {
         // Player 2's hand, one pyramid per stack, left to right.
         expect(rep.areas![0].stash).to.deep.equal([["s1L"], ["s2S"], ["s2S"], ["s2L"], ["sWS"]]);
         expect(rep.legend!.s2L).to.deep.equal({ name: "pyramid-flattened-large", colour: 2 });
-        expect(rep.legend!.sWS).to.deep.equal({ name: "pyramid-flattened-small", colour: "#ffffff" });
+        // White is white by default, or palette slot 9 for a viewer with a saved palette.
+        expect(rep.legend!.sWS).to.deep.equal({
+            name: "pyramid-flattened-small",
+            colour: { func: "custom", default: "#ffffff", palette: 9 },
+        });
         // A click on a nested pyramid picks it, like a click in the pieces area.
         expect(g.handleClick("", -1, -1, "s2S").move).to.equal("2S");
         // During the build the stock is offered the same way.
@@ -677,6 +681,13 @@ describe("Ice Palace: expanding display", () => {
         expect(open.sort()).to.deep.equal(["2,3", "3,2", "3,3", "3,4", "4,3"]);
         // The perspective display draws its own grid and ignores blocking, so it sends none.
         expect((g.render() as unknown as { board: { blocked?: unknown } }).board.blocked).to.be.undefined;
+    });
+
+    it("documents every palette slot it uses, Black and White included", () => {
+        const slots = (IcePalaceGame.gameinfo.customizations as { num: number; default: string | number }[]);
+        expect(slots.map(c => c.num)).to.deep.equal([1, 2, 3, 4, 5, 6, 7, 8, 9]);
+        expect(slots.find(c => c.num === 8)!.default).to.equal("#000000");
+        expect(slots.find(c => c.num === 9)!.default).to.equal("#ffffff");
     });
 
     it("accepts the display as a list of active uids, as the front now sends it", () => {
