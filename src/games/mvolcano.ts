@@ -1,4 +1,4 @@
-import { GameBase, IAPGameState, IClickResult, IIndividualState, IRenderOpts, IScores, IStatus, IValidationResult, type ChatLogCollectContext, type ChatLogEntry, type ChatLogLine, type RenderLabel, type StatusValue } from "./_base.js";
+import { GameBase, IAPGameState, IClickResult, IIndividualState, IRenderOpts, IScores, IValidationResult, type ChatLogCollectContext, type ChatLogEntry, type ChatLogLine, type RenderLabel, type StatusValue } from "./_base.js";
 import type { APGamesInformation } from "../schemas/gameinfo.js";
 import { APRenderRep, AreaStackingExpanded, Glyph } from "@abstractplay/renderer/build/schemas/schema";
 import type { APMoveResult } from "../schemas/moveresults.js";
@@ -1007,26 +1007,18 @@ export class MvolcanoGame extends GameBase {
         return rep;
     }
 
-    public sidebarStatuses(): IStatus[] {
-        // Each aid is a title row followed by one row per player, echoing the scores table
-        const statuses: IStatus[] = [];
+    public sidebarScores(): IScores[] {
         // The non-white colours each player has yet to capture (capturing all seven ends
         // the game), drawn in their customisable colours in palette order.
-        statuses.push({ key: this.neutralAreaLabel("apgames:status.mvolcano.UNCAPTUREDCOLOURS"), value: [] });
-        for (const player of [1, 2] as playerid[]) {
+        const missing = ([1, 2] as playerid[]).map(player => {
             const capped = new Set<string>(this.captured[player - 1].map(p => p[0]));
-            const value = allColours.filter(c => !capped.has(c)).map(c => ({ glyph: "piece", colour: allColours.indexOf(c) + 1 }) as StatusValue);
-            statuses.push({ key: this.seatStatusValue(player), value });
-        }
-        statuses.push({ key: this.neutralAreaLabel("apgames:status.mvolcano.PYRAMIDSCAPTURED"), value: [] });
-        for (const player of [1, 2] as playerid[]) {
-            statuses.push({ key: this.seatStatusValue(player), value: [this.captured[player - 1].length.toString()] });
-        }
-        return statuses;
-    }
-
-    public sidebarScores(): IScores[] {
-        return [{ name: this.neutralAreaLabel("apgames:status.SCORES"), scores: [this.getPlayerScore(1), this.getPlayerScore(2)] }]
+            return allColours.filter(c => !capped.has(c)).map(c => ({ glyph: "piece", colour: allColours.indexOf(c) + 1 }) as StatusValue);
+        });
+        return [
+            { name: this.neutralAreaLabel("apgames:status.SCORES"), scores: [this.getPlayerScore(1), this.getPlayerScore(2)] },
+            { name: this.neutralAreaLabel("apgames:status.mvolcano.UNCAPTUREDCOLOURS"), scores: missing, spoiler: true },
+            { name: this.neutralAreaLabel("apgames:status.mvolcano.PYRAMIDSCAPTURED"), scores: [this.captured[0].length, this.captured[1].length], spoiler: true },
+        ]
     }
 
     protected recordExportExclude(): string[] {

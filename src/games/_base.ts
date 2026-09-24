@@ -90,13 +90,15 @@ export interface IStashEntry {
 
 /**
  * Represents a set of scores for the players.
+ * A player's entry may also be a list of status values (text or glyphs, as in `IStatus`),
+ * which the front shows in a row, such as a row of coloured pieces.
  *
  * @export
  * @interface IScores
  */
  export interface IScores {
     name: RenderLabel;
-    scores: (number | string | RenderLabel)[];
+    scores: (number | string | RenderLabel | StatusValue[])[];
     spoiler?: boolean;
 }
 

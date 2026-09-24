@@ -1,5 +1,5 @@
 import { Direction, Grid, rectangle, defineHex, Orientation } from "honeycomb-grid";
-import { GameBase, IAPGameState, IClickResult, IIndividualState, IStatus, IValidationResult, type StatusValue } from "./_base.js";
+import { GameBase, IAPGameState, IClickResult, IIndividualState, IScores, IValidationResult, type StatusValue } from "./_base.js";
 import type { APGamesInformation } from "../schemas/gameinfo.js";
 import { APRenderRep, BoardBasic, RowCol } from "@abstractplay/renderer/build/schemas/schema";
 import type { APMoveResult } from "../schemas/moveresults.js";
@@ -852,25 +852,18 @@ export class TintasGame extends GameBase {
         return rep;
     }
 
-    public sidebarStatuses(): IStatus[] {
-        // Each aid is a title row followed by one row per player, echoing the scores table
-        const statuses: IStatus[] = [];
+    public sidebarScores(): IScores[] {
         // Colours are listed in palette order and drawn as they are on the board.
         const colours = [1, 2, 3, 4, 5, 6, 7] as CellContents[];
         const glyphs = (list: CellContents[]) => list.map(c => ({ glyph: "piece", colour: c }) as StatusValue);
         // A player can still take all seven of a colour only while their opponent has none of it.
-        statuses.push({ key: this.neutralAreaLabel("apgames:status.tintas.MONOCHROME"), value: [] });
-        for (const player of [1, 2] as playerid[]) {
-            const value = glyphs(colours.filter(c => !this.captured[player % 2].includes(c)));
-            statuses.push({ key: this.seatStatusValue(player), value });
-        }
+        const monochrome = ([1, 2] as playerid[]).map(player => glyphs(colours.filter(c => !this.captured[player % 2].includes(c))));
         // Four of a colour's seven discs are a majority of it.
-        statuses.push({ key: this.neutralAreaLabel("apgames:status.tintas.MAJORITIES"), value: [] });
-        for (const player of [1, 2] as playerid[]) {
-            const value = glyphs(colours.filter(c => this.captured[player - 1].filter(n => n === c).length >= 4));
-            statuses.push({ key: this.seatStatusValue(player), value });
-        }
-        return statuses;
+        const majorities = ([1, 2] as playerid[]).map(player => glyphs(colours.filter(c => this.captured[player - 1].filter(n => n === c).length >= 4)));
+        return [
+            { name: this.neutralAreaLabel("apgames:status.tintas.MONOCHROME"), scores: monochrome, spoiler: true },
+            { name: this.neutralAreaLabel("apgames:status.tintas.MAJORITIES"), scores: majorities, spoiler: true },
+        ];
     }
 
     public inCheck(): number[] {
