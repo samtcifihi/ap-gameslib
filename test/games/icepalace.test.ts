@@ -331,7 +331,8 @@ describe("Ice Palace: board interaction", () => {
     const drawnAt = (rep: Rep, piece: string): [number, number] => {
         for (let row = 0; row < rep.pieces.length; row++) {
             for (let col = 0; col < rep.pieces[row].length; col++) {
-                if (rep.pieces[row][col].includes("p" + piece)) {
+                // Yard pyramids use `p` keys; the top-down Palace has `a` keys of its own.
+                if (rep.pieces[row][col].includes("p" + piece) || rep.pieces[row][col].includes("a" + piece)) {
                     return [row, col];
                 }
             }
@@ -640,8 +641,11 @@ describe("Ice Palace: top-down display", () => {
             }
         }
         // The Palace stack is listed bottom first, drawn from above.
-        expect(flat.pieces![3][7 + 1 + 3]).to.deep.equal(["p2L", "p1M"]);
-        expect(flat.legend!.p2L).to.deep.equal({ name: "pyramid-up-large-upscaled", colour: 2, opacity: 0.75 });
+        // The Palace stack is opaque, with keys of its own; the Yard stays translucent.
+        expect(flat.pieces![3][7 + 1 + 3]).to.deep.equal(["a2L", "a1M"]);
+        expect(flat.legend!.a2L).to.deep.equal({ name: "pyramid-up-large-upscaled", colour: 2 });
+        expect(flat.legend!.a1M).to.deep.equal({ name: "pyramid-up-medium-upscaled", colour: 1 });
+        expect(flat.pieces![3][3]).to.deep.equal(["p1M"]);
         expect(flat.legend!.p1M).to.deep.equal({ name: "pyramid-up-medium-upscaled", colour: 1, opacity: 0.75 });
     });
 

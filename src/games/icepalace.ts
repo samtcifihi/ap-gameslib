@@ -1319,11 +1319,12 @@ export class IcePalaceGame extends GameBaseSequenced {
      * Legend keys double as SVG element ids, and an id that starts with a digit is not a
      * valid selector in a real browser, so the pyramid id gets a letter in front. A piece
      * drawn two ways on one board needs two keys, so the letter says where it is drawn:
-     * `p` on the board, `h` in the hand's pieces area, `s` in the stash below it, `c` in the
-     * hovered column, and `b` for the Pool shown below the hand.
+     * `p` on the board, `a` in the top-down Palace (drawn opaque, unlike the Yard), `h` in
+     * the perspective hand, `s` in the top-down hand, `c` in the hovered column, and `b` for
+     * the Pool shown below the hand.
      */
-    private static legendKey(piece: PieceId, where: "board" | "hand" | "stash" | "column" | "pool" = "board"): string {
-        const prefix = { board: "p", hand: "h", stash: "s", column: "c", pool: "b" }[where];
+    private static legendKey(piece: PieceId, where: "board" | "palace" | "hand" | "stash" | "column" | "pool" = "board"): string {
+        const prefix = { board: "p", palace: "a", hand: "h", stash: "s", column: "c", pool: "b" }[where];
         return `${prefix}${piece}`;
     }
 
@@ -1589,16 +1590,23 @@ export class IcePalaceGame extends GameBaseSequenced {
         }
         for (const region of layout.regions) {
             const struct = region.which === "palace" ? this.palace : this.yard;
+            // Seen from above, the Palace is drawn opaque while the Yard stays translucent,
+            // so it gets keys of its own; in perspective every pyramid is opaque anyway.
+            const where = expanding && region.which === "palace" ? "palace" : "board";
             for (const [cell, stack] of struct.entries()) {
                 const [row, col] = IcePalaceGame.drawnAt(layout, region, cell);
                 for (const piece of stack) {
-                    const key = IcePalaceGame.legendKey(piece);
+                    const key = IcePalaceGame.legendKey(piece, where);
                     if (!(key in legend)) {
-                        legend[key] = this.glyphFor(piece, expanding ? "top" : "3D");
+                        const glyph = this.glyphFor(piece, expanding ? "top" : "3D");
+                        if (where === "palace") {
+                            delete glyph.opacity;
+                        }
+                        legend[key] = glyph;
                     }
                 }
                 pieces[row][col] = expanding
-                    ? stack.map(piece => IcePalaceGame.legendKey(piece))
+                    ? stack.map(piece => IcePalaceGame.legendKey(piece, where))
                     : IcePalaceGame.stackColumn(stack);
             }
         }
