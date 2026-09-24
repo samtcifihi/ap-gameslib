@@ -4537,9 +4537,9 @@
             }
         },
         "icepalace": {
-            "expanding": {
-                "description": "Two dimensional board, with stacks expanding when hovered over.",
-                "name": "Expanding"
+            "perspective": {
+                "description": "Three dimensional board, with pyramids stacked in perspective.",
+                "name": "Perspective"
             }
         },
         "intermedium": {

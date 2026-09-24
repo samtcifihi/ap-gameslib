@@ -533,7 +533,7 @@ export type Phase = "hand" | "build";
 /** Empty cells kept around each structure, so there is somewhere to click when founding. */
 const PADDING = 1;
 /** Empty columns separating the Palace from the Yard when both are on the board. */
-const GAP = 2;
+const GAP = 1;
 /**
  * Each structure's region always covers at least the cells within this reach of the origin,
  * where the first pyramid goes. stacking-3D refits its perspective to the board size, so a
@@ -679,7 +679,7 @@ export class IcePalaceGame extends GameBaseSequenced {
             { num: 8, default: "#000000", explanation: "Colour of the Black pyramids" },
             { num: 9, default: "#ffffff", explanation: "Colour of the White pyramids" },
         ],
-        displays: [{ uid: "expanding" }],
+        displays: [{ uid: "perspective" }],
     };
 
     public numplayers = 3;
@@ -1570,15 +1570,15 @@ export class IcePalaceGame extends GameBaseSequenced {
      * That area is where the current player picks a pyramid from; every hand is also listed
      * in the status panel.
      *
-     * The default display is the perspective one, with a pieces area below the board. The
-     * "expanding" display looks straight down instead, with each stack's pyramids drawn
-     * translucently over one another and hovering a cell laying its stack out beside the
-     * board (see `renderColumn`). That renderer draws no pieces area, so there the offered
-     * pyramids are a local stash of nests, one per colour. Either way, whatever is still in
-     * the Pool is shown below that, for reference only.
+     * The default display looks straight down, with each stack's pyramids drawn
+     * translucently over one another, and hovering a cell lays its stack out beside the
+     * board (see `renderColumn`). The "perspective" display draws the pyramids in 3D
+     * instead. Both show the offered pyramids, then whatever is still in the Pool, as
+     * stashes below the board; the Pool is for reference only.
      */
     public render(opts?: IRenderOpts): APRenderRep {
-        const expanding = this.hasDisplay(opts, "expanding");
+        // The top-down view is the default; the perspective view is the alternate display.
+        const expanding = !this.hasDisplay(opts, "perspective");
         const layout = this.layout();
         const legend: { [k: string]: Glyph | [Glyph, ...Glyph[]] } = {};
         const pieces: string[][][] = [];
