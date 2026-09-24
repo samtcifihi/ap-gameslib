@@ -693,8 +693,8 @@ describe("Ice Palace: top-down display", () => {
             }
         }
         expect(open.sort()).to.deep.equal(["2,3", "3,2", "3,3", "3,4", "4,3"]);
-        // The perspective display draws its own grid and ignores blocking, so it sends none.
-        expect((g.render({ altDisplays: ["perspective"] }) as unknown as { board: { blocked?: unknown } }).board.blocked).to.be.undefined;
+        // The perspective display blocks the same cells.
+        expect((g.render({ altDisplays: ["perspective"] }) as unknown as { board: { blocked?: unknown } }).board.blocked).to.deep.equal(board.blocked);
     });
 
     it("documents every palette slot it uses, Black and White included", () => {

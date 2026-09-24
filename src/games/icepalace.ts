@@ -1676,7 +1676,7 @@ export class IcePalaceGame extends GameBaseSequenced {
             }
         }
 
-        const blocked = expanding ? IcePalaceGame.unreachable(layout, this.palace, this.yard) : [];
+        const blocked = IcePalaceGame.unreachable(layout, this.palace, this.yard);
         const rep: APRenderRep = {
             renderer: expanding ? "stacking-expanding" : "stacking-3D",
             options: ["hide-labels"],
@@ -1740,11 +1740,9 @@ export class IcePalaceGame extends GameBaseSequenced {
     }
 
     /**
-     * The cells nothing can ever go into right now, for the top-down display to leave
-     * blank: the gap between the structures, and every empty cell with no pyramid beside
-     * it orthogonally. An empty structure keeps only its centre, where the lead goes. The
-     * perspective renderer draws its own grid and ignores blocked cells, so only the
-     * top-down display uses this.
+     * The cells nothing can ever go into right now, for both displays to leave blank:
+     * the gap between the structures, and every empty cell with no pyramid beside it
+     * orthogonally. An empty structure keeps only its centre, where the lead goes.
      */
     private static unreachable(layout: ILayout, palace: Structure, yard: Structure): { row: number; col: number }[] {
         const open = new Set<string>();
