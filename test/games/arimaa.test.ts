@@ -257,6 +257,14 @@ describe("Arimaa", () => {
             { glyph: "piece", colour: g.getPlayerColour(2) },
             Math.abs(g.harlog()).toFixed(2),
         ]);
+
+        // infinite values keep the leader's glyph; NaN has no leader
+        g.harlog = () => Infinity;
+        expect(g.sidebarStatuses()[0].value).to.deep.equal([{ glyph: "piece", colour: g.getPlayerColour(1) }, "Infinity"]);
+        g.harlog = () => -Infinity;
+        expect(g.sidebarStatuses()[0].value).to.deep.equal([{ glyph: "piece", colour: g.getPlayerColour(2) }, "Infinity"]);
+        g.harlog = () => NaN;
+        expect(g.sidebarStatuses()[0].value).to.deep.equal(["NaN"]);
     });
 });
 
