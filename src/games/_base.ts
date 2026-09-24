@@ -97,10 +97,11 @@ export interface IStashEntry {
  * @interface IScores
  */
  export interface IScores {
-    // The title is text only. To allow glyphs in it (say, a token icon above plain counts),
-    // widen this to `RenderLabel | StatusValue[]` as `scores` is, and have the front resolve
-    // it in `resolveSidebarScores` and draw it in `GameStatus` (game and Lab) as it does a
-    // list entry. The front must ship that before any game sends one, or the panel breaks.
+    // `name`, the section's title, is text only. To allow glyphs in `name` (say, a token icon
+    // above plain counts), widen its type to `RenderLabel | StatusValue[]` as `scores` is, and
+    // have the front resolve it in `resolveSidebarScores` and draw it in `GameStatus` (game
+    // and Lab) as it does a list entry. The front must ship that before any game sends one,
+    // or the panel breaks.
     name: RenderLabel;
     scores: (number | string | RenderLabel | StatusValue[])[];
     spoiler?: boolean;
