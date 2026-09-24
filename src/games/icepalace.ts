@@ -1,7 +1,7 @@
 import { IAPGameState, IClickResult, IIndividualState, IRenderOpts, IScores, IStatus, IValidationResult, StatusValue, type ChatLogCollectContext, type ChatLogLine } from "./_base.js";
 import { GameBaseSequenced } from "./_turn-sequenced.js";
 import type { APGamesInformation } from "../schemas/gameinfo.js";
-import { APRenderRep, AreaStackingExpanded, AreaVolcanoStash, Colourfuncs, Glyph } from "@abstractplay/renderer/build/schemas/schema";
+import { APRenderRep, AreaPieces, AreaStackingExpanded, AreaVolcanoStash, Colourfuncs, Glyph } from "@abstractplay/renderer/build/schemas/schema";
 import type { APMoveResult } from "../schemas/moveresults.js";
 import { reviver, UserFacingError } from "../common/index.js";
 import i18next from "i18next";
@@ -536,13 +536,20 @@ const PADDING = 1;
 const GAP = 2;
 /**
  * Each structure's region always covers at least the cells within this reach of the origin,
- * where the first pyramid goes. A board that changed shape after every placement would
- * lurch each turn; this lets a structure
+ * where the first pyramid goes. stacking-3D refits its perspective to the board size, so a
+ * board that changed shape after every placement would lurch each turn; this lets a structure
  * grow in any direction for a while before the board has to change, and beyond that the
  * board grows only in the direction the structure did. A reach of 2 is a 5-cell span, or
  * 7 with padding. Set to 0 for a board that hugs the structures exactly.
  */
 const MIN_REACH = 2;
+/**
+ * How far each array index rises above the last, as a fraction of the cell. It must stay at
+ * the renderer's default, because `stackColumn` relies on one index being exactly one glyph
+ * step: the `-3D` pyramids are drawn with a small's base at the cell centre, a medium's one
+ * step lower and a large's two lower.
+ */
+const STACK_OFFSET = 0.15;
 /** Legend key of the marker drawn on every legal cell once a pyramid is picked. */
 const DOT_KEY = "dot";
 /**
@@ -551,14 +558,16 @@ const DOT_KEY = "dot";
  */
 const BLACK: Colourfuncs = { func: "custom", default: "#000000", palette: 8 };
 const WHITE: Colourfuncs = { func: "custom", default: "#ffffff", palette: 9 };
+/** Empty steps added above each perspective stash column, to clear the area's label. */
+const STASH_HEADROOM = 2;
 /** Legend key of an invisible spacer, used to lay the Pool out in columns with gaps. */
 const GAP_KEY = "gap";
-/** An invisible cell-sized square, used as a spacer in the Pool. */
+/** An invisible cell-sized square: a spacer, and a larger click target behind a pyramid. */
 const BLANK: Glyph = { name: "piece-square-borderless", colour: "_context_background", opacity: 0 };
 /** Seen from above, a stack's pyramids overlap; this lets the lower ones show through. */
 const TOP_OPACITY = 0.75;
-/** How a pyramid is drawn: from above, from the side, or nested in a stash. */
-type PyramidView = "top" | "side" | "nest";
+/** How a pyramid is drawn: in perspective, from above, from the side, or nested in a stash. */
+type PyramidView = "3D" | "top" | "side" | "nest";
 
 /** Where one structure sits on the shared board. */
 interface IRegion {
@@ -670,6 +679,7 @@ export class IcePalaceGame extends GameBaseSequenced {
             { num: 8, default: "#000000", explanation: "Colour of the Black pyramids" },
             { num: 9, default: "#ffffff", explanation: "Colour of the White pyramids" },
         ],
+        displays: [{ uid: "expanding" }],
     };
 
     public numplayers = 3;
@@ -1311,11 +1321,11 @@ export class IcePalaceGame extends GameBaseSequenced {
      * Legend keys double as SVG element ids, and an id that starts with a digit is not a
      * valid selector in a real browser, so the pyramid id gets a letter in front. A piece
      * drawn two ways on one board needs two keys, so the letter says where it is drawn:
-     * `p` on the board, `s` in the hand or stock below it, `c` in the hovered column, and
-     * `b` for the Pool shown below the hand.
+     * `p` on the board, `h` in the hand's pieces area, `s` in the stash below it, `c` in the
+     * hovered column, and `b` for the Pool shown below the hand.
      */
-    private static legendKey(piece: PieceId, where: "board" | "stash" | "column" | "pool" = "board"): string {
-        const prefix = { board: "p", stash: "s", column: "c", pool: "b" }[where];
+    private static legendKey(piece: PieceId, where: "board" | "hand" | "stash" | "column" | "pool" = "board"): string {
+        const prefix = { board: "p", hand: "h", stash: "s", column: "c", pool: "b" }[where];
         return `${prefix}${piece}`;
     }
 
@@ -1335,10 +1345,30 @@ export class IcePalaceGame extends GameBaseSequenced {
         return IcePalaceGame.statusGlyph(glyph.name!, glyph.colour as number | string | Colourfuncs);
     }
 
-    private glyphFor(piece: PieceId, view: PyramidView = "top"): Glyph {
+    /**
+     * Lays a stack out the way Volcano does: each pyramid sits one index above the last, and
+     * "-" placeholders, which the renderer skips but still counts, are spent only to stop a
+     * piece's base sinking below the ground. A small's base is on the ground at index 0, a
+     * medium's at index 1 and a large's at index 2, so a lone large is `["-", "-", large]`
+     * and a tower of large, medium, small is `["-", "-", large, medium, small]`.
+     */
+    private static stackColumn(stack: PieceId[]): string[] {
+        const column: string[] = [];
+        for (const piece of stack) {
+            const ground = sizeOf(piece) - 1;
+            while (column.length < ground) {
+                column.push("-");
+            }
+            column.push(IcePalaceGame.legendKey(piece));
+        }
+        return column;
+    }
+
+    private glyphFor(piece: PieceId, view: PyramidView = "3D"): Glyph {
         const size = SIZE_NAMES[sizeOf(piece) - 1];
         const name =
-            view === "top" ? `pyramid-up-${size}-upscaled`
+            view === "3D" ? `pyramid-up-${size}-3D`
+            : view === "top" ? `pyramid-up-${size}-upscaled`
             : view === "side" ? `pyramid-flat-${size}`
             : `pyramid-flattened-${size}`;
         const colour = colourOf(piece);
@@ -1369,6 +1399,49 @@ export class IcePalaceGame extends GameBaseSequenced {
             }
             return column;
         });
+    }
+
+    /**
+     * The Pool for the perspective display: a stash column per colour, bottom first, with
+     * each pyramid's base a fixed distance above the one below and an extra step between
+     * sizes, so the columns overlap evenly as in the top-down display.
+     *
+     * The stash raises each index by 0.15 of a cell, and a 3D glyph's base already sits one
+     * such step higher for each size down (large 0.80, medium 0.65, small 0.50), so heights
+     * are whole steps. `"-"` placeholders spend the steps.
+     */
+    private static perspectivePool(sorted: PieceId[]): string[][] {
+        const between = 2;
+        const betweenSizes = 2;
+        return IcePalaceGame.nests(sorted).map(nest => {
+            const column: string[] = [];
+            let lastBase: number | undefined;
+            let lastSize: number | undefined;
+            for (const piece of nest) {
+                // Where this size's base sits unraised, in steps below a small's.
+                const own = sizeOf(piece) - 1;
+                // The first pyramid rests on the ground, a small's unraised base line.
+                const target = lastBase === undefined
+                    ? 0
+                    : lastBase - between - (sizeOf(piece) !== lastSize ? betweenSizes : 0);
+                const index = own - target;
+                while (column.length < index) {
+                    column.push("-");
+                }
+                column.push(IcePalaceGame.legendKey(piece, "pool"));
+                lastBase = target;
+                lastSize = sizeOf(piece);
+            }
+            return IcePalaceGame.withHeadroom(column);
+        });
+    }
+
+    /**
+     * The renderer hangs a stash's tallest column just under its label, leaving little room
+     * for a label drawn in a large font. Empty steps on top push everything down a little.
+     */
+    private static withHeadroom(column: string[]): string[] {
+        return [...column, ...Array<string>(STASH_HEADROOM).fill("-")];
     }
 
     /** The offered pyramids gathered into nests, one per colour, largest at the bottom. */
@@ -1492,15 +1565,20 @@ export class IcePalaceGame extends GameBaseSequenced {
 
     /**
      * One board holds both structures: the Yard on the left while a hand is being played,
-     * and the Palace on the right, seen from above, with each stack's pyramids drawn
-     * translucently over one another. Hovering a cell lays its stack out beside the board
-     * (see `renderColumn`). During the build the Yard has already been taken up into the
-     * stock, which is offered below the board instead of the current player's hand. That
-     * area is where the current player picks a pyramid from, and below it is whatever is
-     * still in the Pool, for reference only. Every hand is also listed in the status panel.
+     * and the Palace on the right. During the build the Yard has already been taken up into
+     * the stock, which is offered below the board instead of the current player's hand.
+     * That area is where the current player picks a pyramid from; every hand is also listed
+     * in the status panel.
+     *
+     * The default display is the perspective one, with a pieces area below the board. The
+     * "expanding" display looks straight down instead, with each stack's pyramids drawn
+     * translucently over one another and hovering a cell laying its stack out beside the
+     * board (see `renderColumn`). That renderer draws no pieces area, so there the offered
+     * pyramids are a local stash of nests, one per colour. Either way, whatever is still in
+     * the Pool is shown below that, for reference only.
      */
     public render(opts?: IRenderOpts): APRenderRep {
-        void opts;
+        const expanding = this.hasDisplay(opts, "expanding");
         const layout = this.layout();
         const legend: { [k: string]: Glyph | [Glyph, ...Glyph[]] } = {};
         const pieces: string[][][] = [];
@@ -1518,10 +1596,12 @@ export class IcePalaceGame extends GameBaseSequenced {
                 for (const piece of stack) {
                     const key = IcePalaceGame.legendKey(piece);
                     if (!(key in legend)) {
-                        legend[key] = this.glyphFor(piece, "top");
+                        legend[key] = this.glyphFor(piece, expanding ? "top" : "3D");
                     }
                 }
-                pieces[row][col] = stack.map(piece => IcePalaceGame.legendKey(piece));
+                pieces[row][col] = expanding
+                    ? stack.map(piece => IcePalaceGame.legendKey(piece))
+                    : IcePalaceGame.stackColumn(stack);
             }
         }
 
@@ -1531,16 +1611,30 @@ export class IcePalaceGame extends GameBaseSequenced {
         const label = this.phase === "build"
             ? this.neutralAreaLabel("apgames:icepalace.STOCK")
             : this.seatAreaLabel(this.currplayer, "apgames:icepalace.HAND");
-        const areas: AreaVolcanoStash[] = [];
-        if (offered.length > 0) {
-            // The renderer draws no pieces area, so the offered pyramids are a stash of
-            // one-pyramid stacks, left to right.
-            const stash = [...offered].sort(pieceSort).map(piece => {
+        const areas: (AreaPieces | AreaVolcanoStash)[] = [];
+        if (offered.length > 0 && expanding) {
+            // One pyramid per stack, left to right, as the perspective display lays them out.
+            const stash = [...offered].sort(pieceSort).map(piece => [piece]).map(nest => nest.map(piece => {
                 const key = IcePalaceGame.legendKey(piece, "stash");
                 if (!(key in legend)) {
                     legend[key] = this.glyphFor(piece, "nest");
                 }
-                return [key];
+                return key;
+            }));
+            areas.push({ type: "localStash", label, stash });
+        } else if (offered.length > 0) {
+            // A stash rather than a pieces area: the renderer puts both directly under the
+            // board, so the hand must be a stash too once the Pool is one. One pyramid per
+            // stack, each on an invisible square, so a click anywhere in its cell picks it
+            // rather than only a click on the thin outline itself. The hand has its own keys:
+            // on the board the square would reach into neighbouring cells.
+            // Mediums and larges are raised with placeholders so every base rests on the
+            // same ground line, as on the board; a 3D glyph's apex is fixed, so otherwise
+            // smaller pyramids would hang from the top instead.
+            const stash = [...offered].sort(pieceSort).map(piece => {
+                const key = IcePalaceGame.legendKey(piece, "hand");
+                legend[key] = [BLANK, this.glyphFor(piece)];
+                return IcePalaceGame.withHeadroom([...Array<string>(sizeOf(piece) - 1).fill("-"), key]);
             });
             areas.push({ type: "localStash", label, stash });
         }
@@ -1554,31 +1648,37 @@ export class IcePalaceGame extends GameBaseSequenced {
             for (const piece of sorted) {
                 const key = IcePalaceGame.legendKey(piece, "pool");
                 if (!(key in legend)) {
-                    // Seen from above, as on the board, but turned to diamonds and opaque.
-                    // Each piece shows as a notch down its column's sides.
-                    const glyph = this.glyphFor(piece, "top");
-                    delete glyph.opacity;
-                    glyph.rotate = 45;
+                    // Seen from above in the top-down display, turned to diamonds and opaque.
+                    const glyph = this.glyphFor(piece, expanding ? "top" : "3D");
+                    if (expanding) {
+                        delete glyph.opacity;
+                        glyph.rotate = 45;
+                    }
                     legend[key] = glyph;
                 }
             }
             legend[GAP_KEY] = BLANK;
-            // One column per colour, largest at the bottom, with a space between sizes, and
-            // a spacer column between colours: the renderer sets stash columns a fixed slot
-            // apart, so an empty one is the only way to widen the gap.
+            // One column per colour, largest at the bottom, with a space between sizes.
             const columns = IcePalaceGame.poolColumns(sorted);
-            const spaced = columns.flatMap((column, i) => i === 0 ? [column] : [[GAP_KEY], column]);
-            areas.push({ type: "localStash", label: poolLabel, stash: spaced });
+            if (expanding) {
+                // A spacer column between colours: the renderer sets stash columns a fixed
+                // slot apart, so an empty one is the only way to widen the gap.
+                const spaced = columns.flatMap((column, i) => i === 0 ? [column] : [[GAP_KEY], column]);
+                areas.push({ type: "localStash", label: poolLabel, stash: spaced });
+            } else {
+                areas.push({ type: "localStash", label: poolLabel, stash: IcePalaceGame.perspectivePool(sorted) });
+            }
         }
 
-        const blocked = IcePalaceGame.unreachable(layout, this.palace, this.yard);
+        const blocked = expanding ? IcePalaceGame.unreachable(layout, this.palace, this.yard) : [];
         const rep: APRenderRep = {
-            renderer: "stacking-expanding",
+            renderer: expanding ? "stacking-expanding" : "stacking-3D",
             options: ["hide-labels"],
             board: {
                 style: "squares",
                 width: layout.width,
                 height: layout.height,
+                stackOffset: expanding ? undefined : STACK_OFFSET,
                 blocked: blocked.length > 0 ? blocked as [{ row: number; col: number }, ...{ row: number; col: number }[]] : undefined,
             },
             legend,
@@ -1586,8 +1686,11 @@ export class IcePalaceGame extends GameBaseSequenced {
             areas: areas.length > 0 ? areas : undefined,
         };
 
-        // Once a pyramid is picked, dot every cell it could legally go. Each dot is a small
-        // glyph added to the top of the cell's stack, so it sits over the translucent stack.
+        // Once a pyramid is picked, dot every cell it could legally go. The renderer's own
+        // "dots" annotation is drawn flat on the page instead of on the perspective board,
+        // so each dot is a small glyph put where the pyramid would land: on the ground of
+        // an empty cell, or on top of the stack it could join. The same glyph serves the
+        // top-down display, where it sits over the translucent stack.
         if (this.selected !== undefined) {
             const active = this.phase === "build" ? "palace" : "yard";
             const region = layout.regions.find(r => r.which === active);
@@ -1605,7 +1708,7 @@ export class IcePalaceGame extends GameBaseSequenced {
     }
 
     /**
-     * The stack under the hovered cell: the front draws it beside
+     * The stack under the hovered cell, for the expanding display: the front draws it beside
      * the board, bottom of the stack first, as side-on pyramids. Either structure can be
      * looked into, and the gap between them, or an empty cell, shows nothing.
      */
@@ -1631,9 +1734,11 @@ export class IcePalaceGame extends GameBaseSequenced {
     }
 
     /**
-     * The cells nothing can ever go into right now, left blank on the board: the gap
-     * between the structures, and every empty cell with no pyramid beside it orthogonally.
-     * An empty structure keeps only its centre, where the lead goes.
+     * The cells nothing can ever go into right now, for the top-down display to leave
+     * blank: the gap between the structures, and every empty cell with no pyramid beside
+     * it orthogonally. An empty structure keeps only its centre, where the lead goes. The
+     * perspective renderer draws its own grid and ignores blocked cells, so only the
+     * top-down display uses this.
      */
     private static unreachable(layout: ILayout, palace: Structure, yard: Structure): { row: number; col: number }[] {
         const open = new Set<string>();
@@ -1733,8 +1838,8 @@ export class IcePalaceGame extends GameBaseSequenced {
     }
 
     /**
-     * The board cannot turn: the renderer ignores rotation, so without this the front
-     * would offer rotate buttons that do nothing.
+     * Neither display can turn: the perspective renderer cannot rotate, and the top-down
+     * one ignores rotation, so without this the front would offer buttons that do nothing.
      */
     public getCustomRotation(): number | undefined {
         return 0;

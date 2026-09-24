@@ -441,7 +441,11 @@ describe("Ice Palace: board interaction", () => {
         const g = rig(new IcePalaceGame(3), [["1L", "1M"], ["2L", "2S"], ["3L"]], fatPool());
         g.move("1M@0,0");
         // The hand is a stash of one-pyramid stacks, labelled with the player's name.
-        expect((g.render() as Rep).areas![0].stash).to.deep.equal([["s2S"], ["s2L"]]);
+        const hand = (g.render() as Rep).areas![0].stash!;
+        expect(hand.flat().filter(k => k !== "-")).to.deep.equal(["h2S", "h2L"]);
+        // Bases rest on one line: a large is raised two steps, a small not at all, and
+        // every column has two empty steps of headroom under the label.
+        expect(hand).to.deep.equal([["h2S", "-", "-"], ["-", "-", "h2L", "-", "-"]]);
         g.move("pass");
         g.move("pass");
         g.move("1L@0,0");
@@ -449,7 +453,31 @@ describe("Ice Palace: board interaction", () => {
             g.move("pass");
         }
         expect(g.phase).to.equal("build");
-        expect((g.render() as Rep).areas?.[0].stash?.flat().sort()).to.deep.equal(["s1L", "s1M"]);
+        expect((g.render() as Rep).areas?.[0].stash?.flat().filter(k => k !== "-").sort()).to.deep.equal(["h1L", "h1M"]);
+    });
+
+    it("stacks pyramids the way Volcano does, one index above the last", () => {
+        // The -3D glyphs put a small's base on the cell at index 0, a medium's one rise-step
+        // lower and a large's two lower. Volcano sits each piece one index above the last
+        // and spends "-" placeholders only to keep a base from sinking below the ground.
+        const g = rig(new IcePalaceGame(3), [["1M"], ["2S"], ["3S"]], fatPool());
+        // The lone medium is a colour no other stack holds, so drawnAt finds only it.
+        g.palace = new Map([["0,0", ["1L", "2M", "3S"]], ["1,0", ["2L"]], ["2,0", ["3M"]]]);
+        g.yard = new Map([["0,0", ["1S", "2M", "3L"]]]);
+        const rep = g.render() as Rep & { board: { stackOffset?: number }; legend: Record<string, { nudge?: unknown }> };
+        expect(rep.board.stackOffset).to.equal(0.15);
+        expect(rep.legend.p1L.nudge).to.be.undefined;
+        // A Palace tower: the large is lifted onto the ground, then each piece sits one up.
+        const [tr, tc] = drawnAt(rep, "3S");
+        expect(rep.pieces[tr][tc]).to.deep.equal(["-", "-", "p1L", "p2M", "p3S"]);
+        // Lone pieces need only enough lift to reach the ground.
+        const [lr, lc] = drawnAt(rep, "2L");
+        expect(rep.pieces[lr][lc]).to.deep.equal(["-", "-", "p2L"]);
+        const [mr, mc] = drawnAt(rep, "3M");
+        expect(rep.pieces[mr][mc]).to.deep.equal(["-", "p3M"]);
+        // A Yard stack grows upward in size, so every base already clears the ground.
+        const [yr, yc] = drawnAt(rep, "3L");
+        expect(rep.pieces[yr][yc]).to.deep.equal(["p1S", "p2M", "p3L"]);
     });
 
     it("keeps a minimum footprint around the origin and two columns between structures", () => {
@@ -483,9 +511,18 @@ describe("Ice Palace: board interaction", () => {
         expect(rep.areas[0].type).to.equal("localStash");
         expect(rep.areas[1].type).to.equal("localStash");
         expect(rep.areas[1].label?.textKey).to.equal("apgames:icepalace.POOL");
-        // One column per colour, largest at the bottom, a spacer between sizes, and a
-        // spacer column between colours.
-        expect(rep.areas[1].stash).to.deep.equal([["b1L", "gap", "b1S"], ["gap"], ["b2S"], ["gap"], ["bWM"]]);
+        // One stash column per colour, largest at the bottom, every column resting on the
+        // same ground line. Placeholders raise each pyramid a fixed distance above the
+        // last, with an extra step between sizes, and add two steps of headroom on top.
+        expect(rep.areas[1].stash).to.deep.equal([
+            ["-", "-", "b1L", "-", "b1S", "-", "-"],
+            ["b2S", "-", "-"],
+            ["-", "bWM", "-", "-"],
+        ]);
+        // A hand pyramid sits on an invisible square that widens its click target.
+        const legend = (g.render() as unknown as { legend: Record<string, unknown> }).legend;
+        expect(legend.h1M).to.be.an("array").with.length(2);
+        expect((legend.h1M as { opacity?: number }[])[0].opacity).to.equal(0);
         // Clicking a spacer is like clicking the Pool.
         expect(g.handleClick("", -1, -1, "gap").valid).to.be.false;
         // A click on the Pool changes nothing, whether or not a pyramid is picked.
@@ -557,7 +594,7 @@ describe("Ice Palace: board interaction", () => {
         g.move("2L", { partial: true });
         const rep = g.render() as Rep;
         expect(dotted(rep)).to.deep.equal(["3,3"]);
-        expect(rep.pieces[3][3]).to.deep.equal(["p1M", "dot"]);
+        expect(rep.pieces[3][3]).to.deep.equal(["-", "p1M", "dot"]);
         // A matching small cannot climb onto the medium, so it founds a stack beside it.
         g.move("1S", { partial: true });
         expect(dotted(g.render() as Rep)).to.deep.equal(["2,3", "3,2", "3,4", "4,3"]);
@@ -567,7 +604,7 @@ describe("Ice Palace: board interaction", () => {
     });
 });
 
-describe("Ice Palace: top-down display", () => {
+describe("Ice Palace: expanding display", () => {
     type Rep = {
         renderer?: string;
         board?: { width: number; height: number; stackOffset?: number } | null;
@@ -575,22 +612,24 @@ describe("Ice Palace: top-down display", () => {
         pieces: string[][][] | null;
         areas?: { type?: string; pieces?: string[]; stash?: string[][]; stack?: string[] }[];
     };
-    const expanding = (g: IcePalaceGame): Rep => g.render() as unknown as Rep;
+    const expanding = (g: IcePalaceGame): Rep => g.render({ altDisplay: "expanding" }) as unknown as Rep;
 
-    it("is the only display, and cannot be rotated", () => {
-        expect(IcePalaceGame.gameinfo.displays).to.be.undefined;
+    it("is declared, and turns rotation off for both displays", () => {
+        expect(IcePalaceGame.gameinfo.displays).to.deep.equal([{ uid: "expanding" }]);
         expect(IcePalaceGame.gameinfo.flags).to.include("stacking-expanding");
         expect(IcePalaceGame.gameinfo.flags).to.include("custom-rotation");
         expect(new IcePalaceGame(3).getCustomRotation()).to.equal(0);
     });
 
-    it("looks straight down, with translucent stacks and no placeholders", () => {
+    it("looks straight down at the same footprint, with translucent stacks and no placeholders", () => {
         const g = rig(new IcePalaceGame(3), [["1M", "1L"], ["1S"], ["3S"]], fatPool());
         g.move("1M@0,0");
         g.move("1S@1,0");
         g.palace = new Map([["0,0", ["2L", "1M"]]]);
         const flat = expanding(g);
+        const deep = g.render() as unknown as Rep;
         expect(flat.renderer).to.equal("stacking-expanding");
+        expect(flat.board).to.deep.include({ width: deep.board!.width, height: deep.board!.height });
         expect(flat.board!.stackOffset).to.be.undefined;
         for (const line of flat.pieces!) {
             for (const stack of line) {
@@ -647,6 +686,8 @@ describe("Ice Palace: top-down display", () => {
             }
         }
         expect(open.sort()).to.deep.equal(["2,3", "3,2", "3,3", "3,4", "4,3"]);
+        // The perspective display draws its own grid and ignores blocking, so it sends none.
+        expect((g.render() as unknown as { board: { blocked?: unknown } }).board.blocked).to.be.undefined;
     });
 
     it("documents every palette slot it uses, Black and White included", () => {
@@ -654,6 +695,12 @@ describe("Ice Palace: top-down display", () => {
         expect(slots.map(c => c.num)).to.deep.equal([1, 2, 3, 4, 5, 6, 7, 8, 9]);
         expect(slots.find(c => c.num === 8)!.default).to.equal("#000000");
         expect(slots.find(c => c.num === 9)!.default).to.equal("#ffffff");
+    });
+
+    it("accepts the display as a list of active uids, as the front now sends it", () => {
+        const g = new IcePalaceGame(3);
+        expect((g.render({ altDisplays: ["expanding"] }) as unknown as Rep).renderer).to.equal("stacking-expanding");
+        expect((g.render({ altDisplays: [] }) as unknown as Rep).renderer).to.equal("stacking-3D");
     });
 
     it("shows the Pool below the hand as one stack per colour", () => {

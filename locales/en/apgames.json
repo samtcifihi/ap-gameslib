@@ -4536,6 +4536,12 @@
                 "description": "Display the board using vertices instead of hexes."
             }
         },
+        "icepalace": {
+            "expanding": {
+                "description": "Two dimensional board, with stacks expanding when hovered over.",
+                "name": "Expanding"
+            }
+        },
         "intermedium": {
             "hide-diagonals": {
                 "description": "Don't show diagonal lines.",
