@@ -327,7 +327,7 @@ describe("Ice Palace: board interaction", () => {
 
     /** Board row and column at which a cell's stack is drawn. */
     /** The perspective display, which several checks here are about. */
-    const persp = (g: IcePalaceGame): Rep => g.render({ altDisplays: ["perspective"] }) as unknown as Rep;
+    const persp = (g: IcePalaceGame): Rep => g.render({ altDisplays: ["perspective", "perspective-areas"] }) as unknown as Rep;
     const drawnAt = (rep: Rep, piece: string): [number, number] => {
         for (let row = 0; row < rep.pieces.length; row++) {
             for (let col = 0; col < rep.pieces[row].length; col++) {
@@ -619,8 +619,11 @@ describe("Ice Palace: top-down display", () => {
     const expanding = (g: IcePalaceGame): Rep => g.render() as unknown as Rep;
 
     it("is the default, with perspective as the alternate, and neither rotates", () => {
-        expect(IcePalaceGame.gameinfo.displays).to.deep.equal([{ uid: "perspective", group: "stack" }]);
-        expect(new IcePalaceGame(3).alternativeDisplays()!.map(d => d.uid)).to.deep.equal(["#stack", "perspective"]);
+        expect(IcePalaceGame.gameinfo.displays).to.deep.equal([
+            { uid: "perspective", group: "board" },
+            { uid: "perspective-areas", group: "areas" },
+        ]);
+        expect(new IcePalaceGame(3).alternativeDisplays()!.map(d => d.uid)).to.deep.equal(["#areas", "#board", "perspective", "perspective-areas"]);
         expect(IcePalaceGame.gameinfo.flags).to.include("stacking-expanding");
         expect(IcePalaceGame.gameinfo.flags).to.include("custom-rotation");
         expect(new IcePalaceGame(3).getCustomRotation()).to.equal(0);
@@ -756,6 +759,52 @@ describe("Ice Palace: top-down display", () => {
         // An empty cell, and the gap between the structures, show nothing.
         expect((g.renderColumn(0, 0) as unknown as Rep).areas).to.deep.equal([{ type: "expandedColumn", stack: [] }]);
         expect((g.renderColumn(7, 3) as unknown as Rep).areas).to.deep.equal([{ type: "expandedColumn", stack: [] }]);
+    });
+});
+
+describe("Ice Palace: mixing the board and stash displays", () => {
+    type Part = { name?: string; rotate?: number; opacity?: number; nudge?: { dy?: number } };
+    type Rep = {
+        renderer: string;
+        legend: Record<string, Part | Part[]>;
+        areas?: { stash?: string[][] }[];
+    };
+    const rigged = () => rig(new IcePalaceGame(3), [["1M"], ["2S"], ["3S"]], ["2S", "1L", "WM", "1S"]);
+
+    it("draws the hand and Pool from above under the 3D board unless asked otherwise", () => {
+        const rep = rigged().render({ altDisplays: ["perspective"] }) as unknown as Rep;
+        expect(rep.renderer).to.equal("stacking-3D");
+        // The hand: nests, one per column, lifted two steps clear of the Pool's label below
+        // and with two steps of headroom under the hand's own label.
+        expect(rep.areas![0].stash).to.deep.equal([["-", "-", "s1M", "-", "-"]]);
+        expect(rep.legend.s1M).to.include({ name: "pyramid-flattened-medium" });
+        // The Pool: opaque diamonds two steps apart and four between sizes, with a spacer
+        // column between colours, as the top-down renderer draws them.
+        expect(rep.areas![1].stash).to.deep.equal([
+            ["b1L", "-", "-", "-", "b1S", "-", "-"],
+            ["gap"],
+            ["b2S", "-", "-"],
+            ["gap"],
+            ["bWM", "-", "-"],
+        ]);
+        expect(rep.legend.b1L).to.include({ name: "pyramid-up-large-upscaled", rotate: 45 });
+        expect(rep.legend.b1L).to.not.have.any.keys("opacity", "nudge");
+    });
+
+    it("draws the hand and Pool in 3D under the expanding board on request", () => {
+        const rep = rigged().render({ altDisplays: ["perspective-areas"] }) as unknown as Rep;
+        expect(rep.renderer).to.equal("stacking-expanding");
+        // This renderer takes no placeholders, so bases are aligned by nudging the smaller
+        // pyramids down instead: 0.15 of a 500-unit cell per size.
+        expect(rep.areas![0].stash).to.deep.equal([["h1M"]]);
+        const hand = rep.legend.h1M as Part[];
+        expect(hand).to.have.length(2);
+        expect(hand[1]).to.deep.include({ name: "pyramid-up-medium-3D", nudge: { dy: 75 } });
+        // The Pool on the renderer's fixed steps: a spacer between sizes, no spacer columns.
+        expect(rep.areas![1].stash).to.deep.equal([["b1L", "gap", "b1S"], ["b2S"], ["bWM"]]);
+        expect(rep.legend.b1L).to.not.have.any.keys("nudge");
+        expect(rep.legend.b1S).to.deep.include({ nudge: { dy: 150 } });
+        expect(rep.areas!.flatMap(a => a.stash!.flat())).to.not.include("-");
     });
 });
 
