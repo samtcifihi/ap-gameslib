@@ -1648,7 +1648,14 @@ export class IcePalaceGame extends GameBaseSequenced {
             for (const piece of sorted) {
                 const key = IcePalaceGame.legendKey(piece, "pool");
                 if (!(key in legend)) {
-                    legend[key] = this.glyphFor(piece, expanding ? "nest" : "3D");
+                    const glyph = this.glyphFor(piece, expanding ? "nest" : "3D");
+                    if (expanding) {
+                        // Turned to point right, so each column's pyramids overlap across
+                        // their bases, which the renderer's fixed step allows for larges
+                        // and mediums; smalls, being narrowest, just touch.
+                        glyph.rotate = 90;
+                    }
+                    legend[key] = glyph;
                 }
             }
             legend[GAP_KEY] = BLANK;

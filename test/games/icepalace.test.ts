@@ -709,7 +709,8 @@ describe("Ice Palace: expanding display", () => {
         const pool = rep.areas![1];
         expect(pool.type).to.equal("localStash");
         expect(pool.stash).to.deep.equal([["b1L", "b1L", "gap", "b1S"], ["b2S"], ["bWM"]]);
-        expect(rep.legend!.b1L).to.deep.equal({ name: "pyramid-flattened-large", colour: 1 });
+        // Pool pyramids point right, so a column overlaps across their bases.
+        expect(rep.legend!.b1L).to.deep.equal({ name: "pyramid-flattened-large", colour: 1, rotate: 90 });
     });
 
     it("still dots the legal cells once a pyramid is picked", () => {
