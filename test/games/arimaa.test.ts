@@ -222,6 +222,42 @@ describe("Arimaa", () => {
         expect(result.valid).to.be.true;
         expect(result.complete).to.equal(1);
     });
+
+    it ("Harlog status shows the leader's colour instead of a sign", () => {
+        // balanced material: no glyph
+        let g = new ArimaaGame(undefined, ["free"]);
+        g.move("Ed2,Rd3");
+        g.move("ed7,rd6");
+        let [status] = g.sidebarStatuses();
+        expect(status.value).to.deep.equal(["0.00"]);
+
+        // nonzero but displayed as all zeros: no glyph, no sign
+        g.harlog = () => -0.004;
+        [status] = g.sidebarStatuses();
+        expect(status.value).to.deep.equal(["0.00"]);
+
+        // gold ahead
+        g = new ArimaaGame(undefined, ["free"]);
+        g.move("Ed2,Mg2,Rd3");
+        g.move("ed7,rd6");
+        [status] = g.sidebarStatuses();
+        expect(g.harlog()).to.be.greaterThan(0);
+        expect(status.value).to.deep.equal([
+            { glyph: "piece", colour: g.getPlayerColour(1) },
+            g.harlog().toFixed(2),
+        ]);
+
+        // silver ahead: the number is unsigned
+        g = new ArimaaGame(undefined, ["free"]);
+        g.move("Ed2,Rd3");
+        g.move("ed7,mg7,rd6");
+        [status] = g.sidebarStatuses();
+        expect(g.harlog()).to.be.lessThan(0);
+        expect(status.value).to.deep.equal([
+            { glyph: "piece", colour: g.getPlayerColour(2) },
+            Math.abs(g.harlog()).toFixed(2),
+        ]);
+    });
 });
 
 
