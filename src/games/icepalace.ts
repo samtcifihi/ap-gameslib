@@ -678,7 +678,7 @@ export class IcePalaceGame extends GameBaseSequenced {
             { num: 7, default: "#000000", explanation: "Colour of the Black pyramids" },
             { num: 8, default: "#ffffff", explanation: "Colour of the White pyramids" },
         ],
-        displays: [{ uid: "perspective" }],
+        displays: [{ uid: "perspective", group: "stack" }],
     };
 
     public numplayers = 3;

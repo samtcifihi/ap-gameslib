@@ -619,7 +619,8 @@ describe("Ice Palace: top-down display", () => {
     const expanding = (g: IcePalaceGame): Rep => g.render() as unknown as Rep;
 
     it("is the default, with perspective as the alternate, and neither rotates", () => {
-        expect(IcePalaceGame.gameinfo.displays).to.deep.equal([{ uid: "perspective" }]);
+        expect(IcePalaceGame.gameinfo.displays).to.deep.equal([{ uid: "perspective", group: "stack" }]);
+        expect(new IcePalaceGame(3).alternativeDisplays()!.map(d => d.uid)).to.deep.equal(["#stack", "perspective"]);
         expect(IcePalaceGame.gameinfo.flags).to.include("stacking-expanding");
         expect(IcePalaceGame.gameinfo.flags).to.include("custom-rotation");
         expect(new IcePalaceGame(3).getCustomRotation()).to.equal(0);
