@@ -558,6 +558,8 @@ const DOT_KEY = "dot";
  */
 const BLACK: Colourfuncs = { func: "custom", default: "#000000", palette: 8 };
 const WHITE: Colourfuncs = { func: "custom", default: "#ffffff", palette: 9 };
+/** Empty steps added above each perspective stash column, to clear the area's label. */
+const STASH_HEADROOM = 2;
 /** Legend key of an invisible spacer, used to lay the Pool out in columns with gaps. */
 const GAP_KEY = "gap";
 /** An invisible cell-sized square: a spacer, and a larger click target behind a pyramid. */
@@ -1418,8 +1420,9 @@ export class IcePalaceGame extends GameBaseSequenced {
             for (const piece of nest) {
                 // Where this size's base sits unraised, in steps below a small's.
                 const own = sizeOf(piece) - 1;
+                // The first pyramid rests on the ground, a small's unraised base line.
                 const target = lastBase === undefined
-                    ? own
+                    ? 0
                     : lastBase - between - (sizeOf(piece) !== lastSize ? betweenSizes : 0);
                 const index = own - target;
                 while (column.length < index) {
@@ -1429,8 +1432,16 @@ export class IcePalaceGame extends GameBaseSequenced {
                 lastBase = target;
                 lastSize = sizeOf(piece);
             }
-            return column;
+            return IcePalaceGame.withHeadroom(column);
         });
+    }
+
+    /**
+     * The renderer hangs a stash's tallest column just under its label, leaving little room
+     * for a label drawn in a large font. Empty steps on top push everything down a little.
+     */
+    private static withHeadroom(column: string[]): string[] {
+        return [...column, ...Array<string>(STASH_HEADROOM).fill("-")];
     }
 
     /** The offered pyramids gathered into nests, one per colour, largest at the bottom. */
@@ -1617,10 +1628,13 @@ export class IcePalaceGame extends GameBaseSequenced {
             // stack, each on an invisible square, so a click anywhere in its cell picks it
             // rather than only a click on the thin outline itself. The hand has its own keys:
             // on the board the square would reach into neighbouring cells.
+            // Mediums and larges are raised with placeholders so every base rests on the
+            // same ground line, as on the board; a 3D glyph's apex is fixed, so otherwise
+            // smaller pyramids would hang from the top instead.
             const stash = [...offered].sort(pieceSort).map(piece => {
                 const key = IcePalaceGame.legendKey(piece, "hand");
                 legend[key] = [BLANK, this.glyphFor(piece)];
-                return [key];
+                return IcePalaceGame.withHeadroom([...Array<string>(sizeOf(piece) - 1).fill("-"), key]);
             });
             areas.push({ type: "localStash", label, stash });
         }

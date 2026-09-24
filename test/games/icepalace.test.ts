@@ -441,7 +441,11 @@ describe("Ice Palace: board interaction", () => {
         const g = rig(new IcePalaceGame(3), [["1L", "1M"], ["2L", "2S"], ["3L"]], fatPool());
         g.move("1M@0,0");
         // The hand is a stash of one-pyramid stacks, labelled with the player's name.
-        expect((g.render() as Rep).areas?.[0].stash?.flat()).to.deep.equal(["h2S", "h2L"]);
+        const hand = (g.render() as Rep).areas![0].stash!;
+        expect(hand.flat().filter(k => k !== "-")).to.deep.equal(["h2S", "h2L"]);
+        // Bases rest on one line: a large is raised two steps, a small not at all, and
+        // every column has two empty steps of headroom under the label.
+        expect(hand).to.deep.equal([["h2S", "-", "-"], ["-", "-", "h2L", "-", "-"]]);
         g.move("pass");
         g.move("pass");
         g.move("1L@0,0");
@@ -449,7 +453,7 @@ describe("Ice Palace: board interaction", () => {
             g.move("pass");
         }
         expect(g.phase).to.equal("build");
-        expect((g.render() as Rep).areas?.[0].stash?.flat().sort()).to.deep.equal(["h1L", "h1M"]);
+        expect((g.render() as Rep).areas?.[0].stash?.flat().filter(k => k !== "-").sort()).to.deep.equal(["h1L", "h1M"]);
     });
 
     it("stacks pyramids the way Volcano does, one index above the last", () => {
@@ -507,9 +511,14 @@ describe("Ice Palace: board interaction", () => {
         expect(rep.areas[0].type).to.equal("localStash");
         expect(rep.areas[1].type).to.equal("localStash");
         expect(rep.areas[1].label?.textKey).to.equal("apgames:icepalace.POOL");
-        // One stash column per colour, largest at the bottom. Placeholders raise each
-        // pyramid a fixed distance above the last, with an extra step between sizes.
-        expect(rep.areas[1].stash).to.deep.equal([["b1L", "-", "b1S"], ["b2S"], ["bWM"]]);
+        // One stash column per colour, largest at the bottom, every column resting on the
+        // same ground line. Placeholders raise each pyramid a fixed distance above the
+        // last, with an extra step between sizes, and add two steps of headroom on top.
+        expect(rep.areas[1].stash).to.deep.equal([
+            ["-", "-", "b1L", "-", "b1S", "-", "-"],
+            ["b2S", "-", "-"],
+            ["-", "bWM", "-", "-"],
+        ]);
         // A hand pyramid sits on an invisible square that widens its click target.
         const legend = (g.render() as unknown as { legend: Record<string, unknown> }).legend;
         expect(legend.h1M).to.be.an("array").with.length(2);
