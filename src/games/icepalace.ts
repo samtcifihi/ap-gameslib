@@ -1,4 +1,5 @@
 import { IAPGameState, IClickResult, IIndividualState, IRenderOpts, IScores, IStatus, IValidationResult, StatusValue, type ChatLogCollectContext, type ChatLogLine } from "./_base.js";
+import type { IGamePly } from "./_turn-model.js";
 import { GameBaseSequenced } from "./_turn-sequenced.js";
 import type { APGamesInformation } from "../schemas/gameinfo.js";
 import { APRenderRep, AreaPieces, AreaStackingExpanded, AreaVolcanoStash, Colourfuncs, Glyph } from "@abstractplay/renderer/build/schemas/schema";
@@ -1974,6 +1975,21 @@ export class IcePalaceGame extends GameBaseSequenced {
             default:
                 return super.collectChatLogLine(lines, r, ctx);
         }
+    }
+
+    /**
+     * Rounds of the move table: the seat cycle, as usual, but a hand's end closes the round
+     * too, so that the build which follows is a row of its own. Otherwise the builder acts
+     * twice in one round, a pass and then the build, and the table shows the whole last
+     * cycle of passes one to a row.
+     */
+    protected shouldCloseRound(roundPlies: IGamePly[], stackIndex: number): boolean {
+        const before = this.stack[stackIndex - 1];
+        const after = this.stack[stackIndex];
+        if (before.phase === "build" || after.phase === "build") {
+            return true;
+        }
+        return super.shouldCloseRound(roundPlies, stackIndex);
     }
 
     /** The build announcement is for the chat log only; published records need not carry it. */

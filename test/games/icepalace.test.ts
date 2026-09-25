@@ -938,6 +938,31 @@ describe("Ice Palace: serialization", () => {
 });
 
 describe("Ice Palace: sequenced turn model and record export", () => {
+    it("closes a round at the end of a hand, so the build is a row of its own", () => {
+        const g = rig(new IcePalaceGame(3), [["1L", "1M"], ["2L"], ["3L"]], fatPool());
+        // Alice opens and Charlie is the last to place; then everyone passes, and Charlie
+        // builds; then Bob leads the next hand.
+        for (const m of ["1M@0,0", "pass", "3L@0,0", "pass", "pass", "pass"]) {
+            g.move(m);
+        }
+        expect(g.phase).to.equal("build");
+        expect(g.currplayer).to.equal(3);
+        expect(g.stock).to.deep.equal(["1M", "3L"]);
+        g.move("3L@0,0;1M@0,0");
+        expect(g.phase).to.equal("hand");
+        g.move(g.moves()[0]);
+        const plies = g.getPlies().map(p => [p.actor, p.round]);
+        expect(plies).to.deep.equal([
+            [1, 0], [2, 0], [3, 0],
+            // The cycle of passes ends the hand, which closes the round before Charlie
+            // acts again; the build is then a round of its own.
+            [1, 1], [2, 1], [3, 1],
+            [3, 2],
+            [2, 3],
+        ]);
+    });
+
+
     const played = (): IcePalaceGame => {
         const g = rig(new IcePalaceGame(3), [["1M"], ["2S"], ["3S"]], fatPool());
         g.move("1M@0,0");
