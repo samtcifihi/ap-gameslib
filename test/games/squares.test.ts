@@ -907,3 +907,46 @@ describe("Squares: interface helpers", () => {
         expect(g.stack[g.stack.length - 1]._results).to.deep.include({ type: "eog", reason: "repetition" });
     });
 });
+
+describe("Squares: annotation safety", () => {
+    const sameEnds = (g: SquaresGame): boolean => (g.render().annotations ?? []).some(a =>
+        a.type === "move" && a.targets.length === 2 && a.targets[0].row === a.targets[1].row && a.targets[0].col === a.targets[1].col);
+
+    it("never draws an arrow from a square to itself", () => {
+        // out of the reserve straight onto the back line, previewed and played
+        const g = new SquaresGame();
+        const preview = g.clone();
+        preview.move("IBR-B3C", { partial: true });
+        expect(sameEnds(preview)).to.be.false;
+        g.move("IBR-B3C");
+        expect(sameEnds(g)).to.be.false;
+        // an attack on a reserve from the back line, previewed, pending and resolved
+        const h = new SquaresGame();
+        place(h, "1I1", "G3C");
+        place(h, "1I2", "G3L");
+        commit(h);
+        const hp = h.clone();
+        hp.move("IG3C+IG3L>GR", { partial: true });
+        expect(sameEnds(hp)).to.be.false;
+        h.move("IG3C+IG3L>GR");
+        expect(sameEnds(h)).to.be.false;
+        h.move("lose:A");
+        expect(sameEnds(h)).to.be.false;
+        // a retreat into the reserve from the back line itself
+        const k = new SquaresGame();
+        place(k, "1I1", "G3C");
+        place(k, "2I1", "G2CL");
+        place(k, "1C1", "G1C");
+        commit(k);
+        k.move("IG3C+CG1C>IG2CL");
+        expect(sameEnds(k)).to.be.false;
+        const m = new SquaresGame();
+        place(m, "1I1", "B1C");
+        place(m, "2I1", "G3C");
+        commit(m);
+        m.move("IB1C-B2CL");
+        m.move("IG3C-GR");
+        expect(sameEnds(m)).to.be.false;
+        expect(m.render().board).to.deep.include({ markers: [{ type: "edge", edge: "S", colour: m.getPlayerColour(2) }] });
+    });
+});
