@@ -3,7 +3,6 @@ import { IAPGameState, IClickResult, ICustomButton, IIndividualState, IRenderOpt
 import type { APGamesInformation } from "../schemas/gameinfo.js";
 import type { APRenderRep, AreaReserves, Colourfuncs, Glyph } from "@abstractplay/renderer/build/schemas/schema";
 import type { APMoveResult } from "../schemas/moveresults.js";
-import type { IGamePly } from "./_turn-model.js";
 import { reviver, UserFacingError } from "../common/index.js";
 import i18next from "i18next";
 
@@ -174,6 +173,22 @@ export interface IStep {
 interface IPreview {
     outline: string[];
     attack?: { from: string; target: string; support?: string };
+    /** The ply as entered so far, once its head has been played out: buttons offered mid-entry build on it. */
+    move?: string;
+}
+
+/** One decision a ply's author has to make after its head, and what was entered for it. */
+interface IDecisionPoint {
+    stage: CombatStage;
+    legal: string[];
+    /** The segment entered for this decision, if any; it may still be a partial retreat. */
+    chosen?: string;
+}
+
+interface ICombatSquares {
+    from: string;
+    target: string;
+    support?: string;
 }
 
 export interface IMoveState extends IIndividualState {
@@ -1025,6 +1040,10 @@ export class SquaresGame extends GameBaseSequenced {
 
     /* ---------------------------------------------------------- turns */
 
+    /**
+     * Every legal ply. A ply is an action or a combat decision, followed by whatever further decisions
+     * the same player has to make before the opponent gets a say, separated by slashes.
+     */
     public moves(player?: playerid): string[] {
         if (this.gameover) {
             return [];
@@ -1032,10 +1051,66 @@ export class SquaresGame extends GameBaseSequenced {
         if (player === undefined) {
             player = this.currplayer;
         }
-        if (this.combat !== undefined) {
-            return player === this.currplayer ? this.combatOptions() : [];
+        if (this.combat !== undefined && player !== this.currplayer) {
+            return [];
         }
-        return this.actionMoves(player);
+        const heads = this.combat !== undefined ? this.combatOptions() : this.actionMoves(player);
+        if (player !== this.currplayer) {
+            return heads;
+        }
+        return heads.flatMap(h => this.completions(h));
+    }
+
+    /** The full plies that begin with `head`: it is extended by every decision the same player would still have to make. */
+    private completions(head: string): string[] {
+        const actor = this.currplayer;
+        return this.simulate(() => {
+            this.applyHead(head);
+            return this.continuations(head, actor);
+        });
+    }
+
+    private continuations(prefix: string, actor: playerid): string[] {
+        if (!this.pending(actor)) {
+            return [prefix];
+        }
+        return this.combatOptions().flatMap(d => this.simulate(() => {
+            this.applyDecision(d);
+            return this.continuations(`${prefix}/${d}`, actor);
+        }));
+    }
+
+    /** Whether the ply being built still needs a decision from the player who began it. */
+    private pending(actor: playerid): boolean {
+        return this.combat !== undefined && this.currplayer === actor;
+    }
+
+    /** Run `fn` on the live position, then put everything back the way it was. */
+    private simulate<T>(fn: () => T): T {
+        const saved = {
+            units: this.units,
+            combat: this.combat,
+            currplayer: this.currplayer,
+            turnOwner: this.turnOwner,
+            actionsLeft: this.actionsLeft,
+            isDouble: this.isDouble,
+            pendingDouble: this.pendingDouble,
+            turnNo: this.turnNo,
+            results: this.results,
+            gameover: this.gameover,
+            winner: this.winner,
+        };
+        this.units = cloneUnits(this.units);
+        this.combat = this.combat === undefined ? undefined : { ...this.combat };
+        this.pendingDouble = [...this.pendingDouble];
+        this.turnNo = [...this.turnNo];
+        this.results = [];
+        this.winner = [...this.winner];
+        try {
+            return fn();
+        } finally {
+            Object.assign(this, saved);
+        }
     }
 
     /** Every action open to `player`, as if it were their turn to act. */
@@ -1059,10 +1134,10 @@ export class SquaresGame extends GameBaseSequenced {
     }
 
     public static normalise(m: string): string {
-        const up = m.replace(/\s+/g, "").toUpperCase();
-        return up
+        return m.replace(/\s+/g, "").split("/").map(seg => seg
+            .toUpperCase()
             .replace(/^(PASS|STAND|ADVANCE|STAY)$/, s => s.toLowerCase())
-            .replace(/^(RETREAT|LOSE|OPTION[1-5])(?=:|$)/, s => s.toLowerCase());
+            .replace(/^(RETREAT|LOSE|OPTION[1-5])(?=:|$)/, s => s.toLowerCase())).join("/");
     }
 
     /** The unit that leaves a reserve: the least restricted one of the requested type. */
@@ -1126,27 +1201,13 @@ export class SquaresGame extends GameBaseSequenced {
             return this;
         }
         const actor = this.currplayer;
-        if (this.combat !== undefined) {
-            this.applyCombatMove(move, false);
-            this.runCombat();
-            if (this.combat === undefined) {
-                this.finishAction();
-            }
-        } else if (move === "pass") {
-            this.results.push({ type: "pass", who: this.turnOwner });
-            this.pendingDouble[this.turnOwner - 1] = true;
-            this.endTurnUnit();
-        } else if (move.includes(">")) {
-            const parts = ATTACK_RE.exec(move)!;
-            const attacker = this.unitFor(this.turnOwner, parts[1], parts[2])!;
-            const supporter = parts[3] === undefined ? undefined : this.unitFor(this.turnOwner, parts[3], parts[4])!;
-            const target = parts[7] ?? parts[6];
-            this.declareAttack(attacker, target, supporter);
-            if (this.combat === undefined) {
-                this.finishAction();
-            }
-        } else {
-            this.finishAction(this.applyMove(move));
+        const [head, ...decisions] = move.split("/");
+        const doubleUnit = this.applyHead(head);
+        for (const d of decisions) {
+            this.applyDecision(d);
+        }
+        if (this.combat === undefined) {
+            this.finishAction(doubleUnit);
         }
         if (!this.gameover && this.combat === undefined) {
             this.checkRepetition();
@@ -1157,61 +1218,109 @@ export class SquaresGame extends GameBaseSequenced {
         return this;
     }
 
-    /** Show a move that is still being entered: outline the squares involved, and sketch any relocation or attack. */
-    private applyPreview(move: string): void {
-        const outline: string[] = [];
-        let attack: IPreview["attack"];
-        const pushCell = (loc: string | undefined): void => {
-            if (loc !== undefined && isCell(loc)) {
-                outline.push(loc);
-            }
-        };
-        if (this.combat === undefined) {
-            if (move.includes(">")) {
-                const m = ATTACK_RE.exec(move);
-                if (m !== null) {
-                    const target = m[7] ?? m[6];
-                    pushCell(m[2]);
-                    pushCell(m[4]);
-                    pushCell(target);
-                    attack = { from: m[2], target, support: m[4] };
-                }
-            } else if (move !== "pass") {
-                let first: IUnit | undefined;
-                for (const seg of move.split(",")) {
-                    const m = SEGMENT_RE.exec(seg);
-                    if (m === null) {
-                        continue;
-                    }
-                    const u = this.unitFor(this.turnOwner, m[1], m[2], first?.id);
-                    if (u === undefined) {
-                        continue;
-                    }
-                    first = first ?? u;
-                    pushCell(m[2]);
-                    const steps = m[3].length === 0 ? [] : m[3].slice(1).split("-");
-                    const to = steps[steps.length - 1];
-                    if (to !== undefined && isLocation(to)) {
-                        u.loc = to;
-                        pushCell(to);
-                        this.results.push({ type: "move", from: m[2], to, what: UNIT_NAMES[u.type], how: "move", by: `${u.owner}` });
-                    }
-                }
-            }
+    /** Play the first segment of a ply: an action, or the decision a pending combat is waiting for. */
+    private applyHead(head: string): IUnit | undefined {
+        if (this.combat !== undefined) {
+            this.applyDecision(head);
+        } else if (head === "pass") {
+            this.results.push({ type: "pass", who: this.turnOwner });
+            this.pendingDouble[this.turnOwner - 1] = true;
+        } else if (head.includes(">")) {
+            const parts = ATTACK_RE.exec(head)!;
+            const attacker = this.unitFor(this.turnOwner, parts[1], parts[2])!;
+            const supporter = parts[3] === undefined ? undefined : this.unitFor(this.turnOwner, parts[3], parts[4])!;
+            this.declareAttack(attacker, parts[7] ?? parts[6], supporter);
         } else {
-            const colon = move.indexOf(":");
-            const steps = colon < 0 ? undefined : this.parseSteps(move.slice(colon + 1));
-            if (steps !== undefined) {
-                for (const st of steps) {
-                    const u = this.unit(st.unit);
-                    u.loc = st.to;
-                    pushCell(st.from);
-                    pushCell(st.to);
-                    this.results.push({ type: "move", from: st.from, to: st.to, what: UNIT_NAMES[u.type], how: "retreat", by: `${u.owner}` });
+            return this.applyMove(head);
+        }
+        return undefined;
+    }
+
+    /** Play one combat decision, and everything it settles. */
+    private applyDecision(decision: string): void {
+        this.applyCombatMove(decision, false);
+        this.runCombat();
+    }
+
+    /** Show a move that is still being entered: play out what is settled, and outline what is still being chosen. */
+    private applyPreview(move: string): void {
+        const [head, ...decisions] = move.split("/");
+        const actor = this.currplayer;
+        const preview: IPreview = { outline: [] };
+        this.preview = preview;
+        const headResult = this.combat !== undefined ? this.validateCombatMove(head) : this.validateAction(head);
+        if (headResult.valid && headResult.complete !== -1) {
+            // A legal head is played out, with every finished decision after it, to show where the ply leads.
+            this.applyHead(head);
+            const applied = [head];
+            for (const d of decisions) {
+                if (!this.pending(actor) || !this.combatOptions().includes(d)) {
+                    this.previewSteps(d);
+                    break;
                 }
+                this.applyDecision(d);
+                applied.push(d);
+            }
+            preview.move = applied.join("/");
+            return;
+        }
+        if (this.combat !== undefined) {
+            this.previewSteps(head);
+            return;
+        }
+        if (head.includes(">")) {
+            const m = ATTACK_RE.exec(head);
+            if (m !== null) {
+                const target = m[7] ?? m[6];
+                this.outlineCell(m[2]);
+                this.outlineCell(m[4]);
+                this.outlineCell(target);
+                preview.attack = { from: m[2], target, support: m[4] };
+            }
+            return;
+        }
+        let first: IUnit | undefined;
+        for (const seg of head.split(",")) {
+            const m = SEGMENT_RE.exec(seg);
+            if (m === null) {
+                continue;
+            }
+            const u = this.unitFor(this.turnOwner, m[1], m[2], first?.id);
+            if (u === undefined) {
+                continue;
+            }
+            first = first ?? u;
+            this.outlineCell(m[2]);
+            const steps = m[3].length === 0 ? [] : m[3].slice(1).split("-");
+            const to = steps[steps.length - 1];
+            if (to !== undefined && isLocation(to)) {
+                u.loc = to;
+                this.outlineCell(to);
+                this.results.push({ type: "move", from: m[2], to, what: UNIT_NAMES[u.type], how: "move", by: `${u.owner}` });
             }
         }
-        this.preview = { outline, attack };
+    }
+
+    private outlineCell(loc: string | undefined): void {
+        if (loc !== undefined && isCell(loc)) {
+            this.preview!.outline.push(loc);
+        }
+    }
+
+    /** Sketch a retreat that is still being entered: relocate the units named so far and outline the squares involved. */
+    private previewSteps(decision: string): void {
+        const colon = decision.indexOf(":");
+        const steps = colon < 0 ? undefined : this.parseSteps(decision.slice(colon + 1));
+        if (steps === undefined) {
+            return;
+        }
+        for (const st of steps) {
+            const u = this.unit(st.unit);
+            u.loc = st.to;
+            this.outlineCell(st.from);
+            this.outlineCell(st.to);
+            this.results.push({ type: "move", from: st.from, to: st.to, what: UNIT_NAMES[u.type], how: "retreat", by: `${u.owner}` });
+        }
     }
 
     /** Position signature for the repetition rule: what stands where, whose action it is, and every restriction in force. */
@@ -1370,11 +1479,83 @@ export class SquaresGame extends GameBaseSequenced {
         if (move === "") {
             return SquaresGame.valid(-1, this.instructions());
         }
-        const result = this.combat !== undefined ? this.validateCombatMove(move) : this.validateAction(move);
+        const [head, ...decisions] = move.split("/");
+        const headResult = this.combat !== undefined ? this.validateCombatMove(head) : this.validateAction(head);
+        if (!headResult.valid) {
+            return headResult;
+        }
+        let result = headResult;
+        if (headResult.complete === -1) {
+            if (decisions.length > 0) {
+                return SquaresGame.invalid("DECISION_EARLY", { decision: decisions[0] });
+            }
+        } else {
+            result = this.validateDecisions(head, headResult, decisions);
+        }
         if (result.valid) {
             result.canrender = true;
         }
         return result;
+    }
+
+    /** Play a legal head out and check the decisions that follow it, which must all fall to the same player. */
+    private validateDecisions(head: string, headResult: IValidationResult, decisions: string[]): IValidationResult {
+        const actor = this.currplayer;
+        return this.simulate(() => {
+            this.applyHead(head);
+            const chosen: string[] = [];
+            for (const d of decisions) {
+                if (!this.pending(actor)) {
+                    return SquaresGame.invalid("DECISION_EXTRA", { decision: d });
+                }
+                const r = this.validateCombatMove(d);
+                if (!r.valid) {
+                    return r;
+                }
+                if (r.complete === -1) {
+                    const next = decisions[chosen.length + 1];
+                    return next === undefined ? r : SquaresGame.invalid("DECISION_EARLY", { decision: next });
+                }
+                this.applyDecision(d);
+                chosen.push(d);
+            }
+            if (this.pending(actor)) {
+                return SquaresGame.valid(-1, this.plyPrompt(chosen, this.combat!.stage));
+            }
+            // Decisions are confirmed rather than submitted on the spot, so that clicks can still change them.
+            return chosen.length === 0 ? headResult : SquaresGame.valid(0, this.plyPrompt(chosen));
+        });
+    }
+
+    /** Describe the decisions a ply has settled so far, and what its author still has to choose. */
+    private plyPrompt(chosen: string[], pendingStage?: CombatStage): string {
+        const t = (key: string, params?: Record<string, string>): string => i18next.t(`apgames:validation.squares.${key}`, params);
+        const parts: string[] = [];
+        const option = chosen.find(d => d.startsWith("option"));
+        const advance = chosen.find(d => d === "advance" || d === "stay");
+        if (option !== undefined) {
+            parts.push(t("PLY_OPTION", { n: option[6], what: t(`OPTION_${option[6]}`) }));
+        }
+        const changeOption = (): void => {
+            if (option !== undefined) {
+                parts.push(advance !== undefined || pendingStage === "advance" ? t("PLY_ELSE_OPTION", { context: "support" }) : t("PLY_ELSE_OPTION"));
+            }
+        };
+        if (pendingStage === "resolve") {
+            parts.push(t("PLY_CHOOSE_OPTION"));
+        } else if (pendingStage === "advance") {
+            parts.push(t("PLY_CHOOSE_ADVANCE"));
+            changeOption();
+        } else {
+            parts.push(t("PLY_COMPLETE"));
+            if (advance === "advance") {
+                parts.push(t("PLY_ELSE_STAY"));
+            } else if (advance === "stay") {
+                parts.push(t("PLY_ELSE_ADVANCE"));
+            }
+            changeOption();
+        }
+        return parts.join(" ");
     }
 
     private validateCombatMove(move: string): IValidationResult {
@@ -1399,7 +1580,7 @@ export class SquaresGame extends GameBaseSequenced {
     /** Explain a rejected combat decision, in particular why a retreat square is not allowed. */
     private diagnoseCombatMove(move: string, legal: string[]): IValidationResult {
         const c = this.combat!;
-        if (move === "stand") {
+        if (move === "stand" && (c.stage === "defend" || c.stage === "second")) {
             return SquaresGame.invalid(c.flank ? "STAND_FLANK" : "STAND_CAVALRY");
         }
         const m = /^(retreat|option1|option5):(.+)$/.exec(move);
@@ -1746,7 +1927,7 @@ export class SquaresGame extends GameBaseSequenced {
                 return { move, valid: false, message: i18next.t("apgames:validation._general.UNKNOWN_CLICK") };
             }
             const current = SquaresGame.normalise(move);
-            const newmove = this.combat === undefined ? this.clickAction(current, loc, clickedType) : this.clickCombat(current, loc, clickedType);
+            const newmove = this.clickPly(current, loc, clickedType);
             const result = this.validateMove(newmove) as IClickResult;
             result.move = result.valid ? newmove : current;
             return result;
@@ -1757,6 +1938,103 @@ export class SquaresGame extends GameBaseSequenced {
                 message: i18next.t("apgames:validation._general.GENERIC", { move, row, col, piece, emessage: (e as Error).message }),
             };
         }
+    }
+
+    /** Route a click: to the head of the ply while that is being entered, otherwise to the decisions that follow it. */
+    private clickPly(move: string, loc: string, clickedType?: UnitType): string {
+        const [head, ...decisions] = move.split("/");
+        const startClick = (m: string): string => this.combat === undefined ? this.clickAction(m, loc, clickedType) : this.clickCombat(m, loc, clickedType);
+        if (move === "") {
+            return startClick(move);
+        }
+        const headResult = this.combat !== undefined ? this.validateCombatMove(head) : this.validateAction(head);
+        if (!headResult.valid || headResult.complete === -1) {
+            return startClick(head);
+        }
+        const squares: ICombatSquares | undefined = this.combat !== undefined
+            ? { from: this.combat.from, target: this.combat.target, support: this.combat.supportFrom }
+            : SquaresGame.attackSquares(head);
+        const actor = this.currplayer;
+        const points = this.simulate(() => {
+            this.applyHead(head);
+            const out: IDecisionPoint[] = [];
+            for (let i = 0; this.pending(actor); i++) {
+                const point: IDecisionPoint = { stage: this.combat!.stage, legal: this.combatOptions(), chosen: decisions[i] };
+                out.push(point);
+                if (point.chosen === undefined || !point.legal.includes(point.chosen)) {
+                    break;
+                }
+                this.applyDecision(point.chosen);
+            }
+            return out;
+        });
+        if (points.length === 0 || squares === undefined) {
+            return startClick(head);
+        }
+        return this.clickDecision(move, points, squares, loc);
+    }
+
+    private static attackSquares(head: string): ICombatSquares | undefined {
+        const m = ATTACK_RE.exec(head);
+        return m === null ? undefined : { from: m[2], target: m[7] ?? m[6], support: m[4] };
+    }
+
+    /**
+     * A click while the ply's author still has decisions to make, or has made them. Clicking the attacker, its
+     * support or the target steps through the attacker's options; once the target square is empty, clicking it
+     * advances and clicking the attacker's own square stays, while the support's square still changes the option.
+     */
+    private clickDecision(move: string, points: IDecisionPoint[], squares: ICombatSquares, loc: string): string {
+        const segments = move.split("/");
+        const level = points.length - 1;
+        const last = points[level];
+        const rebuild = (at: number, decision: string): string => [...segments.slice(0, at + 1), decision].join("/");
+        const onCombat = loc === squares.from || loc === squares.target || loc === squares.support;
+        const cycle = (): string => {
+            const at = points.findIndex(p => p.stage === "resolve");
+            if (at < 0) {
+                return move;
+            }
+            const pt = points[at];
+            const numbers = [...new Set(pt.legal.map(l => l.slice(0, 7)))];
+            const idx = pt.chosen === undefined ? -1 : numbers.indexOf(pt.chosen.slice(0, 7));
+            const next = numbers[(idx + 1) % numbers.length];
+            const matches = pt.legal.filter(l => l === next || l.startsWith(`${next}:`));
+            return rebuild(at, matches.length === 1 ? matches[0] : `${next}:`);
+        };
+        if (last.chosen !== undefined && !last.legal.includes(last.chosen)) {
+            // A retreat under option 1 or 5 still needs its square, or the next link of a displacement chain.
+            if (onCombat) {
+                return cycle();
+            }
+            const m = /^(option[15]):(.*)$/.exec(last.chosen);
+            if (m === null) {
+                return move;
+            }
+            if (m[2] === "") {
+                const s = squares.support === undefined ? undefined : this.unitAt(squares.support);
+                return s === undefined ? move : rebuild(level, `${m[1]}:${s.type}${s.loc}-${loc}`);
+            }
+            const steps = this.parseSteps(m[2]);
+            if (steps !== undefined) {
+                const lastTo = steps[steps.length - 1].to;
+                const occ = this.unitAt(lastTo);
+                if (occ !== undefined && occ.owner === this.currplayer && !steps.some(st => st.unit === occ.id)) {
+                    return rebuild(level, `${last.chosen},${occ.type}${lastTo}-${loc}`);
+                }
+            }
+            return move;
+        }
+        if (last.stage === "advance") {
+            if (loc === squares.target) {
+                return rebuild(level, "advance");
+            }
+            if (loc === squares.from) {
+                return rebuild(level, "stay");
+            }
+            return loc === squares.support ? cycle() : move;
+        }
+        return onCombat ? cycle() : move;
     }
 
     private clickAction(move: string, loc: string, clickedType?: UnitType): string {
@@ -1905,14 +2183,20 @@ export class SquaresGame extends GameBaseSequenced {
         if (this.gameover) {
             return [];
         }
+        // Part-way through a ply (the front asks the previewed position), only the decisions its author
+        // still has to make are offered, as continuations of what has been entered.
+        const prefix = this.preview?.move;
         const c = this.combat;
         if (c === undefined) {
-            return this.isDouble ? [] : [{ label: "pass", move: "pass" }];
+            return prefix === undefined && !this.isDouble ? [{ label: "pass", move: "pass" }] : [];
+        }
+        if (prefix !== undefined && this.currplayer !== this.stack[this.stack.length - 1].currplayer) {
+            return [];
         }
         const legal = this.combatOptions();
         const buttons: ICustomButton[] = [];
         const add = (label: string, move: string): void => {
-            buttons.push({ label: `squares.${label}`, move });
+            buttons.push({ label: `squares.${label}`, move: prefix === undefined ? move : `${prefix}/${move}` });
         };
         switch (c.stage) {
             case "defend":
@@ -2027,7 +2311,14 @@ export class SquaresGame extends GameBaseSequenced {
         };
         for (const r of this.results) {
             if (r.type === "move") {
-                arrow(r.from, r.to, r.how === "retreat" || r.how === "displaced" ? "dashed" : "solid");
+                const retreat = r.how === "retreat" || r.how === "displaced";
+                if (retreat && isReserve(r.to)) {
+                    // A unit falling back to its reserve simply leaves the board: mark the square it left and the edge it went to.
+                    outline(r.from, "exit");
+                    markEdge(r.to);
+                } else {
+                    arrow(r.from, r.to, retreat ? "dashed" : "solid");
+                }
             } else if (r.type === "capture") {
                 if (r.how === "reserve") {
                     markEdge(r.where);
@@ -2155,15 +2446,6 @@ export class SquaresGame extends GameBaseSequenced {
     }
 
     /* ---------------------------------------------------------- records and chat */
-
-    /** A round is one full turn by each player, however many plies the combats inside it took. */
-    protected shouldCloseRound(roundPlies: IGamePly[], stackIndex: number): boolean {
-        if (roundPlies.length === 0) {
-            return false;
-        }
-        const after = this.stack[stackIndex];
-        return after.combat === undefined && after.turnOwner === 1 && after.actionsLeft === (after.isDouble ? 2 : 1);
-    }
 
     /** Plies do not alternate strictly, so the actor is recorded on each state rather than inferred. */
     public chatLogEntries(players: string[] = []): ChatLogEntry[] {
