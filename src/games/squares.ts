@@ -210,10 +210,22 @@ export class SquaresGame extends GameBaseSequenced {
         description: "apgames:descriptions.squares",
         // i18next.t("apgames:notes.squares")
         notes: "apgames:notes.squares",
+        urls: [
+            "https://www.dvgc.com/rules2.html",
+            "https://www.dvgc.com/comments.html",
+            "https://boardgamegeek.com/boardgame/3654/squares-the-civil-war-battle-game",
+            "https://www.dvgc.com/order.html",
+        ],
+        bggid: "3654",
         people: [
+            {
+                type: "designer",
+                name: "G. Myers",
+            },
             {
                 type: "publisher",
                 name: "Deer Valley Game Company",
+                urls: ["https://www.dvgc.com/"],
             },
             {
                 type: "coder",
@@ -1694,15 +1706,37 @@ export class SquaresGame extends GameBaseSequenced {
                 }
             }
         }
+        // Attack arrows: solid for the attacker, dashed for the support. They follow a pending
+        // combat, or this ply's results when the attack was settled on the spot.
+        let attackFrom: string | undefined;
+        let attackTo: string | undefined;
+        let supportFrom: string | undefined;
         if (this.combat !== undefined) {
-            const target = at(this.combat.target);
-            for (const from of [this.combat.from, this.combat.supportFrom]) {
-                const cell = at(from);
-                if (cell !== undefined && target !== undefined) {
-                    annotations.push({ type: "move", targets: [cell, target], style: "dashed", colour: "#c00" });
-                }
+            attackFrom = this.combat.from;
+            attackTo = this.combat.target;
+            supportFrom = this.combat.supportFrom;
+        } else {
+            const fire = this.results.find(r => r.type === "fire");
+            if (fire !== undefined && fire.type === "fire") {
+                attackFrom = fire.from;
+                attackTo = fire.to;
             }
-            if (target !== undefined) {
+            const support = this.results.find(r => r.type === "select" && r.what === "support");
+            if (support !== undefined && support.type === "select") {
+                supportFrom = support.where;
+            }
+        }
+        const target = at(attackTo);
+        if (target !== undefined) {
+            const from = at(attackFrom);
+            if (from !== undefined) {
+                annotations.push({ type: "move", targets: [from, target], style: "solid", colour: "#c00" });
+            }
+            const sup = at(supportFrom);
+            if (sup !== undefined) {
+                annotations.push({ type: "move", targets: [sup, target], style: "dashed", colour: "#c00" });
+            }
+            if (this.combat !== undefined) {
                 annotations.push({ type: "enter", targets: [target] });
             }
         }
