@@ -1337,42 +1337,81 @@ describe("Crosshairs", () => {
             expect(new CrosshairsGame(g.serialize()).board.get(entryCell)).to.have.lengthOf(3);
         });
 
-        it("should subject a plane sitting in a cloud to turbulence as soon as it flies", () => {
-            // Level flight from a cloudy cell into another cloud at height 0 crashes.
-            const level = makeFlightGame(0, ["f5", "f6"]);
-            level.move("f5-f6");
-            expect(level.board.has("f6")).to.be.false;
-            expect(level.results).to.deep.include({ type: "destroy", what: "plane", where: "f6" });
+        it("should only apply turbulence when moving from a non-cloud cell into a cloud", () => {
+            // Level flight within one cloud bank costs nothing.
+            const inside = makeFlightGame(0, ["f5", "f6"]);
+            inside.move("f5-f6");
+            expect(inside.board.get("f6")).to.deep.equal([1, "S", 0]);
 
-            // A climb out of the same cell survives because the gain is applied first.
-            const climb = makeFlightGame(0, ["f5", "f6"]);
-            climb.move("f5+f6");
-            expect(climb.board.get("f6")).to.deep.equal([1, "S", 0]);
+            // The same flight from a clear cell into the cloud at height 0 crashes.
+            const entering = makeFlightGame(0, ["f6"]);
+            entering.move("f5-f6");
+            expect(entering.board.has("f6")).to.be.false;
+            expect(entering.results).to.deep.include({ type: "destroy", what: "plane", where: "f6" });
         });
 
-        it("should apply turbulence for both clouds crossed in a two-space level flight", () => {
+        it("should keep a plane in a cloud bank at the same height through a two-space level flight", () => {
+            const g = makeFlightGame(3, ["f5", "f6", "f7"]);
+
+            g.move("f5-f7");
+
+            expect(g.board.get("f7")).to.deep.equal([1, "S", 3]);
+        });
+
+        it("should apply turbulence once for entering a cloud bank and staying in it", () => {
             const g = makeFlightGame(3, ["f6", "f7"]);
 
             g.move("f5-f7");
 
-            expect(g.board.get("f7")).to.deep.equal([1, "S", 1]);
+            expect(g.board.get("f7")).to.deep.equal([1, "S", 2]);
         });
 
-        it("should crash at the second turbulent cloud when the first loss leaves height 0", () => {
-            const g = makeFlightGame(1, ["f6", "f7"]);
+        it("should apply turbulence once for passing through a cloud back into clear air", () => {
+            const g = makeFlightGame(3, ["f6"]);
+
+            g.move("f5-f7");
+
+            expect(g.board.get("f7")).to.deep.equal([1, "S", 2]);
+        });
+
+        it("should crash a height-0 plane on a two-space level flight through a cloud", () => {
+            const g = makeFlightGame(0, ["f6"]);
 
             g.move("f5-f7");
 
             expect(g.board.has("f7")).to.be.false;
-            expect(g.results).to.deep.include({ type: "destroy", what: "plane", where: "f7" });
+            expect(g.board.has("f6")).to.be.false;
+            expect(g.results).to.deep.include({ type: "destroy", what: "plane", where: "f6" });
         });
 
-        it("should apply turbulence at every cloud entered during a dive", () => {
-            const g = makeFlightGame(5, ["f6", "f7"]);
+        it("should not apply turbulence to swoops that stay within a cloud bank", () => {
+            const g = makeFlightGame(3, ["f5", "f6", "f7"]);
 
             g.move("f5vf6>f7");
 
             expect(g.board.get("f7")).to.deep.equal([1, "S", 1]);
+        });
+
+        it("should apply turbulence once per swoop that enters a cloud bank", () => {
+            // Clear -> cloud (-1 swoop, -1 turbulence) -> cloud (-1 swoop only).
+            const g = makeFlightGame(5, ["f6", "f7"]);
+
+            g.move("f5vf6>f7");
+
+            expect(g.board.get("f7")).to.deep.equal([1, "S", 2]);
+        });
+
+        it("should resolve each swoop before allowing the next", () => {
+            // Clear -> cloud f6 -> clear f7 -> cloud f8 from height 3: after two
+            // swoops the plane is at 0, so it cannot swoop into f8 at all.
+            const g = makeFlightGame(3, ["f6", "f8"]);
+
+            expect(g.actions()).to.include("f5vf6>f7");
+            expect(g.actions().some(action => action.startsWith("f5vf6>f7>"))).to.be.false;
+            expect(g.validateMove("f5vf6>f7>f8").valid).to.be.false;
+            g.move("f5vf6>f7");
+
+            expect(g.board.get("f7")).to.deep.equal([1, "S", 0]);
         });
 
         it("should crash immediately during a dive and reject later manoeuvres", () => {
