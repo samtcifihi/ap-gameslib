@@ -266,6 +266,43 @@ describe("Ice Palace: building the Palace", () => {
         expect(g.palace.get("0,0")).to.deep.equal(["1L", "1M"]);
     });
 
+    it("renders a build as frames, one per placement, on the final layout", () => {
+        const g = toBuild([["1L", "1M"], ["2L"], ["3L"]], "1M@0,0", ["pass", "pass", "1L@0,0"]);
+        type Rep = { pieces: string[][][]; areas?: { stash?: string[][]; label?: { textKey?: string } }[] };
+        // Before the build there is nothing to step through.
+        expect(Array.isArray(g.render())).to.be.false;
+        g.move("1L@0,0;1M@0,0");
+        const reps = g.render() as unknown as Rep[];
+        expect(reps).to.have.length(3);
+        // Before, after the first placement, and the game as it stands, all the same size.
+        const stacks = reps.map(rep => rep.pieces.flat().filter(s => s.length > 0).map(s => s.join(",")));
+        expect(stacks[0]).to.deep.equal([]);
+        expect(stacks[1]).to.deep.equal(["a1L"]);
+        expect(stacks[2]).to.deep.equal(["a1L,a1M"]);
+        expect(new Set(reps.map(rep => `${rep.pieces.length}x${rep.pieces[0].length}`)).size).to.equal(1);
+        // The stock dwindles through the frames, then the next hand is offered.
+        expect(reps[0].areas![0].label?.textKey).to.equal("apgames:icepalace.STOCK");
+        expect(reps[0].areas![0].stash!.flat()).to.deep.equal(["s1M", "s1L"]);
+        expect(reps[1].areas![0].stash!.flat()).to.deep.equal(["s1M"]);
+        expect(reps[2].areas![0].label?.textKey).to.equal("apgames:icepalace.HAND");
+        // Rendering leaves the game as it was, and the frames survive a round trip.
+        expect(g.phase).to.equal("hand");
+        expect(g.palace.get("0,0")).to.deep.equal(["1L", "1M"]);
+        expect((g.clone().render() as unknown as Rep[]).length).to.equal(3);
+        // Frames belong to the build alone: the next move renders singly again.
+        g.move(g.moves()[0]);
+        expect(Array.isArray(g.render())).to.be.false;
+    });
+
+    it("keeps no frames for a partial build or a build of nothing", () => {
+        const g = toBuild([["1L", "1M"], ["2L"], ["3L"]], "1M@0,0", ["pass", "pass", "1L@0,0"]);
+        g.move("1L@0,0", { partial: true });
+        expect(Array.isArray(g.render())).to.be.false;
+        const empty = toBuild([["BL"], ["2L"], ["3L"]], "BL@0,0");
+        empty.move("pass");
+        expect(Array.isArray(empty.render())).to.be.false;
+    });
+
     it("refuses a build that breaks the Palace code", () => {
         const g = toBuild([["1L", "1M"], ["2L"], ["3L"]], "1M@0,0", ["pass", "pass", "1L@0,0"]);
         // Small over large is fine, large over medium is not.

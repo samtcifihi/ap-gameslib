@@ -601,6 +601,12 @@ const PER_SIZE_IN_STASH = 5;
 /** Hands are replenished to two of each size. */
 const HAND_PER_SIZE = 2;
 
+/** The Palace and stock partway through a build, for showing it a placement at a time. */
+export interface IBuildFrame {
+    palace: Structure;
+    stock: PieceId[];
+}
+
 export interface IMoveState extends IIndividualState {
     currplayer: number;
     yard: Structure;
@@ -621,6 +627,11 @@ export interface IMoveState extends IIndividualState {
     /** Set when the Pool could not replenish every hand, which ends the game. */
     exhausted: boolean;
     lastmove?: string;
+    /**
+     * Set by a build: the Palace before it and after each placement but the last, so the
+     * board can step through it. Absent otherwise.
+     */
+    frames?: IBuildFrame[];
 }
 
 export interface IIcePalaceState extends IAPGameState {
@@ -712,6 +723,7 @@ export class IcePalaceGame extends GameBaseSequenced {
     public variants: string[] = [];
     public stack!: Array<IMoveState>;
     public results: Array<APMoveResult> = [];
+    public frames: IBuildFrame[] = [];
     /** The pyramid picked but not yet placed in a partial move; never part of the state. */
     private selected?: PieceId;
     /** How many pyramids a partial build has placed so far; never part of the state. */
@@ -837,6 +849,7 @@ export class IcePalaceGame extends GameBaseSequenced {
         this.exhausted = state.exhausted;
         this.lastmove = state.lastmove;
         this.results = [...state._results];
+        this.frames = (state.frames ?? []).map(IcePalaceGame.cloneFrame);
         return this;
     }
 
@@ -858,7 +871,12 @@ export class IcePalaceGame extends GameBaseSequenced {
             stock: [...this.stock],
             buildMin: this.buildMin,
             exhausted: this.exhausted,
+            ...(this.frames.length > 0 ? { frames: this.frames.map(IcePalaceGame.cloneFrame) } : {}),
         };
+    }
+
+    private static cloneFrame(frame: IBuildFrame): IBuildFrame {
+        return { palace: cloneStructure(frame.palace), stock: [...frame.stock] };
     }
 
     public state(): IIcePalaceState {
@@ -1111,6 +1129,7 @@ export class IcePalaceGame extends GameBaseSequenced {
         }
 
         this.results = [];
+        this.frames = [];
         this.selected = undefined;
         this.pendingPlaced = 0;
         if (this.phase === "build") {
@@ -1187,6 +1206,9 @@ export class IcePalaceGame extends GameBaseSequenced {
 
     private applyBuild(move: string, partial: boolean): void {
         let placed = 0;
+        // The Palace before the build and after each placement; the state after the last
+        // placement is the game itself, so that frame is dropped again below.
+        const frames: IBuildFrame[] = [IcePalaceGame.cloneFrame(this)];
         if (move !== "pass") {
             for (const token of move.split(";")) {
                 const parsed = IcePalaceGame.parsePlacement(token);
@@ -1201,12 +1223,15 @@ export class IcePalaceGame extends GameBaseSequenced {
                 placed++;
                 placeInto(this.palace, parsed.piece, parsed.cell);
                 this.results.push({ type: "place", what: parsed.piece, where: parsed.cell });
+                frames.push(IcePalaceGame.cloneFrame(this));
             }
         }
         if (partial) {
             this.pendingPlaced = placed;
             return;
         }
+        frames.pop();
+        this.frames = frames;
         for (const piece of this.stock) {
             this.results.push({ type: "remove", where: "stock", what: piece });
         }
@@ -1657,14 +1682,40 @@ export class IcePalaceGame extends GameBaseSequenced {
      * instead. Both show the offered pyramids, then whatever is still in the Pool, as
      * stashes below the board; the Pool is for reference only. The stashes are chosen
      * separately: seen from above by default, or in 3D with "perspective-areas".
+     *
+     * A build is the one move that changes the board in several places at once, so it is
+     * returned as frames: the Palace before the build, then after each placement, with the
+     * stock dwindling below it, and last the game as it stands. Every frame uses the final
+     * board's layout so that the board holds still. Other moves return a single render.
      */
-    public render(opts?: IRenderOpts): APRenderRep {
+    public render(opts?: IRenderOpts): APRenderRep | APRenderRep[] {
+        if (this.frames.length === 0) {
+            return this.renderState(opts, this.layout());
+        }
+        const layout = this.layout();
+        const current = { palace: this.palace, stock: this.stock, phase: this.phase };
+        try {
+            const reps: APRenderRep[] = [];
+            for (const frame of this.frames) {
+                this.palace = frame.palace;
+                this.stock = frame.stock;
+                this.phase = "build";
+                reps.push(this.renderState(opts, layout));
+            }
+            Object.assign(this, current);
+            reps.push(this.renderState(opts, layout));
+            return reps;
+        } finally {
+            Object.assign(this, current);
+        }
+    }
+
+    private renderState(opts: IRenderOpts | undefined, layout: ILayout): APRenderRep {
         // The top-down board is the default; the perspective board is the alternate. The
         // board picks the renderer, which draws the stashes too, so a stash style is a
         // matter of glyphs, laid out in columns the way that renderer allows.
         const expanding = !this.hasDisplay(opts, "perspective");
         const areas3D = this.hasDisplay(opts, "perspective-areas");
-        const layout = this.layout();
         const legend: Legend = {};
         const pieces: string[][][] = [];
         for (let row = 0; row < layout.height; row++) {
