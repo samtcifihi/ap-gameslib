@@ -1262,23 +1262,31 @@ describe("Crosshairs", () => {
     });
 
     describe("Optional Rules Variants", () => {
-        const makeFlightGame = (
-            height: number,
-            clouds: string[],
-            hasEnteredClearCell = true,
-            variants = ["turbulence"],
-        ): CrosshairsGame => {
+        const makeFlightGame = (height: number, clouds: string[], variants = ["turbulence"]): CrosshairsGame => {
             const g = new CrosshairsGame(undefined, variants);
             g.clouds.clear();
             for (const cloud of clouds) g.clouds.add(cloud);
             g.turnNumber = 10;
             g.currplayer = 1;
             g.board.clear();
-            g.board.set("f5", [1, "S", height, hasEnteredClearCell]);
-            g.board.set("k5", [2, "N", 3, true]);
+            g.board.set("f5", [1, "S", height]);
+            g.board.set("k5", [2, "N", 3]);
             g.planesRemaining = [0, 0];
             (g as unknown as { saveState: () => void }).saveState();
             return g;
+        };
+
+        const makeEntryGame = (clouds: string[]): { g: CrosshairsGame; entryCell: string } => {
+            const g = new CrosshairsGame(undefined, ["turbulence"]);
+            const entryCell = g.graph.getEdges().get("S")![0];
+            g.clouds.clear();
+            for (const cloud of clouds) g.clouds.add(cloud);
+            g.turnNumber = 1;
+            g.currplayer = 1;
+            g.board.clear();
+            g.planesRemaining = [1, 1];
+            (g as unknown as { saveState: () => void }).saveState();
+            return { g, entryCell };
         };
 
         const shootablePlanes = (g: CrosshairsGame): string[] =>
@@ -1308,54 +1316,38 @@ describe("Crosshairs", () => {
 
             g.move("f5+f6");
 
-            expect(g.board.get("f6")).to.deep.equal([1, "S", 0, true]);
+            expect(g.board.get("f6")).to.deep.equal([1, "S", 0]);
         });
 
-        it("should exempt a plane entered directly into a cloud from turbulence", () => {
-            const g = new CrosshairsGame(undefined, ["turbulence"]);
-            const entryCell = g.graph.getEdges().get("S")![0];
-            g.clouds.clear();
+        it("should never apply turbulence to placing a plane into a cloud", () => {
+            const { g, entryCell } = makeEntryGame([]);
             g.clouds.add(entryCell);
-            g.turnNumber = 1;
-            g.currplayer = 1;
-            g.board.clear();
-            g.planesRemaining = [1, 1];
-            (g as unknown as { saveState: () => void }).saveState();
 
             g.move(`enter:${entryCell}/N`);
 
-            expect(g.board.get(entryCell)).to.deep.equal([1, "N", 0, false]);
+            expect(g.board.get(entryCell)).to.deep.equal([1, "N", 0]);
             expect(g.results).not.to.deep.include({ type: "destroy", what: "plane", where: entryCell });
         });
 
-        it("should keep a plane exempt while successive dive manoeuvres end in clouds", () => {
-            const g = makeFlightGame(3, ["f5", "f6", "f7"], false);
+        it("should store no extra plane state after entering", () => {
+            const { g, entryCell } = makeEntryGame([]);
 
-            g.move("f5vf6>f7");
+            g.move(`enter:${entryCell}/N`);
 
-            // Only the two normal swoop losses apply; neither cloud activates turbulence.
-            expect(g.board.get("f7")).to.deep.equal([1, "S", 1, false]);
+            expect(new CrosshairsGame(g.serialize()).board.get(entryCell)).to.have.lengthOf(3);
         });
 
-        it("should activate turbulence mid-dive after a swoop ends in a clear cell", () => {
-            const g = makeFlightGame(5, ["f5", "f7"], false);
+        it("should subject a plane sitting in a cloud to turbulence as soon as it flies", () => {
+            // Level flight from a cloudy cell into another cloud at height 0 crashes.
+            const level = makeFlightGame(0, ["f5", "f6"]);
+            level.move("f5-f6");
+            expect(level.board.has("f6")).to.be.false;
+            expect(level.results).to.deep.include({ type: "destroy", what: "plane", where: "f6" });
 
-            g.move("f5vf6>f7");
-
-            // The first swoop ends on clear f6 and expires the exemption. The
-            // second swoop therefore loses one height normally and one at f7.
-            expect(g.board.get("f7")).to.deep.equal([1, "S", 2, true]);
-            expect(new CrosshairsGame(g.serialize()).board.get("f7")![3]).to.be.true;
-        });
-
-        it("should end the exemption at an intermediate clear cell during level flight", () => {
-            const g = makeFlightGame(3, ["f5", "f7"], false);
-
-            g.move("f5-f7");
-
-            // Crossing clear f6 ends the exemption before the plane enters
-            // cloudy f7 later in the same manoeuvre.
-            expect(g.board.get("f7")).to.deep.equal([1, "S", 2, true]);
+            // A climb out of the same cell survives because the gain is applied first.
+            const climb = makeFlightGame(0, ["f5", "f6"]);
+            climb.move("f5+f6");
+            expect(climb.board.get("f6")).to.deep.equal([1, "S", 0]);
         });
 
         it("should apply turbulence for both clouds crossed in a two-space level flight", () => {
@@ -1363,7 +1355,7 @@ describe("Crosshairs", () => {
 
             g.move("f5-f7");
 
-            expect(g.board.get("f7")).to.deep.equal([1, "S", 1, true]);
+            expect(g.board.get("f7")).to.deep.equal([1, "S", 1]);
         });
 
         it("should crash at the second turbulent cloud when the first loss leaves height 0", () => {
@@ -1380,7 +1372,7 @@ describe("Crosshairs", () => {
 
             g.move("f5vf6>f7");
 
-            expect(g.board.get("f7")).to.deep.equal([1, "S", 1, true]);
+            expect(g.board.get("f7")).to.deep.equal([1, "S", 1]);
         });
 
         it("should crash immediately during a dive and reject later manoeuvres", () => {
@@ -1400,7 +1392,7 @@ describe("Crosshairs", () => {
 
             g.move("f5vP");
 
-            expect(g.board.get("f5")).to.deep.equal([1, "S", 2, true]);
+            expect(g.board.get("f5")).to.deep.equal([1, "S", 2]);
         });
 
         it("should let planes shoot out of clouds with concealed fire", () => {
