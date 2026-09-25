@@ -1517,7 +1517,11 @@ export class SquaresGame extends GameBaseSequenced {
                 return SquaresGame.invalid("PINNED", { where: ls });
             }
         } else if (a.type === "C" && defender !== undefined && defender.type === "I") {
-            return SquaresGame.invalid("CAVALRY_NEEDS_SUPPORT");
+            // Illegal on its own, but a legitimate step on the way to a supported attack.
+            if (this.supporters(a, target).length > 0) {
+                return SquaresGame.valid(-1, i18next.t("apgames:validation.squares.CAVALRY_NEEDS_SUPPORT"));
+            }
+            return SquaresGame.invalid("CAVALRY_NO_SUPPORT");
         }
         if (s === undefined && this.supporters(a, target).length > 0) {
             return SquaresGame.valid(0, i18next.t("apgames:validation.squares.PARTIAL_SUPPORT"));

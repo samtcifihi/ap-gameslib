@@ -278,6 +278,18 @@ describe("Squares: attacks", () => {
         expect(moves).to.include("CB1R+IB1CR>IG1L");
         // B1CR only touches G1L at a corner, so the infantry may support but never attack it
         expect(moves).to.not.include("IB1CR>IG1L");
+        // the unsupported attack is a legal step towards the supported one, but cannot be submitted
+        expect(g.validateMove("CB1R>IG1L").complete).to.equal(-1);
+        expect(() => g.move("CB1R>IG1L")).to.throw();
+        let click = g.handleClick("", 2, 0);
+        click = g.handleClick(click.move, 2, 9);
+        expect(click.move).to.equal("CB1R>IG1L");
+        expect(click.complete).to.equal(-1);
+        click = g.handleClick(click.move, 2, 1);
+        expect(click.move).to.equal("CB1R+IB1CR>IG1L");
+        expect(click.complete).to.equal(1);
+        place(g, "1I1", "BR");
+        expect(g.validateMove("CB1R>IG1L").valid).to.be.false;
 
         const h = new SquaresGame();
         place(h, "1A1", "B1C");
