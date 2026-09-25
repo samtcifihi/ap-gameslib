@@ -1,5 +1,5 @@
 import { GameBaseSequenced } from "./_turn-sequenced.js";
-import { IAPGameState, IClickResult, IIndividualState, IRenderOpts, IScores, IStatus, IValidationResult, type ChatLogCollectContext, type ChatLogEntry, type ChatLogLine } from "./_base.js";
+import { IAPGameState, IClickResult, ICustomButton, IIndividualState, IRenderOpts, IScores, IStatus, IValidationResult, StatusValue, type ChatLogCollectContext, type ChatLogEntry, type ChatLogLine } from "./_base.js";
 import type { APGamesInformation } from "../schemas/gameinfo.js";
 import type { APRenderRep, AreaReserves, Colourfuncs, Glyph } from "@abstractplay/renderer/build/schemas/schema";
 import type { APMoveResult } from "../schemas/moveresults.js";
@@ -170,6 +170,12 @@ export interface IStep {
     to: string;
 }
 
+/** Transient state used only to draw a partially entered move. */
+interface IPreview {
+    outline: string[];
+    attack?: { from: string; target: string; support?: string };
+}
+
 export interface IMoveState extends IIndividualState {
     currplayer: playerid;
     lastmove?: string;
@@ -245,7 +251,7 @@ export class SquaresGame extends GameBaseSequenced {
             "board>connect>rect",
             "components>simple>3c",
         ],
-        flags: ["experimental", "custom-colours", "scores", "perspective", "custom-rotation"],
+        flags: ["experimental", "custom-colours", "scores", "perspective", "custom-rotation", "custom-buttons"],
         customizations: [
             {
                 num: 1,
@@ -271,6 +277,7 @@ export class SquaresGame extends GameBaseSequenced {
     public pendingDouble: boolean[] = [false, false];
     public turnNo: number[] = [0, 0];
     public combat?: ICombat;
+    private preview?: IPreview;
     public lastActor?: playerid;
     public gameover = false;
     public winner: playerid[] = [];
@@ -337,6 +344,7 @@ export class SquaresGame extends GameBaseSequenced {
         this.pendingDouble = [...state.pendingDouble];
         this.turnNo = [...state.turnNo];
         this.combat = state.combat === undefined ? undefined : { ...state.combat };
+        this.preview = undefined;
         this.results = [...state._results];
         return this;
     }
@@ -1112,11 +1120,9 @@ export class SquaresGame extends GameBaseSequenced {
             }
         }
         this.results = [];
+        this.preview = undefined;
         if (partial) {
-            // Preview a plain movement; everything else waits for the real submission.
-            if (this.combat === undefined && move !== "pass" && !move.includes(">") && this.validateMove(move).complete !== -1) {
-                this.applyMove(move);
-            }
+            this.applyPreview(move);
             return this;
         }
         const actor = this.currplayer;
@@ -1142,10 +1148,99 @@ export class SquaresGame extends GameBaseSequenced {
         } else {
             this.finishAction(this.applyMove(move));
         }
+        if (!this.gameover && this.combat === undefined) {
+            this.checkRepetition();
+        }
         this.lastmove = move;
         this.lastActor = actor;
         this.saveState();
         return this;
+    }
+
+    /** Show a move that is still being entered: outline the squares involved, and sketch any relocation or attack. */
+    private applyPreview(move: string): void {
+        const outline: string[] = [];
+        let attack: IPreview["attack"];
+        const pushCell = (loc: string | undefined): void => {
+            if (loc !== undefined && isCell(loc)) {
+                outline.push(loc);
+            }
+        };
+        if (this.combat === undefined) {
+            if (move.includes(">")) {
+                const m = ATTACK_RE.exec(move);
+                if (m !== null) {
+                    const target = m[7] ?? m[6];
+                    pushCell(m[2]);
+                    pushCell(m[4]);
+                    pushCell(target);
+                    attack = { from: m[2], target, support: m[4] };
+                }
+            } else if (move !== "pass") {
+                let first: IUnit | undefined;
+                for (const seg of move.split(",")) {
+                    const m = SEGMENT_RE.exec(seg);
+                    if (m === null) {
+                        continue;
+                    }
+                    const u = this.unitFor(this.turnOwner, m[1], m[2], first?.id);
+                    if (u === undefined) {
+                        continue;
+                    }
+                    first = first ?? u;
+                    pushCell(m[2]);
+                    const steps = m[3].length === 0 ? [] : m[3].slice(1).split("-");
+                    const to = steps[steps.length - 1];
+                    if (to !== undefined && isLocation(to)) {
+                        u.loc = to;
+                        pushCell(to);
+                        this.results.push({ type: "move", from: m[2], to, what: UNIT_NAMES[u.type], how: "move", by: `${u.owner}` });
+                    }
+                }
+            }
+        } else {
+            const colon = move.indexOf(":");
+            const steps = colon < 0 ? undefined : this.parseSteps(move.slice(colon + 1));
+            if (steps !== undefined) {
+                for (const st of steps) {
+                    const u = this.unit(st.unit);
+                    u.loc = st.to;
+                    pushCell(st.from);
+                    pushCell(st.to);
+                    this.results.push({ type: "move", from: st.from, to: st.to, what: UNIT_NAMES[u.type], how: "retreat", by: `${u.owner}` });
+                }
+            }
+        }
+        this.preview = { outline, attack };
+    }
+
+    /** Position signature for the repetition rule: what stands where, whose action it is, and every restriction in force. */
+    private static signature(state: IMoveState): string {
+        const head = `${state.turnOwner}${state.isDouble ? "d" : "s"}${state.actionsLeft}${state.pendingDouble.map(b => (b ? "1" : "0")).join("")}`;
+        const units = [...state.units.values()]
+            .filter(u => u.loc !== "X")
+            .map(u => {
+                const frozen = u.frozenTurn === undefined ? -1 : u.frozenTurn - state.turnNo[u.owner - 1];
+                return `${u.loc}:${u.owner}${u.type}${u.moveStreak}${u.attackStreak}${frozen >= 0 ? `f${frozen}` : ""}`;
+            })
+            .sort();
+        return `${head}|${units.join("|")}`;
+    }
+
+    /** Chess's rule, since the published rules have none: the same position with the same player to act, three times, is a draw. */
+    private checkRepetition(): void {
+        const current = SquaresGame.signature(this.moveState());
+        let seen = 0;
+        for (const state of this.stack) {
+            if (state.combat === undefined && SquaresGame.signature(state) === current) {
+                seen += 1;
+            }
+        }
+        if (seen >= 2) {
+            this.gameover = true;
+            this.winner = [1, 2];
+            this.results.push({ type: "eog", reason: "repetition" }, { type: "winners", players: [1, 2] });
+        }
     }
 
     /** Wrap up a fully resolved action: score it, then spend the turn (or both halves for a double-cost move). */
@@ -1275,10 +1370,11 @@ export class SquaresGame extends GameBaseSequenced {
         if (move === "") {
             return SquaresGame.valid(-1, this.instructions());
         }
-        if (this.combat !== undefined) {
-            return this.validateCombatMove(move);
+        const result = this.combat !== undefined ? this.validateCombatMove(move) : this.validateAction(move);
+        if (result.valid) {
+            result.canrender = true;
         }
-        return this.validateAction(move);
+        return result;
     }
 
     private validateCombatMove(move: string): IValidationResult {
@@ -1286,10 +1382,111 @@ export class SquaresGame extends GameBaseSequenced {
         if (legal.includes(move)) {
             return SquaresGame.valid(1);
         }
-        if (/^(retreat|option[15]):/.test(move) && legal.some(l => l.startsWith(`${move},`))) {
-            return SquaresGame.valid(-1, i18next.t("apgames:validation.squares.CHAIN_CONTINUE"));
+        // A prefix of a legal choice: a bare option or `retreat:` still needing a square, or a chain still to be finished.
+        const boundary = (l: string): boolean => move.endsWith(":") || l[move.length] === ":" || l[move.length] === ",";
+        if (legal.some(l => l.startsWith(move) && boundary(l))) {
+            let key = "CHAIN_CONTINUE";
+            if (this.combat!.stage === "lose") {
+                key = "CHOOSE_LOSS";
+            } else if (!move.includes(":") || move.endsWith(":")) {
+                key = "CHOOSE_RETREAT";
+            }
+            return SquaresGame.valid(-1, i18next.t(`apgames:validation.squares.${key}`));
+        }
+        return this.diagnoseCombatMove(move, legal);
+    }
+
+    /** Explain a rejected combat decision, in particular why a retreat square is not allowed. */
+    private diagnoseCombatMove(move: string, legal: string[]): IValidationResult {
+        const c = this.combat!;
+        if (move === "stand") {
+            return SquaresGame.invalid(c.flank ? "STAND_FLANK" : "STAND_CAVALRY");
+        }
+        const m = /^(retreat|option1|option5):(.+)$/.exec(move);
+        if (m !== null && c.stage !== "lose" && c.stage !== "advance") {
+            const steps = this.parseSteps(m[2]);
+            if (steps !== undefined) {
+                let bad = steps.length - 1;
+                for (let i = 0; i < steps.length; i++) {
+                    const prefix = `${m[1]}:${fmtSteps(steps.slice(0, i + 1))}`;
+                    if (!legal.some(l => l === prefix || l.startsWith(`${prefix},`))) {
+                        bad = i;
+                        break;
+                    }
+                }
+                const role = bad > 0 ? "displaced" : (m[1] === "retreat" ? "defender" : "supporter");
+                return this.diagnoseRetreat(this.unit(steps[bad].unit), steps[bad].to, role);
+            }
+        }
+        if (c.stage === "resolve" && /^option[1-5]/.test(move)) {
+            return SquaresGame.invalid("OPTION_UNAVAILABLE");
         }
         return SquaresGame.invalid("ILLEGAL_RESPONSE", { move });
+    }
+
+    private diagnoseRetreat(u: IUnit, to: string, role: "defender" | "supporter" | "displaced"): IValidationResult {
+        const p = u.owner;
+        const from = u.loc;
+        if (!isLocation(to)) {
+            return { valid: false, message: i18next.t("apgames:validation._general.INVALIDCELL", { cell: to }) };
+        }
+        if (to === from) {
+            return { valid: false, message: i18next.t("apgames:validation._general.SAME_FROM_TO") };
+        }
+        if (to === RESERVES[otherPlayer(p)]) {
+            return SquaresGame.invalid("RETREAT_ENEMY_RESERVE");
+        }
+        if (u.type === "C") {
+            if (!adjacentTo(from).includes(to)) {
+                return SquaresGame.invalid("RETREAT_NOT_ADJACENT", { from, to });
+            }
+            if (!isCloser(to, from, p)) {
+                return SquaresGame.invalid("RETREAT_NOT_CLOSER", { from, to });
+            }
+            const occ = this.unitAt(to);
+            if (occ !== undefined && occ.owner !== p) {
+                return SquaresGame.invalid("RETREAT_ENEMY_OCCUPIED", { to });
+            }
+            if (occ !== undefined) {
+                const vacant = adjacentTo(from).filter(n => n !== RESERVES[otherPlayer(p)] && isCloser(n, from, p) && (n === RESERVES[p] || this.unitAt(n) === undefined));
+                if (vacant.length > 0) {
+                    return SquaresGame.invalid("RETREAT_VACANT_FIRST", { to, vacant: vacant.join(", ") });
+                }
+                return SquaresGame.invalid("RETREAT_CHAIN_BLOCKED", { to });
+            }
+            return SquaresGame.invalid("ILLEGAL_RESPONSE", { move: `${u.type}${from}-${to}` });
+        }
+        if (isCell(to)) {
+            if (!FORESTS.has(to)) {
+                return SquaresGame.invalid("RETREAT_TO_RESERVE_ONLY");
+            }
+            if (role !== "defender") {
+                return SquaresGame.invalid("RETREAT_FOREST_DISPLACED");
+            }
+            if (!FORESTS.has(from)) {
+                return SquaresGame.invalid("RETREAT_FOREST_FROM_CLEAR");
+            }
+            if (!connectedTo(from).includes(to)) {
+                return SquaresGame.invalid("RETREAT_FOREST_ADJACENT", { to });
+            }
+            if (!isCloser(to, from, p)) {
+                return SquaresGame.invalid("RETREAT_NOT_CLOSER", { from, to });
+            }
+            if (this.unitAt(to) !== undefined) {
+                return { valid: false, message: i18next.t("apgames:validation._general.OCCUPIED", { where: to }) };
+            }
+            if (this.enemyArtilleryNear(to, p).length > 0) {
+                return SquaresGame.invalid("RETREAT_FOREST_GUNS", { to });
+            }
+            return SquaresGame.invalid("ILLEGAL_RESPONSE", { move: `${u.type}${from}-${to}` });
+        }
+        if (u.type === "A" && role === "defender") {
+            return SquaresGame.invalid("RETREAT_ARTILLERY");
+        }
+        if (!this.hasClearPath(u)) {
+            return SquaresGame.invalid("RETREAT_NO_PATH");
+        }
+        return SquaresGame.invalid("ILLEGAL_RESPONSE", { move: `${u.type}${from}-${to}` });
     }
 
     private validateAction(move: string): IValidationResult {
@@ -1632,6 +1829,11 @@ export class SquaresGame extends GameBaseSequenced {
         }
         if (other !== undefined) {
             if (other === `${selType}${selLoc}`) {
+                // The moving unit's own origin: a second cavalry still in the reserve joins the move; otherwise clear.
+                if (segments.length === 1 && selType === "C" && steps.length === 1 && isReserve(selLoc)
+                    && this.reserveUnits(p).filter(u => u.type === "C").length > 1) {
+                    return `${move},${other}`;
+                }
                 return "";
             }
             if (segments.length === 1 && selType === "C" && other.startsWith("C") && steps.length === 1) {
@@ -1663,8 +1865,26 @@ export class SquaresGame extends GameBaseSequenced {
                 }
                 return loc === d.loc ? "stand" : `retreat:${d.type}${d.loc}-${loc}`;
             }
-            case "resolve":
+            case "resolve": {
+                // Options 1 and 5 may still need the supporting cavalry's retreat square, or a displacement chain.
+                const m = /^(option[15])(?::(.*))?$/.exec(move);
+                if (m === null) {
+                    return move;
+                }
+                const s = this.unit(c.supporter!);
+                if (m[2] === undefined || m[2] === "") {
+                    return `${m[1]}:${s.type}${s.loc}-${loc}`;
+                }
+                const steps = this.parseSteps(m[2]);
+                if (steps !== undefined) {
+                    const lastTo = steps[steps.length - 1].to;
+                    const occ = this.unitAt(lastTo);
+                    if (occ !== undefined && occ.owner === s.owner && !steps.some(st => st.unit === occ.id)) {
+                        return `${move},${occ.type}${lastTo}-${loc}`;
+                    }
+                }
                 return move;
+            }
             case "advance":
                 if (loc === c.target) {
                     return "advance";
@@ -1676,6 +1896,60 @@ export class SquaresGame extends GameBaseSequenced {
                 }
                 return move;
         }
+    }
+
+    /* ---------------------------------------------------------- buttons */
+
+    /** Buttons for the decisions that clicks alone cannot express; labels are keys under `buttons.` in the front. */
+    public getButtons(): ICustomButton[] {
+        if (this.gameover) {
+            return [];
+        }
+        const c = this.combat;
+        if (c === undefined) {
+            return this.isDouble ? [] : [{ label: "pass", move: "pass" }];
+        }
+        const legal = this.combatOptions();
+        const buttons: ICustomButton[] = [];
+        const add = (label: string, move: string): void => {
+            buttons.push({ label: `squares.${label}`, move });
+        };
+        switch (c.stage) {
+            case "defend":
+            case "second": {
+                if (legal.includes("stand")) {
+                    add("stand", "stand");
+                }
+                const home = legal.find(l => /^retreat:[IAC][A-Z0-9]+-(BR|GR)$/.test(l));
+                if (home !== undefined) {
+                    add("retreatReserve", home);
+                }
+                if (legal.some(l => l.startsWith("retreat:") && l !== home)) {
+                    add("retreat", "retreat:");
+                }
+                break;
+            }
+            case "resolve":
+                for (const opt of ["option1", "option2", "option3", "option4", "option5"]) {
+                    const matches = legal.filter(l => l === opt || l.startsWith(`${opt}:`));
+                    if (matches.length === 1) {
+                        add(opt, matches[0]);
+                    } else if (matches.length > 1) {
+                        add(opt, `${opt}:`);
+                    }
+                }
+                break;
+            case "advance":
+                add("advance", "advance");
+                add("stay", "stay");
+                break;
+            case "lose":
+                for (const l of legal) {
+                    add(`lose${l.slice("lose:".length)}`, l);
+                }
+                break;
+        }
+        return buttons;
     }
 
     /* ---------------------------------------------------------- rendering */
@@ -1708,35 +1982,62 @@ export class SquaresGame extends GameBaseSequenced {
             background: this.getPlayerColour(p),
             pieces: UNIT_TYPES.flatMap(t => this.reserveUnits(p).filter(u => u.type === t).map(() => key(p, t))),
         });
-        // Blue sits at the north in the rulebook's diagram; each player sees their own side at the bottom.
-        const rep: APRenderRep = {
-            board: opts?.perspective === 2 ? { style: "dvgc" } : { style: "dvgc", rotate: 180 },
-            legend,
-            pieces: pstr,
-            areas: [reserves(1), reserves(2)],
-        };
-
         const annotations: NonNullable<APRenderRep["annotations"]> = [];
+        const edges = new Set<"N" | "S">();
         const at = (loc: string | undefined): { row: number; col: number } | undefined => {
             const rc = loc === undefined ? undefined : cellCoords.get(loc);
             return rc === undefined ? undefined : { row: rc[0], col: rc[1] };
         };
+        const markEdge = (loc: string | undefined): void => {
+            if (loc === RESERVES[1]) {
+                edges.add("N");
+            } else if (loc === RESERVES[2]) {
+                edges.add("S");
+            }
+        };
+        const outline = (loc: string | undefined, type: "enter" | "exit"): void => {
+            const cell = at(loc);
+            if (cell !== undefined) {
+                annotations.push({ type, targets: [cell] });
+            }
+        };
+        // An arrow between two squares. The reserves have no position on the board, so an arrow into or
+        // out of one runs to or from the back-line square nearest the way, and that edge is highlighted.
+        const arrow = (from: string | undefined, to: string | undefined, style: "solid" | "dashed"): void => {
+            if (from === undefined || to === undefined) {
+                return;
+            }
+            let a = from;
+            let b = to;
+            if (from === RESERVES[1] || from === RESERVES[2]) {
+                markEdge(from);
+                a = SquaresGame.edgeCell(to, from === RESERVES[1] ? 1 : 2) ?? to;
+            }
+            if (to === RESERVES[1] || to === RESERVES[2]) {
+                markEdge(to);
+                b = SquaresGame.edgeCell(from, to === RESERVES[1] ? 1 : 2) ?? from;
+            }
+            const pa = at(a);
+            const pb = at(b);
+            if (pa !== undefined && pb !== undefined && a !== b) {
+                annotations.push({ type: "move", targets: [pa, pb], style });
+            } else if (isReserve(from)) {
+                outline(to, "enter");
+            }
+        };
         for (const r of this.results) {
             if (r.type === "move") {
-                const from = at(r.from);
-                const to = at(r.to);
-                if (from !== undefined && to !== undefined) {
-                    annotations.push({ type: "move", targets: [from, to], style: r.how === "retreat" || r.how === "displaced" ? "dashed" : "solid" });
-                }
+                arrow(r.from, r.to, r.how === "retreat" || r.how === "displaced" ? "dashed" : "solid");
             } else if (r.type === "capture") {
-                const where = at(r.where);
-                if (where !== undefined) {
-                    annotations.push({ type: "exit", targets: [where] });
+                if (r.how === "reserve") {
+                    markEdge(r.where);
+                } else {
+                    outline(r.where, "exit");
                 }
             }
         }
-        // Attack arrows: solid for the attacker, dashed for the support. They follow a pending
-        // combat, or this ply's results when the attack was settled on the spot.
+        // Attack arrows: solid for the attacker, dashed for the support. They follow a pending combat,
+        // an attack still being entered, or this ply's results when the attack was settled on the spot.
         let attackFrom: string | undefined;
         let attackTo: string | undefined;
         let supportFrom: string | undefined;
@@ -1744,6 +2045,10 @@ export class SquaresGame extends GameBaseSequenced {
             attackFrom = this.combat.from;
             attackTo = this.combat.target;
             supportFrom = this.combat.supportFrom;
+        } else if (this.preview?.attack !== undefined) {
+            attackFrom = this.preview.attack.from;
+            attackTo = this.preview.attack.target;
+            supportFrom = this.preview.attack.support;
         } else {
             const fire = this.results.find(r => r.type === "fire");
             if (fire !== undefined && fire.type === "fire") {
@@ -1755,24 +2060,58 @@ export class SquaresGame extends GameBaseSequenced {
                 supportFrom = support.where;
             }
         }
-        const target = at(attackTo);
-        if (target !== undefined) {
-            const from = at(attackFrom);
-            if (from !== undefined) {
-                annotations.push({ type: "move", targets: [from, target], style: "solid", colour: "#c00" });
-            }
-            const sup = at(supportFrom);
-            if (sup !== undefined) {
-                annotations.push({ type: "move", targets: [sup, target], style: "dashed", colour: "#c00" });
-            }
+        if (attackTo !== undefined) {
+            arrow(attackFrom, attackTo, "solid");
+            arrow(supportFrom, attackTo, "dashed");
             if (this.combat !== undefined) {
-                annotations.push({ type: "enter", targets: [target] });
+                outline(isCell(attackTo) ? attackTo : attackFrom, "enter");
             }
         }
+        if (this.preview !== undefined) {
+            for (const cell of new Set(this.preview.outline)) {
+                outline(cell, "enter");
+            }
+        }
+
+        // Blue sits at the north in the rulebook's diagram; each player sees their own side at the bottom.
+        const board: APRenderRep["board"] = opts?.perspective === 2 ? { style: "dvgc" } : { style: "dvgc", rotate: 180 };
+        if (edges.size > 0) {
+            board.markers = [...edges].map(edge => ({ type: "edge" as const, edge, colour: this.getPlayerColour(edge === "N" ? 1 : 2) }));
+        }
+        const rep: APRenderRep = {
+            board,
+            legend,
+            pieces: pstr,
+            areas: [reserves(1), reserves(2)],
+        };
         if (annotations.length > 0) {
             rep.annotations = annotations;
         }
         return rep;
+    }
+
+    /** The back-line square on `player`'s side nearest to `from`: where an arrow to or from that reserve is anchored. */
+    private static edgeCell(from: string, player: playerid): string | undefined {
+        const r = rects.get(from);
+        if (r === undefined) {
+            return undefined;
+        }
+        const line = player === 1 ? CELL_ROWS[0].slice(0, 3) : CELL_ROWS[0].slice(5, 8);
+        if (line.includes(from)) {
+            return undefined;
+        }
+        const x = (r.x1 + r.x2) / 2;
+        let best: string | undefined;
+        let bestDistance = Infinity;
+        for (const cell of line) {
+            const c = rects.get(cell)!;
+            const d = Math.abs((c.x1 + c.x2) / 2 - x);
+            if (d < bestDistance) {
+                bestDistance = d;
+                best = cell;
+            }
+        }
+        return best;
     }
 
     public sidebarStatuses(): IStatus[] {
@@ -1789,16 +2128,26 @@ export class SquaresGame extends GameBaseSequenced {
         }
         for (const p of [1, 2] as playerid[]) {
             const lost = this.losses(p);
-            out.push({
-                key: this.seatAreaLabel(p, "apgames:status.squares.LOSSES"),
-                value: [this.neutralAreaLabel("apgames:status.squares.LOSSES_VALUE", { infantry: lost.I, artillery: lost.A, cavalry: lost.C })],
-            });
+            const value: StatusValue[] = [];
+            for (const t of UNIT_TYPES) {
+                value.push(`${lost[t]} `, { glyph: `nato-${UNIT_NAMES[t]}`, colour: this.getPlayerColour(p) } as unknown as StatusValue, " ");
+            }
+            out.push({ key: this.seatAreaLabel(p, "apgames:status.squares.LOSSES"), value });
         }
         return out;
     }
 
+    /** Units of the opponent that `player` has eliminated, before any doubling. */
+    public eliminated(player: playerid): number {
+        const lost = this.losses(otherPlayer(player));
+        return lost.I + lost.A + lost.C;
+    }
+
     public sidebarScores(): IScores[] {
-        return [{ name: this.neutralAreaLabel("apgames:status.squares.POINTS"), scores: [this.points(1), this.points(2)] }];
+        return [{
+            name: this.neutralAreaLabel("apgames:status.squares.POINTS"),
+            scores: ([1, 2] as playerid[]).map(p => `${this.points(p)} (${this.eliminated(p)})`),
+        }];
     }
 
     public getPlayerScore(player: number): number {

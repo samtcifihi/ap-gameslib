@@ -773,3 +773,137 @@ describe("Squares: plumbing", () => {
         expect(text).to.contain("Alice passed and will take a double turn next.");
     });
 });
+
+describe("Squares: interface helpers", () => {
+    it("adds a second cavalry from the reserve by clicking the strip again", () => {
+        const g = new SquaresGame();
+        let click = g.handleClick("", -1, -1, "BC");
+        click = g.handleClick(click.move, 0, 2);
+        expect(click.move).to.equal("CBR-B3L");
+        click = g.handleClick(click.move, -1, -1, "BC");
+        expect(click.move).to.equal("CBR-B3L,CBR");
+        expect(click.complete).to.equal(-1);
+        click = g.handleClick(click.move, 0, 1);
+        expect(click.move).to.equal("CBR-B3L,CBR-B3C");
+        expect(click.complete).to.equal(1);
+    });
+
+    it("offers buttons for every combat decision and finishes option prefixes by clicking", () => {
+        const g = new SquaresGame();
+        expect(g.getButtons()).to.deep.equal([{ label: "pass", move: "pass" }]);
+        place(g, "1I1", "B1C");
+        place(g, "1C1", "B1CL");
+        place(g, "2I1", "G1C");
+        g.move("IB1C+CB1CL>IG1C");
+        expect(g.getButtons().map(b => [b.label, b.move])).to.deep.equal([["squares.stand", "stand"], ["squares.retreatReserve", "retreat:IG1C-GR"]]);
+        g.move("stand");
+        const buttons = g.getButtons();
+        expect(buttons.map(b => b.label)).to.deep.equal(["squares.option1", "squares.option2", "squares.option3", "squares.option4", "squares.option5"]);
+        expect(buttons[0].move).to.equal("option1:CB1CL-B2CL");
+        expect(buttons[4].move).to.equal("option5:CB1CL-B2CL");
+        expect(g.validateMove("option1").complete).to.equal(-1);
+        expect(g.validateMove("option5:").complete).to.equal(-1);
+        const click = g.handleClick("option1", 1, 2);
+        expect(click.move).to.equal("option1:CB1CL-B2CL");
+        expect(click.complete).to.equal(1);
+        g.move("option2");
+        expect(g.getButtons().map(b => b.move)).to.deep.equal(["advance", "stay"]);
+        g.move("stay");
+        expect(g.getButtons()).to.deep.equal([{ label: "pass", move: "pass" }]);
+        const h = new SquaresGame();
+        place(h, "1I1", "G3C");
+        h.move("IG3C>GR");
+        expect(h.getButtons().map(b => [b.label, b.move])).to.deep.equal([["squares.loseI", "lose:I"], ["squares.loseA", "lose:A"], ["squares.loseC", "lose:C"]]);
+        expect(h.validateMove("lose:").complete).to.equal(-1);
+        h.move("pass".slice(0, 0) + "lose:C");
+        expect(h.getButtons()).to.deep.equal([{ label: "pass", move: "pass" }]);
+    });
+
+    it("explains why a retreat square is not allowed", () => {
+        addResource("en");
+        const g = new SquaresGame();
+        place(g, "1I1", "B1C");
+        place(g, "1C1", "B1CL");
+        place(g, "2I1", "G1C");
+        g.move("IB1C+CB1CL>IG1C");
+        expect(g.validateMove("retreat:IG1C-G2CL").message).to.contain("retreat to their reserve");
+        expect(g.validateMove("retreat:IG1C-EF").message).to.contain("attacked while in a forest");
+        // lone cavalry attacking cavalry: the defender may stand or take the one vacant square
+        const h = new SquaresGame();
+        place(h, "1C1", "B1C");
+        place(h, "2C1", "G1C");
+        place(h, "2I1", "G2CL");
+        h.move("CB1C>CG1C");
+        expect(h.moves()).to.have.members(["stand", "retreat:CG1C-G2CR"]);
+        expect(h.validateMove("retreat:CG1C-G2CL,IG2CL-GR").message).to.contain("vacant");
+        expect(h.validateMove("retreat:CG1C-B1CR").message).to.contain("not closer");
+        expect(h.validateMove("retreat:CG1C-G3C").message).to.contain("touching");
+        expect(h.validateMove("retreat:CG1C-G2CR").valid).to.be.true;
+        // supported attack with two vacant squares behind: the cavalry must retreat
+        const k = new SquaresGame();
+        place(k, "1C1", "B1C");
+        place(k, "1I1", "B1CL");
+        place(k, "2C1", "G1C");
+        k.move("CB1C+IB1CL>CG1C");
+        expect(k.moves()).to.have.members(["retreat:CG1C-G2CL", "retreat:CG1C-G2CR"]);
+        expect(k.validateMove("stand").message).to.contain("must retreat");
+    });
+
+    it("previews selections, attacks and reserve-bound retreats", () => {
+        const g = new SquaresGame();
+        place(g, "1I1", "B1C");
+        place(g, "1C1", "B1CL");
+        place(g, "2I1", "G1C");
+        commit(g);
+        expect(g.validateMove("IB1C").canrender).to.be.true;
+        const sel = g.clone();
+        sel.move("IB1C", { partial: true });
+        expect(sel.render().annotations).to.deep.include({ type: "enter", targets: [{ row: 2, col: 2 }] });
+        const atk = g.clone();
+        atk.move("IB1C>IG1C", { partial: true });
+        expect(atk.render().annotations).to.deep.include({ type: "move", targets: [{ row: 2, col: 2 }, { row: 2, col: 7 }], style: "solid" });
+        const sup = g.clone();
+        sup.move("IB1C+CB1CL>IG1C", { partial: true });
+        expect(sup.render().annotations).to.deep.include({ type: "move", targets: [{ row: 2, col: 3 }, { row: 2, col: 7 }], style: "dashed" });
+        const r = g.clone();
+        r.move("IB1C>IG1C");
+        r.move("retreat:IG1C-GR");
+        const rep = r.render({ perspective: 2 });
+        expect(rep.board).to.deep.equal({ style: "dvgc", markers: [{ type: "edge", edge: "S", colour: r.getPlayerColour(2) }] });
+        expect(rep.annotations).to.deep.include({ type: "move", targets: [{ row: 2, col: 7 }, { row: 0, col: 6 }], style: "dashed" });
+        expect(JSON.stringify(rep.annotations)).to.not.contain("#c00");
+        const out = new SquaresGame();
+        out.move("IBR-B3C");
+        expect(out.render().board).to.deep.equal({ style: "dvgc", rotate: 180, markers: [{ type: "edge", edge: "N", colour: out.getPlayerColour(1) }] });
+        expect(out.render().annotations).to.deep.include({ type: "enter", targets: [{ row: 0, col: 1 }] });
+    });
+
+    it("reports losses with glyphs and points with unit counts", () => {
+        const g = new SquaresGame();
+        place(g, "1I1", "B1C");
+        place(g, "2I1", "G1C");
+        g.move("IB1C>IG1C");
+        g.move("stand");
+        expect(JSON.stringify(g.sidebarStatuses())).to.contain('"glyph":"nato-infantry"');
+        expect(g.sidebarScores()[0].scores).to.deep.equal(["1 (1)", "1 (1)"]);
+    });
+
+    it("draws by threefold repetition", () => {
+        const g = new SquaresGame();
+        place(g, "1C1", "B1C");
+        place(g, "1I1", "B2R");
+        place(g, "2C1", "G1C");
+        place(g, "2I1", "G2L");
+        commit(g);
+        const cycle = ["CB1C-B1CL", "CG1C-G1CL", "CB1CL-B1C", "CG1CL-G1C", "IB2R-B2CR", "IG2L-G2CL", "IB2CR-B2R", "IG2CL-G2L"];
+        let plies = 0;
+        while (!g.gameover && plies < 40) {
+            g.move(cycle[plies % cycle.length]);
+            plies += 1;
+        }
+        expect(g.gameover).to.be.true;
+        expect(g.winner).to.deep.equal([1, 2]);
+        expect(plies).to.equal(18);
+        expect(g.stack[g.stack.length - 1]._results).to.deep.include({ type: "eog", reason: "repetition" });
+    });
+});
