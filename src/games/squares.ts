@@ -1,5 +1,5 @@
 import { GameBaseSequenced } from "./_turn-sequenced.js";
-import { IAPGameState, IClickResult, IIndividualState, IScores, IStatus, IValidationResult, type ChatLogCollectContext, type ChatLogEntry, type ChatLogLine } from "./_base.js";
+import { IAPGameState, IClickResult, IIndividualState, IRenderOpts, IScores, IStatus, IValidationResult, type ChatLogCollectContext, type ChatLogEntry, type ChatLogLine } from "./_base.js";
 import type { APGamesInformation } from "../schemas/gameinfo.js";
 import type { APRenderRep, AreaReserves, Colourfuncs, Glyph } from "@abstractplay/renderer/build/schemas/schema";
 import type { APMoveResult } from "../schemas/moveresults.js";
@@ -245,7 +245,7 @@ export class SquaresGame extends GameBaseSequenced {
             "board>connect>rect",
             "components>simple>3c",
         ],
-        flags: ["experimental", "custom-colours", "scores"],
+        flags: ["experimental", "custom-colours", "scores", "perspective", "custom-rotation"],
         customizations: [
             {
                 num: 1,
@@ -1541,9 +1541,9 @@ export class SquaresGame extends GameBaseSequenced {
                 loc = RESERVES[1];
             } else if (piece === "_reserves_S") {
                 loc = RESERVES[2];
-            } else if (piece !== undefined && /^[IACiac]$/.test(piece)) {
-                loc = piece === piece.toUpperCase() ? RESERVES[1] : RESERVES[2];
-                clickedType = piece.toUpperCase() as UnitType;
+            } else if (piece !== undefined && /^[BG][IAC]$/.test(piece)) {
+                loc = piece[0] === "B" ? RESERVES[1] : RESERVES[2];
+                clickedType = piece[1] as UnitType;
             }
             if (loc === undefined) {
                 return { move, valid: false, message: i18next.t("apgames:validation._general.UNKNOWN_CLICK") };
@@ -1610,7 +1610,25 @@ export class SquaresGame extends GameBaseSequenced {
                     return `${last}>${loc}`;
                 }
             }
+            if (segments.length === 1 && selType === "C") {
+                // Cavalry may be sent straight to a square two steps away; the engine picks the path.
+                const direct = `${last}-${loc}`;
+                const unit = this.unitFor(p, selType, selLoc);
+                if (unit !== undefined && this.canMove(unit)) {
+                    const legal = this.unitMoves(unit, this.actionsLeft === 2);
+                    if (!legal.includes(direct)) {
+                        const twoStep = legal.find(m => m.startsWith(`${last}-`) && m.endsWith(`-${loc}`) && m.split("-").length === 3);
+                        if (twoStep !== undefined) {
+                            return twoStep;
+                        }
+                    }
+                }
+            }
             return `${move}-${loc}`;
+        }
+        if (loc === steps[steps.length - 1]) {
+            // Clicking the square the piece has just been shown moving to changes nothing.
+            return move;
         }
         if (other !== undefined) {
             if (other === `${selType}${selLoc}`) {
@@ -1666,8 +1684,14 @@ export class SquaresGame extends GameBaseSequenced {
         return { func: "custom", default: p === 1 ? "#1f78b4" : "#8c8c8c", palette: p };
     }
 
-    public render(): APRenderRep {
-        const key = (p: playerid, t: UnitType): string => p === 1 ? t : t.toLowerCase();
+    /** The board is only ever shown the right way up or upside down. */
+    public getCustomRotation(): number | undefined {
+        return 180;
+    }
+
+    public render(opts?: IRenderOpts): APRenderRep {
+        // Legend keys must not differ only by case: a page in quirks mode matches ids case-insensitively.
+        const key = (p: playerid, t: UnitType): string => `${p === 1 ? "B" : "G"}${t}`;
         const legend: { [k: string]: Glyph } = {};
         for (const p of [1, 2] as playerid[]) {
             for (const t of UNIT_TYPES) {
@@ -1677,15 +1701,16 @@ export class SquaresGame extends GameBaseSequenced {
         const pstr = CELL_ROWS.map(row => row.map(cell => {
             const u = this.unitAt(cell);
             return u === undefined ? "-" : key(u.owner, u.type);
-        }).join("")).join("\n");
+        }).join(",")).join("\n");
         const reserves = (p: playerid): AreaReserves => ({
             type: "reserves",
             side: p === 1 ? "N" : "S",
             background: this.getPlayerColour(p),
             pieces: UNIT_TYPES.flatMap(t => this.reserveUnits(p).filter(u => u.type === t).map(() => key(p, t))),
         });
+        // Blue sits at the north in the rulebook's diagram; each player sees their own side at the bottom.
         const rep: APRenderRep = {
-            board: { style: "dvgc" },
+            board: opts?.perspective === 2 ? { style: "dvgc" } : { style: "dvgc", rotate: 180 },
             legend,
             pieces: pstr,
             areas: [reserves(1), reserves(2)],

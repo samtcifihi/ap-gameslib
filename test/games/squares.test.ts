@@ -678,13 +678,29 @@ describe("Squares: plumbing", () => {
         click = g.handleClick(click.move, 2, 3);
         expect(click.move).to.equal("IB1C+CB1CL>IG1C");
         expect(click.complete).to.equal(1);
-        click = g.handleClick("", -1, -1, "C");
+        click = g.handleClick("", -1, -1, "BC");
         expect(click.move).to.equal("CBR");
         click = g.handleClick(click.move, 0, 2);
         expect(click.move).to.equal("CBR-B3L");
         expect(click.complete).to.equal(0);
         click = g.handleClick(click.move, 1, 3);
         expect(click.move).to.equal("CBR-B3L-B2L");
+        expect(click.complete).to.equal(1);
+        // clicking the square the cavalry was just shown on leaves the move as it is
+        click = g.handleClick("CBR-B3L", 0, 2);
+        expect(click.move).to.equal("CBR-B3L");
+        expect(click.valid).to.be.true;
+        expect(click.complete).to.equal(0);
+        // a square two steps away can be clicked directly; the engine supplies the path
+        click = g.handleClick("CBR", 1, 3);
+        expect(click.move).to.equal("CBR-B3L-B2L");
+        expect(click.complete).to.equal(1);
+        place(g, "1C1", "B1CR");
+        click = g.handleClick("CB1CR", 1, 1);
+        expect(click.move).to.equal("CB1CR-B2CR");
+        expect(click.complete).to.equal(0);
+        click = g.handleClick("CB1CR", 1, 2);
+        expect(click.move).to.match(/^CB1CR-[A-Z0-9]+-B2CL$/);
         expect(click.complete).to.equal(1);
     });
 
@@ -706,21 +722,27 @@ describe("Squares: plumbing", () => {
         const h = new SquaresGame();
         place(h, "1I1", "G3C");
         h.move("IG3C>GR");
-        click = h.handleClick("", -1, -1, "a");
+        click = h.handleClick("", -1, -1, "GA");
         expect(click.move).to.equal("lose:A");
         expect(click.complete).to.equal(1);
     });
 
-    it("renders the dvgc board with both reserves", () => {
+    it("renders the dvgc board with both reserves, each player's side at the bottom", () => {
         const g = new SquaresGame();
         place(g, "1I1", "B1C");
-        const rep = g.render();
-        expect(rep.board).to.deep.equal({ style: "dvgc" });
-        expect(rep.pieces).to.equal("----------\n----------\n--I-------");
+        place(g, "2C1", "G1C");
+        const rep = g.render({ perspective: 1 });
+        expect(rep.board).to.deep.equal({ style: "dvgc", rotate: 180 });
+        expect(rep.pieces).to.equal("-,-,-,-,-,-,-,-,-,-\n-,-,-,-,-,-,-,-,-,-\n-,-,BI,-,-,-,-,GC,-,-");
+        expect(Object.keys(rep.legend!)).to.have.members(["BI", "BA", "BC", "GI", "GA", "GC"]);
         expect(rep.areas!.length).to.equal(2);
         const north = rep.areas![0] as { side: string; pieces: string[] };
         expect(north.side).to.equal("N");
         expect(north.pieces.length).to.equal(15);
+        expect(north.pieces.every(k => k.startsWith("B"))).to.be.true;
+        expect(g.render({ perspective: 2 }).board).to.deep.equal({ style: "dvgc" });
+        expect(g.render().board).to.deep.equal({ style: "dvgc", rotate: 180 });
+        expect(g.getCustomRotation()).to.equal(180);
     });
 
     it("writes a move log that matches the legacy formatter", () => {
