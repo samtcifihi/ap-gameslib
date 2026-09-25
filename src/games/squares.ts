@@ -201,7 +201,7 @@ const SEGMENT_RE = /^([IAC])([A-Z0-9]+)((?:-[A-Z0-9]+)*)$/;
 
 export class SquaresGame extends GameBaseSequenced {
     public static readonly gameinfo: APGamesInformation = {
-        name: "Squares",
+        name: "SQUARES - The Civil War Battle Game",
         uid: "squares",
         playercounts: [2],
         version: "20260924",
