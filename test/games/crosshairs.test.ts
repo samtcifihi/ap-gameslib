@@ -264,14 +264,17 @@ describe("Crosshairs", () => {
                     const variants = variant ? [setup, variant] : [setup];
                     const g = new CrosshairsGame(undefined, variants);
 
-                    expect(g.clouds.size).to.equal(target);
                     expect(g.turnNumber).to.equal(1);
                     expect(largestCloudBank(g)).to.be.at.most(2);
                     if (setup === "spread-start") {
+                        // A centre cloud is its own mirror, leaving the board one short.
+                        const hasCentre = [...g.clouds].some(cloud => g.graph.rot180(cloud) === cloud);
+                        expect(g.clouds.size).to.equal(hasCentre ? target - 1 : target);
                         for (const cloud of g.clouds) {
                             expect(g.clouds.has(g.graph.rot180(cloud))).to.be.true;
-                            expect(g.graph.rot180(cloud)).to.not.equal(cloud);
                         }
+                    } else {
+                        expect(g.clouds.size).to.equal(target);
                     }
                 });
             }

@@ -338,9 +338,10 @@ export class CrosshairsGame extends GameBase {
     // visited in one random order over several passes, and a cell qualifies in
     // pass N only if at most N of its six rays already contain a cloud, so the
     // earliest clouds block completely open lines and later passes fill the
-    // gaps. The final pass accepts anything the bank-size rule allows, so the
-    // target is always reached on a normal board. Symmetric mode places
-    // rotational pairs and skips the centre so even targets are hit exactly.
+    // gaps. The final pass accepts anything the bank-size rule allows. Symmetric
+    // mode places rotational pairs; the centre is its own mirror and places a
+    // single cloud, after which no pair fits the even target, so a board with
+    // a centre cloud ends one short (15, 21, or 27), as the designer intends.
     private placeSpreadRandomClouds(symmetric: boolean): string[] {
         const target = this.getTargetCloudCount();
         const cells = this.graph.listCells() as string[];
@@ -364,8 +365,7 @@ export class CrosshairsGame extends GameBase {
                 if (clouds.size >= target) break;
                 if (clouds.has(cell)) continue;
                 const mirror = this.getSymmetricCell(cell);
-                if (symmetric && mirror === cell) continue;
-                const group = symmetric ? [cell, mirror] : [cell];
+                const group = symmetric && mirror !== cell ? [cell, mirror] : [cell];
                 if (clouds.size + group.length > target) continue;
                 if (group.some(c => raysBlocked(c) > pass)) continue;
 
