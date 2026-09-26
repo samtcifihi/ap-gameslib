@@ -1705,6 +1705,14 @@
                 "name": "Asymmetric random clouds",
                 "description": "There is no cloud placing phase. The system places the clouds randomly without requiring symmetry."
             },
+            "spread-start": {
+                "name": "Symmetric spread clouds",
+                "description": "There is no cloud placing phase. The system places the clouds with 180-degree rotational symmetry using the designer's algorithm, which blocks open lines of fire first and then fills in the gaps."
+            },
+            "asymmetric-spread-start": {
+                "name": "Asymmetric spread clouds",
+                "description": "There is no cloud placing phase. The system places the clouds without requiring symmetry using the designer's algorithm, which blocks open lines of fire first and then fills in the gaps."
+            },
             "unbounded-cloud-banks": {
                 "name": "Unbounded cloud banks",
                 "description": "Cloud banks may contain any number of clouds."

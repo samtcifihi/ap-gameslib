@@ -157,6 +157,16 @@ export class CrosshairsGame extends GameBase {
                 group: "setup",
             },
             {
+                uid: "spread-start",
+                group: "setup",
+                experimental: true,
+            },
+            {
+                uid: "asymmetric-spread-start",
+                group: "setup",
+                experimental: true,
+            },
+            {
                 uid: "unbounded-cloud-banks",
             },
             {
@@ -214,6 +224,10 @@ export class CrosshairsGame extends GameBase {
                 placedClouds = this.placeRandomAsymmetricClouds();
             } else if (this.variants.includes("random-start")) {
                 placedClouds = this.placeRandomSymmetricClouds();
+            } else if (this.variants.includes("asymmetric-spread-start")) {
+                placedClouds = this.placeSpreadRandomClouds(false);
+            } else if (this.variants.includes("spread-start")) {
+                placedClouds = this.placeSpreadRandomClouds(true);
             }
             if (placedClouds !== undefined) {
                 for (const cell of placedClouds) {
@@ -318,6 +332,61 @@ export class CrosshairsGame extends GameBase {
     private placeRandomAsymmetricClouds(): string[] {
         const singles = (this.graph.listCells() as string[]).map(cell => [cell]);
         return this.placeRandomCloudGroups(singles);
+    }
+
+    // Place clouds with the designer's coverage-first algorithm. Cells are
+    // visited in one random order over several passes, and a cell qualifies in
+    // pass N only if at most N of its six rays already contain a cloud, so the
+    // earliest clouds block completely open lines and later passes fill the
+    // gaps. The final pass accepts anything the bank-size rule allows, so the
+    // target is always reached on a normal board. Symmetric mode places
+    // rotational pairs and skips the centre so even targets are hit exactly.
+    private placeSpreadRandomClouds(symmetric: boolean): string[] {
+        const target = this.getTargetCloudCount();
+        const cells = this.graph.listCells() as string[];
+        for (let i = cells.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [cells[i], cells[j]] = [cells[j], cells[i]];
+        }
+
+        const clouds = new Set<string>();
+        const raysBlocked = (cell: string): number => {
+            const [x, y] = this.graph.algebraic2coords(cell);
+            let blocked = 0;
+            for (const dir of allDirections) {
+                if (this.getRay(x, y, dir).some(c => clouds.has(c))) blocked++;
+            }
+            return blocked;
+        };
+
+        for (let pass = 0; pass <= allDirections.length && clouds.size < target; pass++) {
+            for (const cell of cells) {
+                if (clouds.size >= target) break;
+                if (clouds.has(cell)) continue;
+                const mirror = this.getSymmetricCell(cell);
+                if (symmetric && mirror === cell) continue;
+                const group = symmetric ? [cell, mirror] : [cell];
+                if (clouds.size + group.length > target) continue;
+                if (group.some(c => raysBlocked(c) > pass)) continue;
+
+                // Check each cell of a pair against the growing set so a pair
+                // straddling an existing cloud cannot form a three-bank.
+                const placed: string[] = [];
+                let legal = true;
+                for (const c of group) {
+                    if (this.wouldCreateIllegallyLargeCloudBank(c, clouds)) {
+                        legal = false;
+                        break;
+                    }
+                    clouds.add(c);
+                    placed.push(c);
+                }
+                if (!legal) {
+                    for (const c of placed) clouds.delete(c);
+                }
+            }
+        }
+        return Array.from(clouds);
     }
 
     // Randomly place groups of one cloud (asymmetric) or two rotationally paired

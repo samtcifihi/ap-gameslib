@@ -186,6 +186,8 @@ describe("Crosshairs", () => {
                 "#setup",
                 "random-start",
                 "asymmetric-random-start",
+                "spread-start",
+                "asymmetric-spread-start",
             ]);
             expect(setupVariants.find(variant => variant.uid === "random-start")!.name)
                 .to.equal("Symmetric random clouds");
@@ -255,6 +257,32 @@ describe("Crosshairs", () => {
                 });
             }
         }
+
+        for (const setup of ["spread-start", "asymmetric-spread-start"] as const) {
+            for (const [variant, target] of [[undefined, 16], ["clouds-22", 22], ["clouds-28", 28]] as const) {
+                it(`should place ${target} legal clouds with ${setup}${variant ? ` and ${variant}` : ""}`, () => {
+                    const variants = variant ? [setup, variant] : [setup];
+                    const g = new CrosshairsGame(undefined, variants);
+
+                    expect(g.clouds.size).to.equal(target);
+                    expect(g.turnNumber).to.equal(1);
+                    expect(largestCloudBank(g)).to.be.at.most(2);
+                    if (setup === "spread-start") {
+                        for (const cloud of g.clouds) {
+                            expect(g.clouds.has(g.graph.rot180(cloud))).to.be.true;
+                            expect(g.graph.rot180(cloud)).to.not.equal(cloud);
+                        }
+                    }
+                });
+            }
+        }
+
+        it("should let spread placement form larger banks under unbounded cloud banks", () => {
+            const g = new CrosshairsGame(undefined, ["asymmetric-spread-start", "clouds-28", "unbounded-cloud-banks"]);
+
+            expect(g.clouds.size).to.equal(28);
+            expect(g.turnNumber).to.equal(1);
+        });
 
         for (const [setup, partialCount] of [
             ["random-start", 4],

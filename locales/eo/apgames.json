@@ -1302,6 +1302,14 @@
         "name": "Nesimetriaj hazardaj nuboj",
         "description": "Ne estas fazo por meti nubojn. La sistemo hazarde metas ilin sen postuli simetrion."
       },
+      "spread-start": {
+        "name": "Simetriaj disvastigitaj nuboj",
+        "description": "Ne estas fazo por meti nubojn. La sistemo metas ilin kun rotacia simetrio je 180 gradoj laŭ la algoritmo de la aŭtoro, kiu unue baras liberajn pafliniojn kaj poste plenigas la breĉojn."
+      },
+      "asymmetric-spread-start": {
+        "name": "Nesimetriaj disvastigitaj nuboj",
+        "description": "Ne estas fazo por meti nubojn. La sistemo metas ilin sen postuli simetrion laŭ la algoritmo de la aŭtoro, kiu unue baras liberajn pafliniojn kaj poste plenigas la breĉojn."
+      },
       "unbounded-cloud-banks": {
         "name": "Senlimaj nubaroj",
         "description": "Nubaroj povas enhavi ajnan nombron da nuboj."
