@@ -1,7 +1,7 @@
 import { GameBaseSequenced } from "./_turn-sequenced.js";
 import { IAPGameState, IClickResult, ICustomButton, IIndividualState, IRenderOpts, IScores, IStatus, IValidationResult, StatusValue, type ChatLogCollectContext, type ChatLogEntry, type ChatLogLine } from "./_base.js";
 import type { APGamesInformation } from "../schemas/gameinfo.js";
-import type { APRenderRep, AreaReserves, Colourfuncs, Glyph } from "@abstractplay/renderer/build/schemas/schema";
+import type { APRenderRep, AreaReserves, Colourfuncs } from "@abstractplay/renderer/build/schemas/schema";
 import type { APMoveResult } from "../schemas/moveresults.js";
 import { reviver, UserFacingError } from "../common/index.js";
 import i18next from "i18next";
@@ -14,6 +14,7 @@ export type UnitType = "I" | "A" | "C";
 export const UNIT_TYPES: readonly UnitType[] = ["I", "A", "C"];
 /** English words for the unit types, used as i18next `context` values in the move log. */
 export const UNIT_NAMES: Readonly<Record<UnitType, string>> = { I: "infantry", A: "artillery", C: "cavalry" };
+const TYPE_BY_NAME: Readonly<Record<string, UnitType>> = { infantry: "I", artillery: "A", cavalry: "C" };
 const UNIT_COUNTS: Readonly<Record<UnitType, number>> = { I: 9, A: 3, C: 4 };
 /** A unit may move (or attack) on at most this many consecutive turns. */
 export const MAX_STREAK = 2;
@@ -1143,7 +1144,7 @@ export class SquaresGame extends GameBaseSequenced {
         return m.replace(/\s+/g, "").split("/").map(seg => seg
             .toUpperCase()
             .replace(/^(PASS|STAND|ADVANCE|STAY)$/, s => s.toLowerCase())
-            .replace(/^(RETREAT|LOSE|OPTION[1-5])(?=:|$)/, s => s.toLowerCase())).join("/");
+            .replace(/^(RETREAT|LOSE|OPTION[1-5]?)(?=:|$)/, s => s.toLowerCase())).join("/");
     }
 
     /** The unit that leaves a reserve: the least restricted one of the requested type. */
@@ -1212,6 +1213,10 @@ export class SquaresGame extends GameBaseSequenced {
         for (const d of decisions) {
             this.applyDecision(d);
         }
+        if (this.pending(actor) && this.combat!.stage === "advance") {
+            // A ply that ends without saying whether to advance stays put.
+            this.applyDecision("stay");
+        }
         if (this.combat === undefined) {
             this.finishAction(doubleUnit);
         }
@@ -1260,9 +1265,10 @@ export class SquaresGame extends GameBaseSequenced {
             // A legal head is played out, with every finished decision after it, to show where the ply leads.
             this.applyHead(head);
             const applied = [head];
+            let unfinished: string | undefined;
             for (const d of decisions) {
                 if (!this.pending(actor) || !this.combatOptions().includes(d)) {
-                    this.previewSteps(d);
+                    unfinished = d;
                     break;
                 }
                 this.applyDecision(d);
@@ -1272,10 +1278,13 @@ export class SquaresGame extends GameBaseSequenced {
             preview.ghosts = [...this.units.values()]
                 .filter(u => u.loc === "X" && before.get(u.id)!.loc !== "X")
                 .map(u => ({ ...u, loc: before.get(u.id)!.loc }));
+            if (unfinished !== undefined) {
+                this.previewUnfinished(unfinished);
+            }
             return;
         }
         if (this.combat !== undefined) {
-            this.previewSteps(head);
+            this.previewUnfinished(head);
             return;
         }
         if (head.includes(">")) {
@@ -1315,6 +1324,17 @@ export class SquaresGame extends GameBaseSequenced {
         if (loc !== undefined && isCell(loc)) {
             this.preview!.outline.push(loc);
         }
+    }
+
+    /** Sketch a decision that is still being entered. */
+    private previewUnfinished(decision: string): void {
+        if (decision === "option" && this.combat?.stage === "resolve" && this.combat.defender !== undefined) {
+            // The defender has been marked for elimination; how the attack ends is still to be chosen.
+            const d = this.unit(this.combat.defender);
+            this.preview!.ghosts = [...(this.preview!.ghosts ?? []), { ...d }];
+            return;
+        }
+        this.previewSteps(decision);
     }
 
     /** Sketch a retreat that is still being entered: relocate the units named so far and outline the squares involved. */
@@ -1530,7 +1550,9 @@ export class SquaresGame extends GameBaseSequenced {
                 chosen.push(d);
             }
             if (this.pending(actor)) {
-                return SquaresGame.valid(-1, this.plyPrompt(chosen, this.combat!.stage));
+                // An advance left undecided means staying put, so only the options themselves are still needed.
+                const stage = this.combat!.stage;
+                return SquaresGame.valid(stage === "advance" ? 0 : -1, this.plyPrompt(chosen, stage));
             }
             // Decisions are confirmed rather than submitted on the spot, so that clicks can still change them.
             return chosen.length === 0 ? headResult : SquaresGame.valid(0, this.plyPrompt(chosen));
@@ -1546,24 +1568,22 @@ export class SquaresGame extends GameBaseSequenced {
         if (option !== undefined) {
             parts.push(t("PLY_OPTION", { n: option[6], what: t(`OPTION_${option[6]}`) }));
         }
-        const changeOption = (): void => {
-            if (option !== undefined) {
-                parts.push(advance !== undefined || pendingStage === "advance" ? t("PLY_ELSE_OPTION", { context: "support" }) : t("PLY_ELSE_OPTION"));
-            }
-        };
         if (pendingStage === "resolve") {
             parts.push(t("PLY_CHOOSE_OPTION"));
-        } else if (pendingStage === "advance") {
+            return parts.join(" ");
+        }
+        if (pendingStage === "advance") {
             parts.push(t("PLY_CHOOSE_ADVANCE"));
-            changeOption();
         } else {
-            parts.push(t("PLY_COMPLETE"));
             if (advance === "advance") {
-                parts.push(t("PLY_ELSE_STAY"));
+                parts.push(t("PLY_ADVANCED"));
             } else if (advance === "stay") {
-                parts.push(t("PLY_ELSE_ADVANCE"));
+                parts.push(t("PLY_STAYED"));
             }
-            changeOption();
+            parts.push(t("PLY_COMPLETE"));
+        }
+        if (option !== undefined || advance !== undefined) {
+            parts.push(t("PLY_AGAIN"));
         }
         return parts.join(" ");
     }
@@ -1572,6 +1592,10 @@ export class SquaresGame extends GameBaseSequenced {
         const legal = this.combatOptions();
         if (legal.includes(move)) {
             return SquaresGame.valid(1);
+        }
+        if (move === "option" && this.combat!.stage === "resolve" && legal.some(l => /^option[123]/.test(l))) {
+            // The defender has been clicked: it will be eliminated, one way or another.
+            return SquaresGame.valid(-1, i18next.t("apgames:validation.squares.DECIDE_ELIMINATED"));
         }
         // A prefix of a legal choice: a bare option or `retreat:` still needing a square, or a chain still to be finished.
         const boundary = (l: string): boolean => move.endsWith(":") || l[move.length] === ":" || l[move.length] === ",";
@@ -1950,23 +1974,40 @@ export class SquaresGame extends GameBaseSequenced {
         }
     }
 
-    /** Route a click: to the head of the ply while that is being entered, otherwise to the decisions that follow it. */
+    /**
+     * Route a click. While an action is being entered it goes to `clickAction`; while the defender is answering,
+     * to `clickCombat`. Once the attacker has decisions to make (after an attack just entered, or in a combat
+     * already waiting for them), it goes to `clickDecision`.
+     */
     private clickPly(move: string, loc: string, clickedType?: UnitType): string {
-        const [head, ...decisions] = move.split("/");
-        const startClick = (m: string): string => this.combat === undefined ? this.clickAction(m, loc, clickedType) : this.clickCombat(m, loc, clickedType);
-        if (move === "") {
-            return startClick(move);
+        const segments = move === "" ? [] : move.split("/");
+        let prefix: string[];
+        let decisions: string[];
+        let squares: ICombatSquares | undefined;
+        if (this.combat === undefined) {
+            const head = segments[0] ?? "";
+            const headResult = head === "" ? undefined : this.validateAction(head);
+            if (headResult === undefined || !headResult.valid || headResult.complete === -1) {
+                return this.clickAction(head, loc, clickedType);
+            }
+            prefix = [head];
+            decisions = segments.slice(1);
+            squares = SquaresGame.attackSquares(head);
+        } else if (this.combat.stage === "resolve" || this.combat.stage === "advance") {
+            prefix = [];
+            decisions = segments;
+            squares = { from: this.combat.from, target: this.combat.target, support: this.combat.supportFrom };
+        } else {
+            return this.clickCombat(move, loc, clickedType);
         }
-        const headResult = this.combat !== undefined ? this.validateCombatMove(head) : this.validateAction(head);
-        if (!headResult.valid || headResult.complete === -1) {
-            return startClick(head);
+        if (squares === undefined) {
+            return this.clickAction(prefix[0], loc, clickedType);
         }
-        const squares: ICombatSquares | undefined = this.combat !== undefined
-            ? { from: this.combat.from, target: this.combat.target, support: this.combat.supportFrom }
-            : SquaresGame.attackSquares(head);
         const actor = this.currplayer;
         const points = this.simulate(() => {
-            this.applyHead(head);
+            if (prefix.length > 0) {
+                this.applyHead(prefix[0]);
+            }
             const out: IDecisionPoint[] = [];
             for (let i = 0; this.pending(actor); i++) {
                 const point: IDecisionPoint = { stage: this.combat!.stage, legal: this.combatOptions(), chosen: decisions[i] };
@@ -1978,10 +2019,10 @@ export class SquaresGame extends GameBaseSequenced {
             }
             return out;
         });
-        if (points.length === 0 || squares === undefined) {
-            return startClick(head);
+        if (points.length === 0) {
+            return this.clickAction(prefix[0], loc, clickedType);
         }
-        return this.clickDecision(move, points, squares, loc);
+        return this.clickDecision(move, prefix, decisions, points, squares, loc);
     }
 
     private static attackSquares(head: string): ICombatSquares | undefined {
@@ -1990,61 +2031,87 @@ export class SquaresGame extends GameBaseSequenced {
     }
 
     /**
-     * A click while the ply's author still has decisions to make, or has made them. Clicking the attacker, its
-     * support or the target steps through the attacker's options; once the target square is empty, clicking it
-     * advances and clicking the attacker's own square stays, while the support's square still changes the option.
+     * The attacker's decisions, by clicking the units involved. Clicking the defender eliminates it; then clicking
+     * it again withdraws both attacking units afterwards (option 1), clicking the support gives that up instead
+     * (option 2), and clicking the attacker exchanges it (option 3). Clicking the attacker or the support
+     * straight away withdraws that unit (options 4 and 5), with its retreat square clicked next if it has a
+     * choice. Once the target square is empty, clicking it advances, and clicking the attacker's own square stays
+     * put. A click on any other square starts the decision again.
      */
-    private clickDecision(move: string, points: IDecisionPoint[], squares: ICombatSquares, loc: string): string {
-        const segments = move.split("/");
+    private clickDecision(move: string, prefix: string[], decisions: string[], points: IDecisionPoint[], squares: ICombatSquares, loc: string): string {
         const level = points.length - 1;
         const last = points[level];
-        const rebuild = (at: number, decision: string): string => [...segments.slice(0, at + 1), decision].join("/");
-        const onCombat = loc === squares.from || loc === squares.target || loc === squares.support;
-        const cycle = (): string => {
-            const at = points.findIndex(p => p.stage === "resolve");
-            if (at < 0) {
-                return move;
+        const set = (at: number, decision?: string): string => [...prefix, ...decisions.slice(0, at), ...(decision === undefined ? [] : [decision])].join("/");
+        const resolveAt = points.findIndex(p => p.stage === "resolve");
+        const chosen = resolveAt < 0 ? undefined : points[resolveAt].chosen;
+        const number = chosen === undefined ? undefined : /^option([1-5])/.exec(chosen)?.[1];
+        const pick = (n: string): string => {
+            const matches = points[resolveAt].legal.filter(l => l === `option${n}` || l.startsWith(`option${n}:`));
+            if (matches.length === 1) {
+                return matches[0];
             }
-            const pt = points[at];
-            const numbers = [...new Set(pt.legal.map(l => l.slice(0, 7)))];
-            const idx = pt.chosen === undefined ? -1 : numbers.indexOf(pt.chosen.slice(0, 7));
-            const next = numbers[(idx + 1) % numbers.length];
-            const matches = pt.legal.filter(l => l === next || l.startsWith(`${next}:`));
-            return rebuild(at, matches.length === 1 ? matches[0] : `${next}:`);
+            // Several retreat squares to choose from, or none at all (the validator will say why).
+            return matches.length === 0 ? `option${n}` : `option${n}:`;
         };
         if (last.chosen !== undefined && !last.legal.includes(last.chosen)) {
             // A retreat under option 1 or 5 still needs its square, or the next link of a displacement chain.
-            if (onCombat) {
-                return cycle();
+            const extended = this.extendRetreat(last.chosen, squares, loc);
+            if (extended !== undefined) {
+                return set(level, extended);
             }
-            const m = /^(option[15]):(.*)$/.exec(last.chosen);
-            if (m === null) {
-                return move;
-            }
-            if (m[2] === "") {
-                const s = squares.support === undefined ? undefined : this.unitAt(squares.support);
-                return s === undefined ? move : rebuild(level, `${m[1]}:${s.type}${s.loc}-${loc}`);
-            }
-            const steps = this.parseSteps(m[2]);
-            if (steps !== undefined) {
-                const lastTo = steps[steps.length - 1].to;
-                const occ = this.unitAt(lastTo);
-                if (occ !== undefined && occ.owner === this.currplayer && !steps.some(st => st.unit === occ.id)) {
-                    return rebuild(level, `${last.chosen},${occ.type}${lastTo}-${loc}`);
-                }
-            }
-            return move;
         }
-        if (last.stage === "advance") {
+        if (resolveAt < 0) {
+            // Only the advance is left to decide.
             if (loc === squares.target) {
-                return rebuild(level, "advance");
+                return set(level, "advance");
             }
             if (loc === squares.from) {
-                return rebuild(level, "stay");
+                return set(level, "stay");
             }
-            return loc === squares.support ? cycle() : move;
+            return decisions.length === 0 ? move : set(0);
         }
-        return onCombat ? cycle() : move;
+        if (loc === squares.target) {
+            if (chosen === undefined) {
+                return set(resolveAt, "option");
+            }
+            if (chosen === "option") {
+                return set(resolveAt, pick("1"));
+            }
+            return number === "2" ? set(resolveAt + 1, "advance") : set(resolveAt, "option");
+        }
+        if (loc === squares.from) {
+            if (chosen === "option") {
+                return set(resolveAt, pick("3"));
+            }
+            return number === "2" ? set(resolveAt + 1, "stay") : set(resolveAt, pick("4"));
+        }
+        if (loc === squares.support) {
+            return set(resolveAt, pick(chosen === "option" ? "2" : "5"));
+        }
+        return decisions.length === 0 ? move : set(0);
+    }
+
+    /** Extend a retreat still being entered for option 1 or 5 with the clicked square, when that is a plausible destination. */
+    private extendRetreat(chosen: string, squares: ICombatSquares, loc: string): string | undefined {
+        const m = /^(option[15])(?::(.*))?$/.exec(chosen);
+        if (m === null || squares.support === undefined) {
+            return undefined;
+        }
+        const plausible = (u: IUnit): boolean => loc === RESERVES[u.owner] || adjacentTo(u.loc).includes(loc);
+        if (m[2] === undefined || m[2] === "") {
+            const s = this.unitAt(squares.support);
+            return s !== undefined && plausible(s) ? `${m[1]}:${s.type}${s.loc}-${loc}` : undefined;
+        }
+        const steps = this.parseSteps(m[2]);
+        if (steps === undefined) {
+            return undefined;
+        }
+        const lastTo = steps[steps.length - 1].to;
+        const occ = this.unitAt(lastTo);
+        if (occ !== undefined && occ.owner === this.currplayer && !steps.some(st => st.unit === occ.id) && plausible(occ)) {
+            return `${chosen},${occ.type}${lastTo}-${loc}`;
+        }
+        return undefined;
     }
 
     private clickAction(move: string, loc: string, clickedType?: UnitType): string {
@@ -2153,31 +2220,10 @@ export class SquaresGame extends GameBaseSequenced {
                 }
                 return loc === d.loc ? "stand" : `retreat:${d.type}${d.loc}-${loc}`;
             }
-            case "resolve": {
-                // Options 1 and 5 may still need the supporting cavalry's retreat square, or a displacement chain.
-                const m = /^(option[15])(?::(.*))?$/.exec(move);
-                if (m === null) {
-                    return move;
-                }
-                const s = this.unit(c.supporter!);
-                if (m[2] === undefined || m[2] === "") {
-                    return `${m[1]}:${s.type}${s.loc}-${loc}`;
-                }
-                const steps = this.parseSteps(m[2]);
-                if (steps !== undefined) {
-                    const lastTo = steps[steps.length - 1].to;
-                    const occ = this.unitAt(lastTo);
-                    if (occ !== undefined && occ.owner === s.owner && !steps.some(st => st.unit === occ.id)) {
-                        return `${move},${occ.type}${lastTo}-${loc}`;
-                    }
-                }
-                return move;
-            }
+            case "resolve":
             case "advance":
-                if (loc === c.target) {
-                    return "advance";
-                }
-                return loc === c.from ? "stay" : move;
+                // The attacker's decisions are handled by `clickDecision`.
+                return move;
             case "lose":
                 if (clickedType !== undefined && loc === RESERVES[this.defendingPlayer()]) {
                     return `lose:${clickedType}`;
@@ -2260,7 +2306,7 @@ export class SquaresGame extends GameBaseSequenced {
     public render(opts?: IRenderOpts): APRenderRep {
         // Legend keys must not differ only by case: a page in quirks mode matches ids case-insensitively.
         const key = (p: playerid, t: UnitType): string => `${p === 1 ? "G" : "B"}${t}`;
-        const legend: { [k: string]: Glyph } = {};
+        const legend: NonNullable<APRenderRep["legend"]> = {};
         for (const p of [1, 2] as playerid[]) {
             for (const t of UNIT_TYPES) {
                 legend[key(p, t)] = { name: `nato-${UNIT_NAMES[t]}`, colour: this.getPlayerColour(p) };
@@ -2275,17 +2321,45 @@ export class SquaresGame extends GameBaseSequenced {
         const ghosts = this.preview?.ghosts ?? [];
         const pstr = CELL_ROWS.map(row => row.map(cell => {
             const u = this.unitAt(cell);
-            if (u !== undefined) {
+            const ghost = ghosts.find(x => x.loc === cell);
+            if (u !== undefined && (ghost === undefined || ghost.id !== u.id)) {
                 return key(u.owner, u.type);
             }
-            const ghost = ghosts.find(x => x.loc === cell);
             return ghost === undefined ? "-" : faded(ghost.owner, ghost.type);
         }).join(",")).join("\n");
+        // A unit that arrived in a reserve this ply is framed there, as the enter mark frames a square.
+        const arrivals = new Map<string, number>();
+        for (const r of this.results) {
+            if (r.type === "move" && isReserve(r.to) && r.by !== undefined && r.what !== undefined) {
+                const k = `${r.to}${r.by}${TYPE_BY_NAME[r.what]}`;
+                arrivals.set(k, (arrivals.get(k) ?? 0) + 1);
+            }
+        }
+        const framed = (p: playerid, t: UnitType): string => {
+            const k = `${key(p, t)}e`;
+            legend[k] = [
+                { name: "piece-square-dashed", colour: this.getPlayerColour(p) },
+                { name: `nato-${UNIT_NAMES[t]}`, colour: this.getPlayerColour(p) },
+            ];
+            return k;
+        };
         const reserves = (p: playerid): AreaReserves => {
             const inside = [...this.units.values()].filter(u => u.loc === RESERVES[p]);
-            const own = UNIT_TYPES.flatMap(t => inside.filter(u => u.owner === p && u.type === t).map(() => key(p, t)));
+            const group = (units: IUnit[]): string[] => {
+                const out = units.map(u => key(u.owner, u.type));
+                for (let i = out.length - 1; i >= 0; i--) {
+                    const k = `${RESERVES[p]}${units[i].owner}${units[i].type}`;
+                    const n = arrivals.get(k) ?? 0;
+                    if (n > 0) {
+                        arrivals.set(k, n - 1);
+                        out[i] = framed(units[i].owner, units[i].type);
+                    }
+                }
+                return out;
+            };
+            const own = UNIT_TYPES.flatMap(t => group(inside.filter(u => u.owner === p && u.type === t)));
             // An enemy unit that has entered this reserve is shown in it: that is how the game was won.
-            const intruders = inside.filter(u => u.owner !== p).map(u => key(u.owner, u.type));
+            const intruders = group(inside.filter(u => u.owner !== p));
             const lost = ghosts.filter(u => u.loc === RESERVES[p]).map(u => faded(u.owner, u.type));
             return {
                 type: "reserves",
@@ -2337,12 +2411,13 @@ export class SquaresGame extends GameBaseSequenced {
                 outline(to, "enter");
             }
         };
+        const exits = new Set<string>();
         for (const r of this.results) {
             if (r.type === "move") {
                 const retreat = r.how === "retreat" || r.how === "displaced";
                 if (retreat && isReserve(r.to)) {
                     // A unit falling back to its reserve simply leaves the board: mark the square it left and the edge it went to.
-                    outline(r.from, "exit");
+                    exits.add(r.from);
                     markEdge(r.to);
                 } else {
                     arrow(r.from, r.to, retreat ? "dashed" : "solid");
@@ -2350,10 +2425,16 @@ export class SquaresGame extends GameBaseSequenced {
             } else if (r.type === "capture") {
                 if (r.how === "reserve") {
                     markEdge(r.where);
-                } else {
-                    outline(r.where, "exit");
+                } else if (r.where !== undefined) {
+                    exits.add(r.where);
                 }
             }
+        }
+        for (const ghost of ghosts) {
+            exits.add(ghost.loc);
+        }
+        for (const cell of exits) {
+            outline(cell, "exit");
         }
         // Attack arrows: solid for the attacker, dashed for the support. They follow a pending combat,
         // an attack still being entered, or this ply's results when the attack was settled on the spot.

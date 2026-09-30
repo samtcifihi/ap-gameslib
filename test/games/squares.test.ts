@@ -359,8 +359,13 @@ describe("Squares: attacks", () => {
         expect(g.currplayer).to.equal(1);
         expect(g.combat!.stage).to.equal("resolve");
         expect(g.moves()).to.have.members(["option1:CG1CL-G2CL", "option2/advance", "option2/stay", "option3", "option4", "option5:CG1CL-G2CL"]);
-        // the advance is the attacker's decision too, so it belongs to the same ply
-        expect(() => g.move("option2")).to.throw();
+        // the advance is the attacker's decision too, so it belongs to the same ply; left unsaid, the attacker stays put
+        expect(g.validateMove("option2").complete).to.equal(0);
+        const stays = g.clone();
+        stays.move("option2");
+        expect(stays.unit("1I1").loc).to.equal("G1C");
+        expect(stays.combat).to.be.undefined;
+        expect(stays.currplayer).to.equal(2);
         g.move("option2/advance");
         expect(alive(g, "2I1")).to.be.false;
         expect(alive(g, "1C1")).to.be.false;
@@ -423,9 +428,15 @@ describe("Squares: attacks", () => {
         place(g, "1C1", "B3C");
         place(g, "1I1", "B1C");
         place(g, "2I1", "B2CL");
-        // the retreat is forced and unique, so it happens at once, and the advance is decided in the same ply
-        expect(g.validateMove("CB3C+IB1C>IB2CL").complete).to.equal(-1);
+        commit(g);
+        // the retreat is forced and unique, so it happens at once; advancing is decided in the same ply, staying put by default
+        expect(g.validateMove("CB3C+IB1C>IB2CL").complete).to.equal(0);
         expect(g.moves()).to.include.members(["CB3C+IB1C>IB2CL/advance", "CB3C+IB1C>IB2CL/stay"]);
+        const stays = g.clone();
+        stays.move("CB3C+IB1C>IB2CL");
+        expect(stays.unit("2I1").loc).to.equal("BR");
+        expect(stays.unit("1C1").loc).to.equal("B3C");
+        expect(stays.currplayer).to.equal(2);
         g.move("CB3C+IB1C>IB2CL/advance");
         expect(g.unit("2I1").loc).to.equal("BR");
         expect(g.combat).to.be.undefined;
@@ -577,7 +588,7 @@ describe("Squares: reserves and winning", () => {
         place(g, "2I7", "G2CL");
         place(g, "2I8", "G2CR");
         expect(g.validateMove("IB1C+AB1CL>CG1C").complete).to.equal(-1);
-        expect(g.validateMove("IB1C+AB1CL>CG1C/option2").complete).to.equal(-1);
+        expect(g.validateMove("IB1C+AB1CL>CG1C/option2").complete).to.equal(0);
         expect(g.validateMove("IB1C+AB1CL>CG1C/option2/stay").complete).to.equal(0);
         g.move("IB1C+AB1CL>CG1C/option2/stay");
         expect(g.points(2)).to.equal(12);
@@ -812,8 +823,8 @@ describe("Squares: interface helpers", () => {
         const click = g.handleClick("option1", 1, 7);
         expect(click.move).to.equal("option1:CG1CL-G2CL");
         expect(click.complete).to.equal(1);
-        // option 2 still needs the advance decision; the previewed position offers it as buttons
-        expect(g.validateMove("option2").complete).to.equal(-1);
+        // option 2 leaves the advance to decide (staying put unless told otherwise); the previewed position offers it as buttons
+        expect(g.validateMove("option2").complete).to.equal(0);
         const preview = g.clone();
         preview.move("option2", { partial: true });
         expect(preview.getButtons().map(b => [b.label, b.move])).to.deep.equal([["squares.advance", "option2/advance"], ["squares.stay", "option2/stay"]]);
@@ -845,30 +856,45 @@ describe("Squares: interface helpers", () => {
             "IG1C+AG1CL>AB1C/option1", "IG1C+AG1CL>AB1C/option2/advance", "IG1C+AG1CL>AB1C/option2/stay",
             "IG1C+AG1CL>AB1C/option3", "IG1C+AG1CL>AB1C/option4", "IG1C+AG1CL>AB1C/option5",
         ]);
-        // clicking any square of the combat steps through the options; decisions are confirmed, not auto-submitted
+        // clicking the defender marks it for elimination; the next click says how the attack ends
         let click = g.handleClick("IG1C+AG1CL>AB1C", 2, 2);
+        expect(click.move).to.equal("IG1C+AG1CL>AB1C/option");
+        expect(click.complete).to.equal(-1);
+        expect(click.message).to.contain("will be eliminated");
+        const marked = g.clone();
+        marked.move(click.move, { partial: true });
+        expect(marked.render().pieces!.split("\n")[2].split(",")[2]).to.equal("BAx");
+        expect(marked.render().annotations).to.deep.include({ type: "exit", targets: [{ row: 2, col: 2 }] });
+        // the defender again: option 1
+        click = g.handleClick(click.move, 2, 2);
         expect(click.move).to.equal("IG1C+AG1CL>AB1C/option1");
         expect(click.complete).to.equal(0);
         expect(click.message).to.contain("Option 1");
-        click = g.handleClick(click.move, 2, 2);
+        // the support after the defender: option 2, which leaves the advance to decide
+        click = g.handleClick("IG1C+AG1CL>AB1C/option", 2, 8);
         expect(click.move).to.equal("IG1C+AG1CL>AB1C/option2");
-        expect(click.complete).to.equal(-1);
+        expect(click.complete).to.equal(0);
         expect(click.message).to.contain("click it to advance");
         click = g.handleClick(click.move, 2, 2);
         expect(click.move).to.equal("IG1C+AG1CL>AB1C/option2/advance");
         expect(click.complete).to.equal(0);
         click = g.handleClick(click.move, 2, 7);
         expect(click.move).to.equal("IG1C+AG1CL>AB1C/option2/stay");
-        click = g.handleClick(click.move, 2, 8);
+        // the attacker after the defender: option 3
+        click = g.handleClick("IG1C+AG1CL>AB1C/option", 2, 7);
         expect(click.move).to.equal("IG1C+AG1CL>AB1C/option3");
-        click = g.handleClick(click.move, 2, 7);
+        expect(click.complete).to.equal(0);
+        // the attacker or the support straight away: options 4 and 5
+        click = g.handleClick("IG1C+AG1CL>AB1C", 2, 7);
         expect(click.move).to.equal("IG1C+AG1CL>AB1C/option4");
-        click = g.handleClick(click.move, 2, 8);
+        click = g.handleClick("IG1C+AG1CL>AB1C", 2, 8);
         expect(click.move).to.equal("IG1C+AG1CL>AB1C/option5");
-        click = g.handleClick(click.move, 2, 2);
-        expect(click.move).to.equal("IG1C+AG1CL>AB1C/option1");
-        // a click elsewhere changes nothing
-        expect(g.handleClick("IG1C+AG1CL>AB1C/option3", 0, 5).move).to.equal("IG1C+AG1CL>AB1C/option3");
+        expect(click.complete).to.equal(0);
+        // any other square starts the decision again
+        expect(g.handleClick("IG1C+AG1CL>AB1C/option3", 0, 0).move).to.equal("IG1C+AG1CL>AB1C");
+        expect(g.handleClick("IG1C+AG1CL>AB1C/option2/advance", 1, 1).move).to.equal("IG1C+AG1CL>AB1C");
+        expect(g.handleClick("IG1C+AG1CL>AB1C/option", 1, 1).move).to.equal("IG1C+AG1CL>AB1C");
+        expect(g.handleClick("IG1C+AG1CL>AB1C", 0, 0).move).to.equal("IG1C+AG1CL>AB1C");
         // the previewed position offers the pending decisions as buttons that continue the ply
         const preview = g.clone();
         preview.move("IG1C+AG1CL>AB1C", { partial: true });
@@ -882,6 +908,12 @@ describe("Squares: interface helpers", () => {
         expect(g.validateMove("IG1C-G2CL/advance").message).to.contain("not needed");
         expect(g.validateMove("IG1C+AG1CL>AB1C/option1/advance").message).to.contain("not needed");
         expect(g.validateMove("IG1C+AG1CL>AB1C/stand").valid).to.be.false;
+        // a ply completed with the advance undecided stays put
+        const stays = g.clone();
+        stays.move("IG1C+AG1CL>AB1C/option2");
+        expect(stays.unit("1I1").loc).to.equal("G1C");
+        expect(alive(stays, "2A1")).to.be.false;
+        expect(stays.currplayer).to.equal(2);
         // the whole thing is one ply, by the attacker
         g.move("IG1C+AG1CL>AB1C/option2/advance");
         expect(g.unit("1I1").loc).to.equal("B1C");
@@ -899,24 +931,29 @@ describe("Squares: interface helpers", () => {
         place(g, "2A1", "B1CR");
         commit(g);
         expect(g.moves().filter(m => m.startsWith("IG1CL+CG1C>AB1CR/option5"))).to.have.members(["IG1CL+CG1C>AB1CR/option5:CG1C-G2CR", "IG1CL+CG1C>AB1CR/option5:CG1C-G2CL"]);
-        let click = g.handleClick("IG1CL+CG1C>AB1CR", 2, 1);
-        expect(click.move).to.equal("IG1CL+CG1C>AB1CR/option1:");
+        // the support straight away: option 5, then its square
+        let click = g.handleClick("IG1CL+CG1C>AB1CR", 2, 7);
+        expect(click.move).to.equal("IG1CL+CG1C>AB1CR/option5:");
         expect(click.complete).to.equal(-1);
         click = g.handleClick(click.move, 1, 6);
-        expect(click.move).to.equal("IG1CL+CG1C>AB1CR/option1:CG1C-G2CR");
+        expect(click.move).to.equal("IG1CL+CG1C>AB1CR/option5:CG1C-G2CR");
         expect(click.complete).to.equal(0);
-        // stepping on from a chosen retreat square, and filling in the square for option 5
+        // the defender twice: option 1, then the square
+        click = g.handleClick("IG1CL+CG1C>AB1CR", 2, 1);
+        expect(click.move).to.equal("IG1CL+CG1C>AB1CR/option");
         click = g.handleClick(click.move, 2, 1);
-        expect(click.move).to.equal("IG1CL+CG1C>AB1CR/option2");
-        click = g.handleClick("IG1CL+CG1C>AB1CR/option4", 2, 1);
-        expect(click.move).to.equal("IG1CL+CG1C>AB1CR/option5:");
+        expect(click.move).to.equal("IG1CL+CG1C>AB1CR/option1:");
+        expect(click.complete).to.equal(-1);
         click = g.handleClick(click.move, 1, 7);
-        expect(click.move).to.equal("IG1CL+CG1C>AB1CR/option5:CG1C-G2CL");
+        expect(click.move).to.equal("IG1CL+CG1C>AB1CR/option1:CG1C-G2CL");
         expect(click.complete).to.equal(0);
+        // a square that is no retreat square starts the decision again; a bad one nearby is explained
+        expect(g.handleClick("IG1CL+CG1C>AB1CR/option5:", 0, 0).move).to.equal("IG1CL+CG1C>AB1CR");
+        expect(g.handleClick("IG1CL+CG1C>AB1CR/option5:", 2, 6).valid).to.be.false;
         const preview = g.clone();
-        preview.move(click.move, { partial: true });
+        preview.move("IG1CL+CG1C>AB1CR/option5:CG1C-G2CL", { partial: true });
         expect(preview.render().annotations).to.deep.include({ type: "move", targets: [{ row: 2, col: 7 }, { row: 1, col: 7 }], style: "dashed" });
-        g.move(click.move);
+        g.move("IG1CL+CG1C>AB1CR/option5:CG1C-G2CL");
         expect(g.unit("1C1").loc).to.equal("G2CL");
         expect(alive(g, "2A1")).to.be.true;
         expect(g.currplayer).to.equal(2);
@@ -928,13 +965,14 @@ describe("Squares: interface helpers", () => {
         place(g, "1I1", "B1C");
         place(g, "2I1", "B2CL");
         commit(g);
+        expect(g.validateMove("CB3C+IB1C>IB2CL").complete).to.equal(0);
         let click = g.handleClick("CB3C+IB1C>IB2CL", 1, 2);
         expect(click.move).to.equal("CB3C+IB1C>IB2CL/advance");
         expect(click.complete).to.equal(0);
         click = g.handleClick(click.move, 0, 1);
         expect(click.move).to.equal("CB3C+IB1C>IB2CL/stay");
-        // there is no option to change here, so the support's square does nothing
-        expect(g.handleClick(click.move, 2, 2).move).to.equal("CB3C+IB1C>IB2CL/stay");
+        // there is no option to choose here, so any other square just starts again
+        expect(g.handleClick(click.move, 2, 2).move).to.equal("CB3C+IB1C>IB2CL");
         const preview = g.clone();
         preview.move("CB3C+IB1C>IB2CL", { partial: true });
         expect(preview.getButtons().map(b => b.move)).to.deep.equal(["CB3C+IB1C>IB2CL/advance", "CB3C+IB1C>IB2CL/stay"]);
@@ -994,6 +1032,11 @@ describe("Squares: interface helpers", () => {
         expect(rep.board).to.deep.equal({ style: "dvgc", rotate: 180, markers: [{ type: "edge", edge: "N", colour: r.getPlayerColour(2) }] });
         expect(rep.annotations).to.deep.include({ type: "exit", targets: [{ row: 2, col: 2 }] });
         expect(rep.annotations!.some(a => a.type === "move")).to.be.false;
+        // the unit that came home is framed in its strip
+        const strip = rep.areas![1] as { pieces: string[] };
+        expect(strip.pieces.filter(k => k === "BIe").length).to.equal(1);
+        expect(strip.pieces.length).to.equal(16);
+        expect(rep.legend!.BIe).to.be.an("array");
         expect(JSON.stringify(rep.annotations)).to.not.contain("#c00");
         const out = new SquaresGame();
         out.move("IGR-G3C");
@@ -1043,9 +1086,13 @@ describe("Squares: interface helpers", () => {
         g.move("IB3C-BR");
         expect(g.gameover).to.be.true;
         expect(g.winner).to.deep.equal([1]);
-        const areas = g.render().areas as { side: string; pieces: string[] }[];
+        const rep = g.render();
+        const areas = rep.areas as { side: string; pieces: string[] }[];
         expect(areas[1].side).to.equal("N");
-        expect(areas[1].pieces).to.deep.equal(["GI"]);
+        // framed, since it arrived this ply
+        expect(areas[1].pieces).to.deep.equal(["GIe"]);
+        expect(rep.legend!.GIe).to.deep.equal([{ name: "piece-square-dashed", colour: g.getPlayerColour(1) }, { name: "nato-infantry", colour: g.getPlayerColour(1) }]);
+        expect(g.render({ perspective: 2 }).areas![1]).to.deep.include({ pieces: ["GIe"] });
         expect(areas[0].pieces.length).to.equal(15);
     });
 
