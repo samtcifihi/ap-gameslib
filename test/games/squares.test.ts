@@ -39,25 +39,25 @@ const alive = (g: SquaresGame, id: string): boolean => g.unit(id).loc !== "X";
 describe("Squares: board geometry", () => {
     it("names thirty cells and two reserves", () => {
         expect(BOARD_CELLS.length).to.equal(30);
-        expect(RESERVES[1]).to.equal("BR");
-        expect(RESERVES[2]).to.equal("GR");
+        expect(RESERVES[1]).to.equal("GR");
+        expect(RESERVES[2]).to.equal("BR");
     });
 
     it("connects cells that share any length of edge", () => {
-        expect(connectedTo("B3R")).to.include.members(["B3C", "B2R", "B2CR", "NWF", "BR"]);
-        expect(connectedTo("B3R")).to.not.include("B2CL");
-        expect(connectedTo("B2L")).to.include.members(["B3L", "B2CL", "B1L", "NEF", "EF"]);
-        expect(connectedTo("B2R")).to.include.members(["B1R", "NWF", "WF"]);
-        expect(connectedTo("B1R")).to.include.members(["G1L", "B1CR", "WF", "B2R", "B2CR"]);
-        expect(connectedTo("B1R")).to.not.include("G1R");
-        expect(connectedTo("NWF")).to.have.members(["B3R", "B2R", "WF", "SWF"]);
-        expect(connectedTo("WF")).to.have.members(["NWF", "SWF", "B2R", "B1R", "G1L", "G2L"]);
+        expect(connectedTo("G3R")).to.include.members(["G3C", "G2R", "G2CR", "SEF", "GR"]);
+        expect(connectedTo("G3R")).to.not.include("G2CL");
+        expect(connectedTo("G2L")).to.include.members(["G3L", "G2CL", "G1L", "SWF", "WF"]);
+        expect(connectedTo("G2R")).to.include.members(["G1R", "SEF", "EF"]);
+        expect(connectedTo("G1R")).to.include.members(["B1L", "G1CR", "EF", "G2R", "G2CR"]);
+        expect(connectedTo("G1R")).to.not.include("B1R");
+        expect(connectedTo("SEF")).to.have.members(["G3R", "G2R", "EF", "NEF"]);
+        expect(connectedTo("EF")).to.have.members(["SEF", "NEF", "G2R", "G1R", "B1L", "B2L"]);
     });
 
     it("only has diagonals between the two centre rows", () => {
-        expect(diagonalTo("B1R")).to.have.members(["G1CL"]);
-        expect(diagonalTo("B1C")).to.have.members(["G1CL", "G1CR"]);
-        expect(diagonalTo("G1L")).to.have.members(["B1CR"]);
+        expect(diagonalTo("G1R")).to.have.members(["B1CL"]);
+        expect(diagonalTo("G1C")).to.have.members(["B1CL", "B1CR"]);
+        expect(diagonalTo("B1L")).to.have.members(["G1CR"]);
         for (const cell of BOARD_CELLS) {
             if (diagonalTo(cell).length > 0) {
                 expect(cell.startsWith("B1") || cell.startsWith("G1"), cell).to.be.true;
@@ -66,25 +66,25 @@ describe("Squares: board geometry", () => {
     });
 
     it("attaches each reserve to its three back-line squares only", () => {
-        expect(connectedTo("BR")).to.have.members(["B3R", "B3C", "B3L"]);
-        expect(connectedTo("GR")).to.have.members(["G3L", "G3C", "G3R"]);
-        expect(diagonalTo("BR")).to.be.empty;
+        expect(connectedTo("GR")).to.have.members(["G3R", "G3C", "G3L"]);
+        expect(connectedTo("BR")).to.have.members(["B3L", "B3C", "B3R"]);
+        expect(diagonalTo("GR")).to.be.empty;
     });
 
     it("measures distance from the centre of each square", () => {
-        expect(distance("B3C", 1)).to.equal(25);
-        expect(distance("B1L", 1)).to.equal(125);
-        expect(distance("NWF", 1)).to.equal(100);
-        expect(distance("WF", 1)).to.equal(150);
-        expect(distance("WF", 2)).to.equal(150);
-        expect(distance("SWF", 1)).to.equal(200);
-        expect(distance("G3C", 2)).to.equal(25);
-        expect(distance("BR", 1)).to.be.lessThan(distance("B3C", 1));
+        expect(distance("G3C", 1)).to.equal(25);
+        expect(distance("G1L", 1)).to.equal(125);
+        expect(distance("SEF", 1)).to.equal(100);
+        expect(distance("EF", 1)).to.equal(150);
+        expect(distance("EF", 2)).to.equal(150);
+        expect(distance("NEF", 1)).to.equal(200);
+        expect(distance("B3C", 2)).to.equal(25);
+        expect(distance("GR", 1)).to.be.lessThan(distance("G3C", 1));
     });
 });
 
 describe("Squares: setup and basic movement", () => {
-    it("starts with sixteen units per side in reserve and Blue to move", () => {
+    it("starts with sixteen units per side in reserve and Gray to move", () => {
         const g = new SquaresGame();
         for (const p of [1, 2] as playerid[]) {
             const reserve = g.reserveUnits(p);
@@ -95,65 +95,65 @@ describe("Squares: setup and basic movement", () => {
         }
         expect(g.currplayer).to.equal(1);
         const moves = g.moves();
-        expect(moves).to.include.members(["pass", "IBR-B3L", "ABR-B3C", "CBR-B3R", "CBR-B3L-B2L", "CBR-B3L,CBR-B3C"]);
+        expect(moves).to.include.members(["pass", "IGR-G3L", "AGR-G3C", "CGR-G3R", "CGR-G3L-G2L", "CGR-G3L,CGR-G3C"]);
         expect(moves.some(m => m.includes(">"))).to.be.false;
-        expect(moves.filter(m => m === "IBR-B3L").length).to.equal(1);
+        expect(moves.filter(m => m === "IGR-G3L").length).to.equal(1);
     });
 
     it("moves infantry orthogonally only, one square", () => {
         const g = new SquaresGame();
-        place(g, "1I1", "B1C");
-        const mine = g.moves().filter(m => m.startsWith("IB1C"));
-        expect(mine).to.have.members(["IB1C-B1CL", "IB1C-B1CR", "IB1C-G1C", "IB1C-B2CL", "IB1C-B2CR"]);
-        expect(g.validateMove("IB1C-G1CL").valid).to.be.false;
+        place(g, "1I1", "G1C");
+        const mine = g.moves().filter(m => m.startsWith("IG1C"));
+        expect(mine).to.have.members(["IG1C-G1CL", "IG1C-G1CR", "IG1C-B1C", "IG1C-G2CL", "IG1C-G2CR"]);
+        expect(g.validateMove("IG1C-B1CL").valid).to.be.false;
     });
 
     it("lets cavalry go two squares, diagonally, or one square into a forest", () => {
         const g = new SquaresGame();
-        place(g, "1C1", "B2L");
-        const mine = g.moves().filter(m => m.startsWith("CB2L"));
-        expect(mine).to.include.members(["CB2L-B1L-G1R", "CB2L-B1L-G1CR", "CB2L-EF", "CB2L-B3L-BR", "CB2L-B1L"]);
-        expect(mine).to.not.include("CB2L-B1L-G1L");
-        expect(mine.some(m => m.startsWith("CB2L-EF-"))).to.be.false;
-        expect(g.validateMove("CB2L-B1L-B2L").valid).to.be.false;
+        place(g, "1C1", "G2L");
+        const mine = g.moves().filter(m => m.startsWith("CG2L"));
+        expect(mine).to.include.members(["CG2L-G1L-B1R", "CG2L-G1L-B1CR", "CG2L-WF", "CG2L-G3L-GR", "CG2L-G1L"]);
+        expect(mine).to.not.include("CG2L-G1L-B1L");
+        expect(mine.some(m => m.startsWith("CG2L-WF-"))).to.be.false;
+        expect(g.validateMove("CG2L-G1L-G2L").valid).to.be.false;
     });
 
     it("lets cavalry pass through its own reserve", () => {
         const g = new SquaresGame();
-        place(g, "1C1", "B3L");
-        expect(g.moves()).to.include("CB3L-BR-B3R");
-        g.move("CB3L-BR-B3R");
-        expect(g.unit("1C1").loc).to.equal("B3R");
+        place(g, "1C1", "G3L");
+        expect(g.moves()).to.include("CG3L-GR-G3R");
+        g.move("CG3L-GR-G3R");
+        expect(g.unit("1C1").loc).to.equal("G3R");
     });
 
     it("moves two cavalry in either order, and lets the second use the first's square", () => {
         const g = new SquaresGame();
-        expect(g.validateMove("CBR-B3L,CBR-B3C").valid).to.be.true;
-        expect(g.validateMove("CBR-B3C,CBR-B3L").valid).to.be.true;
-        place(g, "1C1", "B2L");
-        place(g, "1C2", "B3L");
-        expect(g.validateMove("CB2L-B1L,CB3L-B2L").valid).to.be.true;
-        expect(g.validateMove("CB3L-B2L,CB2L-B1L").valid).to.be.false;
-        expect(g.validateMove("CB2L-B1L,CB2L-B1CL").valid).to.be.false;
-        g.move("CB2L-B1L,CB3L-B2L");
-        expect(g.unit("1C1").loc).to.equal("B1L");
-        expect(g.unit("1C2").loc).to.equal("B2L");
+        expect(g.validateMove("CGR-G3L,CGR-G3C").valid).to.be.true;
+        expect(g.validateMove("CGR-G3C,CGR-G3L").valid).to.be.true;
+        place(g, "1C1", "G2L");
+        place(g, "1C2", "G3L");
+        expect(g.validateMove("CG2L-G1L,CG3L-G2L").valid).to.be.true;
+        expect(g.validateMove("CG3L-G2L,CG2L-G1L").valid).to.be.false;
+        expect(g.validateMove("CG2L-G1L,CG2L-G1CL").valid).to.be.false;
+        g.move("CG2L-G1L,CG3L-G2L");
+        expect(g.unit("1C1").loc).to.equal("G1L");
+        expect(g.unit("1C2").loc).to.equal("G2L");
         expect(g.currplayer).to.equal(2);
     });
 
     it("keeps infantry and artillery out of forests without a double turn", () => {
         const g = new SquaresGame();
-        place(g, "1I1", "B2R");
-        place(g, "1A1", "B2L");
-        expect(g.validateMove("IB2R-NWF").valid).to.be.false;
-        expect(g.validateMove("AB2L-EF").valid).to.be.false;
-        expect(g.moves()).to.include("IB2R-B1R");
+        place(g, "1I1", "G2R");
+        place(g, "1A1", "G2L");
+        expect(g.validateMove("IG2R-SEF").valid).to.be.false;
+        expect(g.validateMove("AG2L-WF").valid).to.be.false;
+        expect(g.moves()).to.include("IG2R-G1R");
         g.move("pass");
-        g.move("IGR-G3C");
+        g.move("IBR-B3C");
         expect(g.isDouble).to.be.true;
-        expect(g.moves()).to.include.members(["IB2R-NWF", "AB2L-EF"]);
-        g.move("IB2R-NWF");
-        expect(g.unit("1I1").loc).to.equal("NWF");
+        expect(g.moves()).to.include.members(["IG2R-SEF", "AG2L-WF"]);
+        g.move("IG2R-SEF");
+        expect(g.unit("1I1").loc).to.equal("SEF");
         // the whole double turn is spent
         expect(g.currplayer).to.equal(2);
         expect(g.unit("1I1").moveStreak).to.equal(2);
@@ -161,14 +161,14 @@ describe("Squares: setup and basic movement", () => {
 
     it("lets infantry move diagonally only with a double move", () => {
         const g = new SquaresGame();
-        place(g, "1I1", "B1C");
-        place(g, "2I1", "G1C");
-        expect(g.validateMove("IB1C-G1CL").valid).to.be.false;
+        place(g, "1I1", "G1C");
+        place(g, "2I1", "B1C");
+        expect(g.validateMove("IG1C-B1CL").valid).to.be.false;
         g.move("pass");
-        g.move("IGR-G3C");
-        expect(g.moves()).to.include("IB1C-G1CL");
-        g.move("IB1C-G1CL");
-        expect(g.unit("1I1").loc).to.equal("G1CL");
+        g.move("IBR-B3C");
+        expect(g.moves()).to.include("IG1C-B1CL");
+        g.move("IG1C-B1CL");
+        expect(g.unit("1I1").loc).to.equal("B1CL");
         expect(g.currplayer).to.equal(2);
     });
 
@@ -176,15 +176,15 @@ describe("Squares: setup and basic movement", () => {
         const g = new SquaresGame();
         g.move("pass");
         expect(g.currplayer).to.equal(2);
-        g.move("IGR-G3C");
+        g.move("IBR-B3C");
         expect(g.currplayer).to.equal(1);
         expect(g.isDouble).to.be.true;
         expect(g.actionsLeft).to.equal(2);
         expect(g.validateMove("pass").valid).to.be.false;
-        g.move("IBR-B3C");
+        g.move("IGR-G3C");
         expect(g.currplayer).to.equal(1);
         expect(g.actionsLeft).to.equal(1);
-        g.move("IB3C-B2CL");
+        g.move("IG3C-G2CL");
         expect(g.currplayer).to.equal(2);
         expect(g.isDouble).to.be.false;
         expect(g.validateMove("pass").valid).to.be.true;
@@ -192,10 +192,10 @@ describe("Squares: setup and basic movement", () => {
 
     it("wins by entering an empty enemy reserve", () => {
         const g = new SquaresGame();
-        evacuate(g, 2, ["G2L", "G2CL", "G2CR", "G2R", "G1L", "G1CL", "G1C", "G1CR", "G1R", "SWF", "SEF", "WF", "EF", "B2L", "B2R", "B3R"]);
-        place(g, "1I1", "G3C");
-        expect(g.moves()).to.include("IG3C-GR");
-        g.move("IG3C-GR");
+        evacuate(g, 2, ["B2L", "B2CL", "B2CR", "B2R", "B1L", "B1CL", "B1C", "B1CR", "B1R", "NEF", "NWF", "EF", "WF", "G2L", "G2R", "G3R"]);
+        place(g, "1I1", "B3C");
+        expect(g.moves()).to.include("IB3C-BR");
+        g.move("IB3C-BR");
         expect(g.gameover).to.be.true;
         expect(g.winner).to.deep.equal([1]);
     });
@@ -204,61 +204,61 @@ describe("Squares: setup and basic movement", () => {
 describe("Squares: consecutive-turn limits and freezes", () => {
     it("stops a unit moving on a third consecutive turn", () => {
         const g = new SquaresGame();
-        place(g, "1I1", "B3C");
-        g.move("IB3C-B2CL");
-        g.move("IGR-G3C");
-        g.move("IB2CL-B1C");
+        place(g, "1I1", "G3C");
         g.move("IG3C-G2CL");
+        g.move("IBR-B3C");
+        g.move("IG2CL-G1C");
+        g.move("IB3C-B2CL");
         expect(g.unit("1I1").moveStreak).to.equal(2);
-        expect(g.moves().some(m => m.startsWith("IB1C-"))).to.be.false;
-        expect(g.validateMove("IB1C-B1CL").valid).to.be.false;
-        g.move("IBR-B3L");
-        g.move("IGR-G3C");
-        expect(g.moves()).to.include("IB1C-B1CL");
+        expect(g.moves().some(m => m.startsWith("IG1C-"))).to.be.false;
+        expect(g.validateMove("IG1C-G1CL").valid).to.be.false;
+        g.move("IGR-G3L");
+        g.move("IBR-B3C");
+        expect(g.moves()).to.include("IG1C-G1CL");
     });
 
     it("follows the rulebook example: a pass resets the count, a double turn counts as two turns", () => {
         const g = new SquaresGame();
-        place(g, "1C1", "B3C");
-        g.move("CB3C-B2CL");
-        g.move("IGR-G3C");
+        place(g, "1C1", "G3C");
+        g.move("CG3C-G2CL");
+        g.move("IBR-B3C");
         g.move("pass");
-        g.move("IG3C-G2CL");
-        g.move("CB2CL-B1C");
-        g.move("CB1C-B1CL");
+        g.move("IB3C-B2CL");
+        g.move("CG2CL-G1C");
+        g.move("CG1C-G1CL");
         expect(g.currplayer).to.equal(2);
-        g.move("IGR-G3C");
-        expect(g.moves().some(m => m.startsWith("CB1CL-"))).to.be.false;
+        g.move("IBR-B3C");
+        expect(g.moves().some(m => m.startsWith("CG1CL-"))).to.be.false;
         expect(g.canMove(g.unit("1C1"))).to.be.false;
         expect(g.canAttack(g.unit("1C1"))).to.be.true;
     });
 
     it("freezes a retreated infantry for its owner's next turn only", () => {
         const g = new SquaresGame();
-        place(g, "1I1", "B1C");
-        place(g, "2I1", "G1C");
-        evacuate(g, 2, ["G2L", "G2CL", "G2CR", "G2R", "G1L", "G1CL", "G1CR", "G1R", "SWF", "SEF", "WF", "EF", "NWF", "NEF", "B2R"]);
-        g.move("IB1C>IG1C");
+        place(g, "1I1", "G1C");
+        place(g, "2I1", "B1C");
+        evacuate(g, 2, ["B2L", "B2CL", "B2CR", "B2R", "B1L", "B1CL", "B1CR", "B1R", "NEF", "NWF", "EF", "WF", "SEF", "SWF", "G2R"]);
+        g.move("IG1C>IB1C");
         expect(g.currplayer).to.equal(2);
-        expect(g.moves()).to.have.members(["stand", "retreat:IG1C-GR"]);
-        g.move("retreat:IG1C-GR");
-        expect(g.unit("2I1").loc).to.equal("GR");
+        expect(g.moves()).to.have.members(["stand", "retreat:IB1C-BR"]);
+        g.move("retreat:IB1C-BR");
+        expect(g.unit("2I1").loc).to.equal("BR");
         expect(g.currplayer).to.equal(2);
         expect(g.canMove(g.unit("2I1"))).to.be.false;
-        expect(g.moves().some(m => m.startsWith("IGR-"))).to.be.false;
-        g.move("CB2R-B3R");
-        g.move("IBR-B3L");
+        expect(g.moves().some(m => m.startsWith("IBR-"))).to.be.false;
+        g.move("CG2R-G3R");
+        g.move("IGR-G3L");
         expect(g.canMove(g.unit("2I1"))).to.be.true;
-        expect(g.moves()).to.include("IGR-G3C");
+        expect(g.moves()).to.include("IBR-B3C");
     });
 });
 
 describe("Squares: attacks", () => {
     it("eliminates both units when an unsupported attack is met by a stand", () => {
         const g = new SquaresGame();
-        place(g, "1I1", "B1C");
-        place(g, "2I1", "G1C");
-        g.move("IB1C>IG1C");
+        place(g, "1I1", "G1C");
+        place(g, "2I1", "B1C");
+        g.move("IG1C>IB1C");
         g.move("stand");
         expect(alive(g, "1I1")).to.be.false;
         expect(alive(g, "2I1")).to.be.false;
@@ -270,210 +270,210 @@ describe("Squares: attacks", () => {
 
     it("never lets cavalry attack infantry unsupported, and never lets artillery attack anything but artillery", () => {
         const g = new SquaresGame();
-        place(g, "1C1", "B1R");
-        place(g, "1I1", "B1CR");
-        place(g, "2I1", "G1L");
+        place(g, "1C1", "G1R");
+        place(g, "1I1", "G1CR");
+        place(g, "2I1", "B1L");
         let moves = g.moves();
-        expect(moves).to.not.include("CB1R>IG1L");
-        expect(moves).to.include("CB1R+IB1CR>IG1L");
-        // B1CR only touches G1L at a corner, so the infantry may support but never attack it
-        expect(moves).to.not.include("IB1CR>IG1L");
+        expect(moves).to.not.include("CG1R>IB1L");
+        expect(moves).to.include("CG1R+IG1CR>IB1L");
+        // G1CR only touches B1L at a corner, so the infantry may support but never attack it
+        expect(moves).to.not.include("IG1CR>IB1L");
         // the unsupported attack is a legal step towards the supported one, but cannot be submitted
-        expect(g.validateMove("CB1R>IG1L").complete).to.equal(-1);
-        expect(() => g.move("CB1R>IG1L")).to.throw();
-        let click = g.handleClick("", 2, 0);
-        click = g.handleClick(click.move, 2, 9);
-        expect(click.move).to.equal("CB1R>IG1L");
+        expect(g.validateMove("CG1R>IB1L").complete).to.equal(-1);
+        expect(() => g.move("CG1R>IB1L")).to.throw();
+        let click = g.handleClick("", 2, 5);
+        click = g.handleClick(click.move, 2, 4);
+        expect(click.move).to.equal("CG1R>IB1L");
         expect(click.complete).to.equal(-1);
-        click = g.handleClick(click.move, 2, 1);
-        expect(click.move).to.equal("CB1R+IB1CR>IG1L");
+        click = g.handleClick(click.move, 2, 6);
+        expect(click.move).to.equal("CG1R+IG1CR>IB1L");
         expect(click.complete).to.equal(1);
-        place(g, "1I1", "BR");
-        expect(g.validateMove("CB1R>IG1L").valid).to.be.false;
+        place(g, "1I1", "GR");
+        expect(g.validateMove("CG1R>IB1L").valid).to.be.false;
 
         const h = new SquaresGame();
-        place(h, "1A1", "B1C");
-        place(h, "1A2", "B1L");
-        place(h, "2A1", "G1C");
-        place(h, "2I1", "G1R");
+        place(h, "1A1", "G1C");
+        place(h, "1A2", "G1L");
+        place(h, "2A1", "B1C");
+        place(h, "2I1", "B1R");
         moves = h.moves();
-        expect(moves).to.include("AB1C>AG1C");
-        expect(moves).to.not.include("AB1L>IG1R");
-        expect(moves).to.not.include("AB1L+AB1C>IG1R");
+        expect(moves).to.include("AG1C>AB1C");
+        expect(moves).to.not.include("AG1L>IB1R");
+        expect(moves).to.not.include("AG1L+AG1C>IB1R");
     });
 
     it("pins units next to enemy artillery", () => {
         const g = new SquaresGame();
-        place(g, "1I1", "B1C");
-        place(g, "1I2", "B1CR");
-        place(g, "2I1", "G1CL");
-        place(g, "2I2", "G1C");
-        place(g, "2A1", "G1CR");
-        // B1C touches G1CR only at a corner, so it can neither attack the guns nor anything else
-        expect(g.moves().some(m => m.startsWith("IB1C>") || m.startsWith("IB1C+"))).to.be.false;
-        expect(g.moves()).to.not.include("IB1CR+IB1C>IG1CL");
-        expect(g.moves()).to.include("IB1CR>IG1CL");
+        place(g, "1I1", "G1C");
+        place(g, "1I2", "G1CR");
+        place(g, "2I1", "B1CL");
+        place(g, "2I2", "B1C");
+        place(g, "2A1", "B1CR");
+        // G1C touches B1CR only at a corner, so it can neither attack the guns nor anything else
+        expect(g.moves().some(m => m.startsWith("IG1C>") || m.startsWith("IG1C+"))).to.be.false;
+        expect(g.moves()).to.not.include("IG1CR+IG1C>IB1CL");
+        expect(g.moves()).to.include("IG1CR>IB1CL");
         // a unit sharing an edge with the guns may attack them and nothing else
-        place(g, "1I3", "B1CL");
-        expect(g.moves()).to.include("IB1CL>AG1CR");
-        expect(g.moves()).to.not.include("IB1CL>IG1C");
+        place(g, "1I3", "G1CL");
+        expect(g.moves()).to.include("IG1CL>AB1CR");
+        expect(g.moves()).to.not.include("IG1CL>IB1C");
         // artillery in a reserve pins nothing
-        place(g, "2A1", "GR");
-        expect(g.moves()).to.include("IB1C>IG1C");
-        expect(g.moves()).to.include("IB1CR+IB1C>IG1CL");
+        place(g, "2A1", "BR");
+        expect(g.moves()).to.include("IG1C>IB1C");
+        expect(g.moves()).to.include("IG1CR+IG1C>IB1CL");
     });
 
     it("throws away an unsupported attacker against a forest or against artillery", () => {
         const g = new SquaresGame();
-        place(g, "1I1", "B1R");
-        place(g, "2I1", "WF");
-        g.move("IB1R>IWF");
+        place(g, "1I1", "G1R");
+        place(g, "2I1", "EF");
+        g.move("IG1R>IEF");
         expect(alive(g, "1I1")).to.be.false;
         expect(alive(g, "2I1")).to.be.true;
         expect(g.currplayer).to.equal(2);
         g.move("pass");
-        place(g, "1I2", "B1C");
-        place(g, "2A1", "G1C");
-        g.move("IB1C>AG1C");
+        place(g, "1I2", "G1C");
+        place(g, "2A1", "B1C");
+        g.move("IG1C>AB1C");
         expect(alive(g, "1I2")).to.be.false;
         expect(alive(g, "2A1")).to.be.true;
     });
 
     it("lets unsupported artillery and defending artillery destroy each other", () => {
         const g = new SquaresGame();
-        place(g, "1A1", "B1C");
-        place(g, "2A1", "G1C");
-        g.move("AB1C>AG1C");
+        place(g, "1A1", "G1C");
+        place(g, "2A1", "B1C");
+        g.move("AG1C>AB1C");
         expect(alive(g, "1A1")).to.be.false;
         expect(alive(g, "2A1")).to.be.false;
     });
 
     it("offers the attacker the rulebook options when a supported attack is stood", () => {
         const g = new SquaresGame();
-        place(g, "1I1", "B1C");
-        place(g, "1C1", "B1CL");
-        place(g, "2I1", "G1C");
-        g.move("IB1C+CB1CL>IG1C");
+        place(g, "1I1", "G1C");
+        place(g, "1C1", "G1CL");
+        place(g, "2I1", "B1C");
+        g.move("IG1C+CG1CL>IB1C");
         expect(g.currplayer).to.equal(2);
         g.move("stand");
         expect(g.currplayer).to.equal(1);
         expect(g.combat!.stage).to.equal("resolve");
-        expect(g.moves()).to.have.members(["option1:CB1CL-B2CL", "option2/advance", "option2/stay", "option3", "option4", "option5:CB1CL-B2CL"]);
+        expect(g.moves()).to.have.members(["option1:CG1CL-G2CL", "option2/advance", "option2/stay", "option3", "option4", "option5:CG1CL-G2CL"]);
         // the advance is the attacker's decision too, so it belongs to the same ply
         expect(() => g.move("option2")).to.throw();
         g.move("option2/advance");
         expect(alive(g, "2I1")).to.be.false;
         expect(alive(g, "1C1")).to.be.false;
         expect(g.combat).to.be.undefined;
-        expect(g.unit("1I1").loc).to.equal("G1C");
+        expect(g.unit("1I1").loc).to.equal("B1C");
         expect(g.currplayer).to.equal(2);
     });
 
     it("denies attacking cavalry the retreat options", () => {
         const g = new SquaresGame();
-        place(g, "1C1", "B1C");
-        place(g, "1I1", "B1CL");
-        place(g, "2I1", "G1C");
-        g.move("CB1C+IB1CL>IG1C");
+        place(g, "1C1", "G1C");
+        place(g, "1I1", "G1CL");
+        place(g, "2I1", "B1C");
+        g.move("CG1C+IG1CL>IB1C");
         g.move("stand");
         expect(g.moves()).to.have.members(["option2/advance", "option2/stay", "option3", "option5"]);
         g.move("option5");
-        expect(g.unit("1I1").loc).to.equal("BR");
+        expect(g.unit("1I1").loc).to.equal("GR");
         expect(alive(g, "2I1")).to.be.true;
         expect(g.combat).to.be.undefined;
     });
 
     it("gives the defender a second chance when supporting artillery withdraws under option 1", () => {
         const g = new SquaresGame();
-        place(g, "1I1", "B1C");
-        place(g, "1A1", "B1CL");
-        place(g, "2I1", "G1C");
-        g.move("IB1C+AB1CL>IG1C");
+        place(g, "1I1", "G1C");
+        place(g, "1A1", "G1CL");
+        place(g, "2I1", "B1C");
+        g.move("IG1C+AG1CL>IB1C");
         g.move("stand");
         expect(g.moves()).to.include("option1");
         g.move("option1");
-        expect(g.unit("1A1").loc).to.equal("BR");
+        expect(g.unit("1A1").loc).to.equal("GR");
         expect(g.combat!.stage).to.equal("second");
         expect(g.currplayer).to.equal(2);
-        expect(g.moves()).to.have.members(["stand", "retreat:IG1C-GR"]);
-        g.move("retreat:IG1C-GR");
+        expect(g.moves()).to.have.members(["stand", "retreat:IB1C-BR"]);
+        g.move("retreat:IB1C-BR");
         expect(alive(g, "2I1")).to.be.true;
         expect(g.combat!.stage).to.equal("advance");
         g.move("stay");
-        expect(g.unit("1I1").loc).to.equal("B1C");
+        expect(g.unit("1I1").loc).to.equal("G1C");
         expect(g.currplayer).to.equal(2);
     });
 
     it("eliminates a defender that stands again after the second chance, and retreats the attacker", () => {
         const g = new SquaresGame();
-        place(g, "1I1", "B1C");
-        place(g, "1A1", "B1CL");
-        place(g, "2I1", "G1C");
-        g.move("IB1C+AB1CL>IG1C");
+        place(g, "1I1", "G1C");
+        place(g, "1A1", "G1CL");
+        place(g, "2I1", "B1C");
+        g.move("IG1C+AG1CL>IB1C");
         g.move("stand");
         g.move("option1");
         g.move("stand");
         expect(alive(g, "2I1")).to.be.false;
-        expect(g.unit("1I1").loc).to.equal("BR");
+        expect(g.unit("1I1").loc).to.equal("GR");
         expect(g.combat).to.be.undefined;
     });
 
     it("resolves a flank attack: forced retreat, or elimination at no cost", () => {
         const g = new SquaresGame();
-        place(g, "1C1", "G3C");
-        place(g, "1I1", "G1C");
-        place(g, "2I1", "G2CL");
+        place(g, "1C1", "B3C");
+        place(g, "1I1", "B1C");
+        place(g, "2I1", "B2CL");
         // the retreat is forced and unique, so it happens at once, and the advance is decided in the same ply
-        expect(g.validateMove("CG3C+IG1C>IG2CL").complete).to.equal(-1);
-        expect(g.moves()).to.include.members(["CG3C+IG1C>IG2CL/advance", "CG3C+IG1C>IG2CL/stay"]);
-        g.move("CG3C+IG1C>IG2CL/advance");
-        expect(g.unit("2I1").loc).to.equal("GR");
+        expect(g.validateMove("CB3C+IB1C>IB2CL").complete).to.equal(-1);
+        expect(g.moves()).to.include.members(["CB3C+IB1C>IB2CL/advance", "CB3C+IB1C>IB2CL/stay"]);
+        g.move("CB3C+IB1C>IB2CL/advance");
+        expect(g.unit("2I1").loc).to.equal("BR");
         expect(g.combat).to.be.undefined;
-        expect(g.unit("1C1").loc).to.equal("G2CL");
+        expect(g.unit("1C1").loc).to.equal("B2CL");
         expect(g.currplayer).to.equal(2);
 
         const h = new SquaresGame();
-        place(h, "1C1", "G3C");
-        place(h, "1I1", "G1C");
-        place(h, "1I2", "G3L");
-        place(h, "2I1", "G2CL");
-        h.move("CG3C+IG1C>IG2CL/stay");
+        place(h, "1C1", "B3C");
+        place(h, "1I1", "B1C");
+        place(h, "1I2", "B3L");
+        place(h, "2I1", "B2CL");
+        h.move("CB3C+IB1C>IB2CL/stay");
         expect(alive(h, "2I1")).to.be.false;
         expect(alive(h, "1C1")).to.be.true;
         expect(alive(h, "1I1")).to.be.true;
         expect(h.combat).to.be.undefined;
-        expect(h.unit("1C1").loc).to.equal("G3C");
+        expect(h.unit("1C1").loc).to.equal("B3C");
     });
 
     it("answers the rulebook FAQ: flanked artillery outside a forest simply dies", () => {
         const g = new SquaresGame();
         g.move("pass");
-        place(g, "1A1", "B1L");
-        place(g, "2C1", "B2L");
-        place(g, "2C2", "B1CL");
-        g.move("CB2L+CB1CL>AB1L/advance");
+        place(g, "1A1", "G1L");
+        place(g, "2C1", "G2L");
+        place(g, "2C2", "G1CL");
+        g.move("CG2L+CG1CL>AG1L/advance");
         expect(alive(g, "1A1")).to.be.false;
         expect(alive(g, "2C1")).to.be.true;
         expect(alive(g, "2C2")).to.be.true;
         expect(g.combat).to.be.undefined;
-        expect(g.unit("2C1").loc).to.equal("B1L");
+        expect(g.unit("2C1").loc).to.equal("G1L");
     });
 });
 
 describe("Squares: retreats", () => {
     it("makes attacked cavalry retreat, displacing friends when nothing is vacant", () => {
         const g = new SquaresGame();
-        place(g, "1C1", "B1C");
-        place(g, "1I1", "B1CL");
-        place(g, "2C1", "G1C");
-        place(g, "2I1", "G2CL");
-        place(g, "2I2", "G2CR");
-        g.move("CB1C+IB1CL>CG1C");
+        place(g, "1C1", "G1C");
+        place(g, "1I1", "G1CL");
+        place(g, "2C1", "B1C");
+        place(g, "2I1", "B2CL");
+        place(g, "2I2", "B2CR");
+        g.move("CG1C+IG1CL>CB1C");
         expect(g.currplayer).to.equal(2);
-        expect(g.moves()).to.have.members(["retreat:CG1C-G2CL,IG2CL-GR", "retreat:CG1C-G2CR,IG2CR-GR"]);
-        g.move("retreat:CG1C-G2CL,IG2CL-GR");
-        expect(g.unit("2C1").loc).to.equal("G2CL");
-        expect(g.unit("2I1").loc).to.equal("GR");
+        expect(g.moves()).to.have.members(["retreat:CB1C-B2CL,IB2CL-BR", "retreat:CB1C-B2CR,IB2CR-BR"]);
+        g.move("retreat:CB1C-B2CL,IB2CL-BR");
+        expect(g.unit("2C1").loc).to.equal("B2CL");
+        expect(g.unit("2I1").loc).to.equal("BR");
         expect(g.canMove(g.unit("2I1"))).to.be.false;
         expect(g.canMove(g.unit("2C1"))).to.be.true;
         expect(g.combat!.stage).to.equal("advance");
@@ -481,25 +481,25 @@ describe("Squares: retreats", () => {
 
     it("lets cavalry stand against unsupported cavalry, in a forest, or when it cannot retreat", () => {
         const g = new SquaresGame();
-        place(g, "1C1", "B1C");
-        place(g, "2C1", "G1C");
-        g.move("CB1C>CG1C");
+        place(g, "1C1", "G1C");
+        place(g, "2C1", "B1C");
+        g.move("CG1C>CB1C");
         expect(g.moves()).to.include("stand");
-        expect(g.moves()).to.include("retreat:CG1C-G2CL");
+        expect(g.moves()).to.include("retreat:CB1C-B2CL");
 
         const h = new SquaresGame();
-        place(h, "1C1", "B1C");
-        place(h, "1I1", "B1CL");
-        place(h, "2C1", "G1C");
-        place(h, "2A1", "G2CL");
-        place(h, "2A2", "G2CR");
-        place(h, "1I2", "G3L");
-        place(h, "1I3", "G3C");
-        place(h, "1I4", "G3R");
+        place(h, "1C1", "G1C");
+        place(h, "1I1", "G1CL");
+        place(h, "2C1", "B1C");
+        place(h, "2A1", "B2CL");
+        place(h, "2A2", "B2CR");
+        place(h, "1I2", "B3L");
+        place(h, "1I3", "B3C");
+        place(h, "1I4", "B3R");
         // both squares behind are friendly artillery with no clear path, so the cavalry must stand
-        expect(h.validateMove("CB1C+IB1CL>CG1C").complete).to.equal(-1);
-        expect(h.moves()).to.include.members(["CB1C+IB1CL>CG1C/option3", "CB1C+IB1CL>CG1C/option2/advance"]);
-        h.move("CB1C+IB1CL>CG1C/option3");
+        expect(h.validateMove("CG1C+IG1CL>CB1C").complete).to.equal(-1);
+        expect(h.moves()).to.include.members(["CG1C+IG1CL>CB1C/option3", "CG1C+IG1CL>CB1C/option2/advance"]);
+        h.move("CG1C+IG1CL>CB1C/option3");
         expect(alive(h, "2C1")).to.be.false;
         expect(alive(h, "1C1")).to.be.false;
         expect(h.currplayer).to.equal(2);
@@ -507,27 +507,27 @@ describe("Squares: retreats", () => {
 
     it("lets infantry attacked in a forest fall back into a closer forest", () => {
         const g = new SquaresGame();
-        place(g, "1I1", "B1R");
-        place(g, "1C1", "B2R");
-        place(g, "2I1", "WF");
-        g.move("IB1R+CB2R>IWF");
-        expect(g.moves()).to.have.members(["stand", "retreat:IWF-GR", "retreat:IWF-SWF"]);
-        g.move("retreat:IWF-SWF");
-        expect(g.unit("2I1").loc).to.equal("SWF");
+        place(g, "1I1", "G1R");
+        place(g, "1C1", "G2R");
+        place(g, "2I1", "EF");
+        g.move("IG1R+CG2R>IEF");
+        expect(g.moves()).to.have.members(["stand", "retreat:IEF-BR", "retreat:IEF-NEF"]);
+        g.move("retreat:IEF-NEF");
+        expect(g.unit("2I1").loc).to.equal("NEF");
     });
 
     it("blocks a clear path with enemy units but not with friendly ones", () => {
         const g = new SquaresGame();
-        place(g, "2I1", "G1CL");
-        place(g, "2I2", "G2CL");
+        place(g, "2I1", "B1CL");
+        place(g, "2I2", "B2CL");
         expect(g.hasClearPath(g.unit("2I1"))).to.be.true;
-        place(g, "1I1", "G3L");
-        place(g, "1I2", "G3C");
+        place(g, "1I1", "B3L");
+        place(g, "1I2", "B3C");
         expect(g.hasClearPath(g.unit("2I1"))).to.be.false;
         place(g, "1I2", "X");
         expect(g.hasClearPath(g.unit("2I1"))).to.be.true;
-        place(g, "1I3", "G2CL");
-        place(g, "2I2", "GR");
+        place(g, "1I3", "B2CL");
+        place(g, "2I2", "BR");
         expect(g.hasClearPath(g.unit("2I1"))).to.be.false;
     });
 });
@@ -535,8 +535,8 @@ describe("Squares: retreats", () => {
 describe("Squares: reserves and winning", () => {
     it("lets the reserve's owner choose which unit type is lost", () => {
         const g = new SquaresGame();
-        place(g, "1I1", "G3C");
-        g.move("IG3C>GR");
+        place(g, "1I1", "B3C");
+        g.move("IB3C>BR");
         expect(g.currplayer).to.equal(2);
         expect(g.moves()).to.have.members(["lose:I", "lose:A", "lose:C"]);
         g.move("lose:A");
@@ -548,12 +548,12 @@ describe("Squares: reserves and winning", () => {
 
     it("lets a supported attack that empties the reserve advance into it and win", () => {
         const g = new SquaresGame();
-        evacuate(g, 2, ["G2L", "G2CL", "G2CR", "G2R", "G1L", "G1CL", "G1C", "G1CR", "G1R", "B2L", "B2R", "B3R", "SWF", "SEF", "WF"]);
+        evacuate(g, 2, ["B2L", "B2CL", "B2CR", "B2R", "B1L", "B1CL", "B1C", "B1CR", "B1R", "G2L", "G2R", "G3R", "NEF", "NWF", "EF"]);
         expect(g.reserveUnits(2).length).to.equal(1);
-        place(g, "1I1", "G3C");
-        place(g, "1I2", "G3L");
-        expect(g.moves()).to.include.members(["IG3C+IG3L>GR/advance", "IG3C+IG3L>GR/stay"]);
-        g.move("IG3C+IG3L>GR/advance");
+        place(g, "1I1", "B3C");
+        place(g, "1I2", "B3L");
+        expect(g.moves()).to.include.members(["IB3C+IB3L>BR/advance", "IB3C+IB3L>BR/stay"]);
+        g.move("IB3C+IB3L>BR/advance");
         expect(g.reserveUnits(2).length).to.equal(0);
         expect(g.gameover).to.be.true;
         expect(g.winner).to.deep.equal([1]);
@@ -562,7 +562,7 @@ describe("Squares: reserves and winning", () => {
     it("scores artillery double and cavalry double once three are lost, per the rulebook example", () => {
         const g = new SquaresGame();
         g.move("pass");
-        // Blue has lost 1 artillery, 2 cavalry and 4 infantry; Gray 1 artillery, 2 cavalry and 5 infantry.
+        // Gray has lost 1 artillery, 2 cavalry and 4 infantry; Blue 1 artillery, 2 cavalry and 5 infantry.
         for (const id of ["1A1", "1C1", "1C2", "1I1", "1I2", "1I3", "1I4"]) {
             place(g, id, "X");
         }
@@ -571,15 +571,15 @@ describe("Squares: reserves and winning", () => {
         }
         expect(g.points(2)).to.equal(8);
         expect(g.points(1)).to.equal(9);
-        place(g, "1C4", "B1C");
-        place(g, "2I6", "G1C");
-        place(g, "2A2", "G1CL");
-        place(g, "2I7", "B2CL");
-        place(g, "2I8", "B2CR");
-        expect(g.validateMove("IG1C+AG1CL>CB1C").complete).to.equal(-1);
-        expect(g.validateMove("IG1C+AG1CL>CB1C/option2").complete).to.equal(-1);
-        expect(g.validateMove("IG1C+AG1CL>CB1C/option2/stay").complete).to.equal(0);
-        g.move("IG1C+AG1CL>CB1C/option2/stay");
+        place(g, "1C4", "G1C");
+        place(g, "2I6", "B1C");
+        place(g, "2A2", "B1CL");
+        place(g, "2I7", "G2CL");
+        place(g, "2I8", "G2CR");
+        expect(g.validateMove("IB1C+AB1CL>CG1C").complete).to.equal(-1);
+        expect(g.validateMove("IB1C+AB1CL>CG1C/option2").complete).to.equal(-1);
+        expect(g.validateMove("IB1C+AB1CL>CG1C/option2/stay").complete).to.equal(0);
+        g.move("IB1C+AB1CL>CG1C/option2/stay");
         expect(g.points(2)).to.equal(12);
         expect(g.points(1)).to.equal(11);
         expect(g.gameover).to.be.true;
@@ -592,9 +592,9 @@ describe("Squares: reserves and winning", () => {
             place(g, `1I${i}`, "X");
             place(g, `2I${i}`, "X");
         }
-        place(g, "1C1", "B1C");
-        place(g, "2C1", "G1C");
-        g.move("CB1C>CG1C");
+        place(g, "1C1", "G1C");
+        place(g, "2C1", "B1C");
+        g.move("CG1C>CB1C");
         g.move("stand");
         expect(g.gameover).to.be.true;
         expect(g.winner).to.deep.equal([1, 2]);
@@ -602,12 +602,12 @@ describe("Squares: reserves and winning", () => {
 
     it("loses a player who cannot complete a double turn", () => {
         const g = new SquaresGame();
-        place(g, "2I1", "B3R");
-        place(g, "2I2", "B3C");
-        place(g, "2I3", "B3L");
+        place(g, "2I1", "G3R");
+        place(g, "2I2", "G3C");
+        place(g, "2I3", "G3L");
         expect(g.moves()).to.deep.equal(["pass"]);
         g.move("pass");
-        g.move("IGR-G3C");
+        g.move("IBR-B3C");
         expect(g.gameover).to.be.true;
         expect(g.winner).to.deep.equal([2]);
     });
@@ -616,13 +616,13 @@ describe("Squares: reserves and winning", () => {
 describe("Squares: plumbing", () => {
     it("lists only moves that validate and apply, and validates every listed move", () => {
         const g = new SquaresGame();
-        place(g, "1I1", "B1C");
-        place(g, "1C1", "B1CL");
-        place(g, "1A1", "B2CL");
-        place(g, "1C2", "B3L");
-        place(g, "2I1", "G1C");
-        place(g, "2C1", "G1CR");
-        place(g, "2A1", "G2CR");
+        place(g, "1I1", "G1C");
+        place(g, "1C1", "G1CL");
+        place(g, "1A1", "G2CL");
+        place(g, "1C2", "G3L");
+        place(g, "2I1", "B1C");
+        place(g, "2C1", "B1CR");
+        place(g, "2A1", "B2CR");
         commit(g);
         const moves = g.moves();
         expect(moves.length).to.be.greaterThan(20);
@@ -638,11 +638,11 @@ describe("Squares: plumbing", () => {
 
     it("survives serialisation with a combat pending", () => {
         const g = new SquaresGame();
-        place(g, "1I1", "B1C");
-        place(g, "1C1", "B1CL");
-        place(g, "2I1", "G1C");
+        place(g, "1I1", "G1C");
+        place(g, "1C1", "G1CL");
+        place(g, "2I1", "B1C");
         commit(g);
-        g.move("IB1C+CB1CL>IG1C");
+        g.move("IG1C+CG1CL>IB1C");
         const clone = g.clone();
         expect(clone.currplayer).to.equal(2);
         expect(clone.combat).to.deep.equal(g.combat);
@@ -654,18 +654,18 @@ describe("Squares: plumbing", () => {
 
     it("closes an export round whenever the round's opener acts again", () => {
         const g = new SquaresGame();
-        place(g, "1I1", "B1C");
-        place(g, "1C1", "B1CL");
-        place(g, "2I1", "G1C");
+        place(g, "1I1", "G1C");
+        place(g, "1C1", "G1CL");
+        place(g, "2I1", "B1C");
         commit(g);
-        g.move("IB1C+CB1CL>IG1C");
-        g.move("retreat:IG1C-GR");
+        g.move("IG1C+CG1CL>IB1C");
+        g.move("retreat:IB1C-BR");
         g.move("advance");
-        g.move("IGR-G3C");
-        g.move("pass");
-        g.move("IG3C-G2CL");
         g.move("IBR-B3C");
+        g.move("pass");
         g.move("IB3C-B2CL");
+        g.move("IGR-G3C");
+        g.move("IG3C-G2CL");
         const plies = g.getPlies();
         expect(plies.map(p => p.actor)).to.deep.equal([1, 2, 1, 2, 1, 2, 1, 1]);
         expect(plies.map(p => p.round)).to.deep.equal([0, 0, 1, 1, 2, 2, 3, 4]);
@@ -673,109 +673,109 @@ describe("Squares: plumbing", () => {
 
     it("builds moves from clicks", () => {
         const g = new SquaresGame();
-        place(g, "1I1", "B1C");
-        place(g, "1C1", "B1CL");
-        place(g, "2I1", "G1C");
-        let click = g.handleClick("", 2, 2);
-        expect(click.move).to.equal("IB1C");
-        click = g.handleClick(click.move, 2, 7);
-        expect(click.move).to.equal("IB1C>IG1C");
+        place(g, "1I1", "G1C");
+        place(g, "1C1", "G1CL");
+        place(g, "2I1", "B1C");
+        let click = g.handleClick("", 2, 7);
+        expect(click.move).to.equal("IG1C");
+        click = g.handleClick(click.move, 2, 2);
+        expect(click.move).to.equal("IG1C>IB1C");
         expect(click.complete).to.equal(0);
-        click = g.handleClick(click.move, 2, 3);
-        expect(click.move).to.equal("IB1C+CB1CL>IG1C");
+        click = g.handleClick(click.move, 2, 8);
+        expect(click.move).to.equal("IG1C+CG1CL>IB1C");
         expect(click.complete).to.equal(1);
-        click = g.handleClick("", -1, -1, "BC");
-        expect(click.move).to.equal("CBR");
-        click = g.handleClick(click.move, 0, 2);
-        expect(click.move).to.equal("CBR-B3L");
+        click = g.handleClick("", -1, -1, "GC");
+        expect(click.move).to.equal("CGR");
+        click = g.handleClick(click.move, 0, 7);
+        expect(click.move).to.equal("CGR-G3L");
         expect(click.complete).to.equal(0);
-        click = g.handleClick(click.move, 1, 3);
-        expect(click.move).to.equal("CBR-B3L-B2L");
+        click = g.handleClick(click.move, 1, 8);
+        expect(click.move).to.equal("CGR-G3L-G2L");
         expect(click.complete).to.equal(1);
         // clicking the square the cavalry was just shown on leaves the move as it is
-        click = g.handleClick("CBR-B3L", 0, 2);
-        expect(click.move).to.equal("CBR-B3L");
+        click = g.handleClick("CGR-G3L", 0, 7);
+        expect(click.move).to.equal("CGR-G3L");
         expect(click.valid).to.be.true;
         expect(click.complete).to.equal(0);
         // a square two steps away can be clicked directly; the engine supplies the path
-        click = g.handleClick("CBR", 1, 3);
-        expect(click.move).to.equal("CBR-B3L-B2L");
+        click = g.handleClick("CGR", 1, 8);
+        expect(click.move).to.equal("CGR-G3L-G2L");
         expect(click.complete).to.equal(1);
-        place(g, "1C1", "B1CR");
-        click = g.handleClick("CB1CR", 1, 1);
-        expect(click.move).to.equal("CB1CR-B2CR");
+        place(g, "1C1", "G1CR");
+        click = g.handleClick("CG1CR", 1, 6);
+        expect(click.move).to.equal("CG1CR-G2CR");
         expect(click.complete).to.equal(0);
-        click = g.handleClick("CB1CR", 1, 2);
-        expect(click.move).to.match(/^CB1CR-[A-Z0-9]+-B2CL$/);
+        click = g.handleClick("CG1CR", 1, 7);
+        expect(click.move).to.match(/^CG1CR-[A-Z0-9]+-G2CL$/);
         expect(click.complete).to.equal(1);
     });
 
     it("builds retreat chains and reserve losses from clicks", () => {
         const g = new SquaresGame();
-        place(g, "1C1", "B1C");
-        place(g, "1I1", "B1CL");
-        place(g, "2C1", "G1C");
-        place(g, "2I1", "G2CL");
-        place(g, "2I2", "G2CR");
-        g.move("CB1C+IB1CL>CG1C");
-        let click = g.handleClick("", 1, 7);
-        expect(click.move).to.equal("retreat:CG1C-G2CL");
+        place(g, "1C1", "G1C");
+        place(g, "1I1", "G1CL");
+        place(g, "2C1", "B1C");
+        place(g, "2I1", "B2CL");
+        place(g, "2I2", "B2CR");
+        g.move("CG1C+IG1CL>CB1C");
+        let click = g.handleClick("", 1, 2);
+        expect(click.move).to.equal("retreat:CB1C-B2CL");
         expect(click.complete).to.equal(-1);
-        click = g.handleClick(click.move, -1, -1, "_reserves_S");
-        expect(click.move).to.equal("retreat:CG1C-G2CL,IG2CL-GR");
+        click = g.handleClick(click.move, -1, -1, "_reserves_N");
+        expect(click.move).to.equal("retreat:CB1C-B2CL,IB2CL-BR");
         expect(click.complete).to.equal(1);
 
         const h = new SquaresGame();
-        place(h, "1I1", "G3C");
-        h.move("IG3C>GR");
-        click = h.handleClick("", -1, -1, "GA");
+        place(h, "1I1", "B3C");
+        h.move("IB3C>BR");
+        click = h.handleClick("", -1, -1, "BA");
         expect(click.move).to.equal("lose:A");
         expect(click.complete).to.equal(1);
     });
 
-    it("renders the dvgc board with both reserves, each player's side at the bottom", () => {
+    it("renders the dvgc board with both reserves, each player's side at the bottom and Gray's view the default", () => {
         const g = new SquaresGame();
-        place(g, "1I1", "B1C");
-        place(g, "2C1", "G1C");
+        place(g, "1I1", "G1C");
+        place(g, "2C1", "B1C");
         const rep = g.render({ perspective: 1 });
-        expect(rep.board).to.deep.equal({ style: "dvgc", rotate: 180 });
-        expect(rep.pieces).to.equal("-,-,-,-,-,-,-,-,-,-\n-,-,-,-,-,-,-,-,-,-\n-,-,BI,-,-,-,-,GC,-,-");
-        expect(Object.keys(rep.legend!)).to.have.members(["BI", "BA", "BC", "GI", "GA", "GC"]);
+        expect(rep.board).to.deep.equal({ style: "dvgc" });
+        expect(rep.pieces).to.equal("-,-,-,-,-,-,-,-,-,-\n-,-,-,-,-,-,-,-,-,-\n-,-,BC,-,-,-,-,GI,-,-");
+        expect(Object.keys(rep.legend!)).to.have.members(["GI", "GA", "GC", "BI", "BA", "BC"]);
         expect(rep.areas!.length).to.equal(2);
-        const north = rep.areas![0] as { side: string; pieces: string[] };
-        expect(north.side).to.equal("N");
-        expect(north.pieces.length).to.equal(15);
-        expect(north.pieces.every(k => k.startsWith("B"))).to.be.true;
-        expect(g.render({ perspective: 2 }).board).to.deep.equal({ style: "dvgc" });
-        expect(g.render().board).to.deep.equal({ style: "dvgc", rotate: 180 });
+        const south = rep.areas![0] as { side: string; pieces: string[] };
+        expect(south.side).to.equal("S");
+        expect(south.pieces.length).to.equal(15);
+        expect(south.pieces.every(k => k.startsWith("G"))).to.be.true;
+        expect(g.render({ perspective: 2 }).board).to.deep.equal({ style: "dvgc", rotate: 180 });
+        expect(g.render().board).to.deep.equal({ style: "dvgc" });
         expect(g.getCustomRotation()).to.equal(180);
     });
 
     it("writes a move log that matches the legacy formatter", () => {
         addResource("en");
         const g = new SquaresGame();
-        place(g, "1I1", "B1C");
-        place(g, "1A1", "B1CL");
-        place(g, "2I1", "G1C");
-        place(g, "2C1", "G1L");
+        place(g, "1I1", "G1C");
+        place(g, "1A1", "G1CL");
+        place(g, "2I1", "B1C");
+        place(g, "2C1", "B1L");
         commit(g);
-        g.move("IB1C+AB1CL>IG1C");
+        g.move("IG1C+AG1CL>IB1C");
         g.move("stand");
         g.move("option1");
-        g.move("retreat:IG1C-GR");
+        g.move("retreat:IB1C-BR");
         g.move("advance");
-        g.move("CG1L-G2L");
+        g.move("CB1L-B2L");
         g.move("pass");
         const names = ["Alice", "Bob"];
         assertChatLogParity(g, names);
         const text = g.chatLog(names).flat().join("\n");
-        expect(text).to.contain("Alice's infantry at B1C attacked G1C.");
-        expect(text).to.contain("supported by artillery at B1CL");
-        expect(text).to.contain("Bob's unit at G1C stands its ground.");
-        expect(text).to.contain("Alice's artillery retreated from B1CL to BR.");
-        expect(text).to.contain("Bob's infantry retreated from G1C to GR.");
-        expect(text).to.contain("Alice's infantry advanced from B1C into G1C.");
-        expect(text).to.contain("Bob moved cavalry from G1L to G2L.");
+        expect(text).to.contain("Alice's infantry at G1C attacked B1C.");
+        expect(text).to.contain("supported by artillery at G1CL");
+        expect(text).to.contain("Bob's unit at B1C stands its ground.");
+        expect(text).to.contain("Alice's artillery retreated from G1CL to GR.");
+        expect(text).to.contain("Bob's infantry retreated from B1C to BR.");
+        expect(text).to.contain("Alice's infantry advanced from G1C into B1C.");
+        expect(text).to.contain("Bob moved cavalry from B1L to B2L.");
         expect(text).to.contain("Alice passed and will take a double turn next.");
     });
 });
@@ -783,34 +783,34 @@ describe("Squares: plumbing", () => {
 describe("Squares: interface helpers", () => {
     it("adds a second cavalry from the reserve by clicking the strip again", () => {
         const g = new SquaresGame();
-        let click = g.handleClick("", -1, -1, "BC");
-        click = g.handleClick(click.move, 0, 2);
-        expect(click.move).to.equal("CBR-B3L");
-        click = g.handleClick(click.move, -1, -1, "BC");
-        expect(click.move).to.equal("CBR-B3L,CBR");
+        let click = g.handleClick("", -1, -1, "GC");
+        click = g.handleClick(click.move, 0, 7);
+        expect(click.move).to.equal("CGR-G3L");
+        click = g.handleClick(click.move, -1, -1, "GC");
+        expect(click.move).to.equal("CGR-G3L,CGR");
         expect(click.complete).to.equal(-1);
-        click = g.handleClick(click.move, 0, 1);
-        expect(click.move).to.equal("CBR-B3L,CBR-B3C");
+        click = g.handleClick(click.move, 0, 6);
+        expect(click.move).to.equal("CGR-G3L,CGR-G3C");
         expect(click.complete).to.equal(1);
     });
 
     it("offers buttons for every combat decision and finishes option prefixes by clicking", () => {
         const g = new SquaresGame();
         expect(g.getButtons()).to.deep.equal([{ label: "pass", move: "pass" }]);
-        place(g, "1I1", "B1C");
-        place(g, "1C1", "B1CL");
-        place(g, "2I1", "G1C");
-        g.move("IB1C+CB1CL>IG1C");
-        expect(g.getButtons().map(b => [b.label, b.move])).to.deep.equal([["squares.stand", "stand"], ["squares.retreatReserve", "retreat:IG1C-GR"]]);
+        place(g, "1I1", "G1C");
+        place(g, "1C1", "G1CL");
+        place(g, "2I1", "B1C");
+        g.move("IG1C+CG1CL>IB1C");
+        expect(g.getButtons().map(b => [b.label, b.move])).to.deep.equal([["squares.stand", "stand"], ["squares.retreatReserve", "retreat:IB1C-BR"]]);
         g.move("stand");
         const buttons = g.getButtons();
         expect(buttons.map(b => b.label)).to.deep.equal(["squares.option1", "squares.option2", "squares.option3", "squares.option4", "squares.option5"]);
-        expect(buttons[0].move).to.equal("option1:CB1CL-B2CL");
-        expect(buttons[4].move).to.equal("option5:CB1CL-B2CL");
+        expect(buttons[0].move).to.equal("option1:CG1CL-G2CL");
+        expect(buttons[4].move).to.equal("option5:CG1CL-G2CL");
         expect(g.validateMove("option1").complete).to.equal(-1);
         expect(g.validateMove("option5:").complete).to.equal(-1);
-        const click = g.handleClick("option1", 1, 2);
-        expect(click.move).to.equal("option1:CB1CL-B2CL");
+        const click = g.handleClick("option1", 1, 7);
+        expect(click.move).to.equal("option1:CG1CL-G2CL");
         expect(click.complete).to.equal(1);
         // option 2 still needs the advance decision; the previewed position offers it as buttons
         expect(g.validateMove("option2").complete).to.equal(-1);
@@ -824,8 +824,8 @@ describe("Squares: interface helpers", () => {
         g.move("option2/stay");
         expect(g.getButtons()).to.deep.equal([{ label: "pass", move: "pass" }]);
         const h = new SquaresGame();
-        place(h, "1I1", "G3C");
-        h.move("IG3C>GR");
+        place(h, "1I1", "B3C");
+        h.move("IB3C>BR");
         expect(h.getButtons().map(b => [b.label, b.move])).to.deep.equal([["squares.loseI", "lose:I"], ["squares.loseA", "lose:A"], ["squares.loseC", "lose:C"]]);
         expect(h.validateMove("lose:").complete).to.equal(-1);
         h.move("pass".slice(0, 0) + "lose:C");
@@ -835,177 +835,225 @@ describe("Squares: interface helpers", () => {
     it("folds the attacker's own decisions into the attack's ply, entered by clicks or buttons", () => {
         addResource("en");
         const g = new SquaresGame();
-        place(g, "1I1", "B1C");
-        place(g, "1A1", "B1CL");
-        place(g, "2A1", "G1C");
+        place(g, "1I1", "G1C");
+        place(g, "1A1", "G1CL");
+        place(g, "2A1", "B1C");
         commit(g);
         // the artillery must stand, so the attack alone is not a whole ply
-        expect(g.validateMove("IB1C+AB1CL>AG1C").complete).to.equal(-1);
-        expect(g.moves().filter(m => m.startsWith("IB1C+AB1CL>AG1C"))).to.have.members([
-            "IB1C+AB1CL>AG1C/option1", "IB1C+AB1CL>AG1C/option2/advance", "IB1C+AB1CL>AG1C/option2/stay",
-            "IB1C+AB1CL>AG1C/option3", "IB1C+AB1CL>AG1C/option4", "IB1C+AB1CL>AG1C/option5",
+        expect(g.validateMove("IG1C+AG1CL>AB1C").complete).to.equal(-1);
+        expect(g.moves().filter(m => m.startsWith("IG1C+AG1CL>AB1C"))).to.have.members([
+            "IG1C+AG1CL>AB1C/option1", "IG1C+AG1CL>AB1C/option2/advance", "IG1C+AG1CL>AB1C/option2/stay",
+            "IG1C+AG1CL>AB1C/option3", "IG1C+AG1CL>AB1C/option4", "IG1C+AG1CL>AB1C/option5",
         ]);
         // clicking any square of the combat steps through the options; decisions are confirmed, not auto-submitted
-        let click = g.handleClick("IB1C+AB1CL>AG1C", 2, 7);
-        expect(click.move).to.equal("IB1C+AB1CL>AG1C/option1");
+        let click = g.handleClick("IG1C+AG1CL>AB1C", 2, 2);
+        expect(click.move).to.equal("IG1C+AG1CL>AB1C/option1");
         expect(click.complete).to.equal(0);
         expect(click.message).to.contain("Option 1");
-        click = g.handleClick(click.move, 2, 7);
-        expect(click.move).to.equal("IB1C+AB1CL>AG1C/option2");
+        click = g.handleClick(click.move, 2, 2);
+        expect(click.move).to.equal("IG1C+AG1CL>AB1C/option2");
         expect(click.complete).to.equal(-1);
         expect(click.message).to.contain("click it to advance");
-        click = g.handleClick(click.move, 2, 7);
-        expect(click.move).to.equal("IB1C+AB1CL>AG1C/option2/advance");
+        click = g.handleClick(click.move, 2, 2);
+        expect(click.move).to.equal("IG1C+AG1CL>AB1C/option2/advance");
         expect(click.complete).to.equal(0);
-        click = g.handleClick(click.move, 2, 2);
-        expect(click.move).to.equal("IB1C+AB1CL>AG1C/option2/stay");
-        click = g.handleClick(click.move, 2, 3);
-        expect(click.move).to.equal("IB1C+AB1CL>AG1C/option3");
-        click = g.handleClick(click.move, 2, 2);
-        expect(click.move).to.equal("IB1C+AB1CL>AG1C/option4");
-        click = g.handleClick(click.move, 2, 3);
-        expect(click.move).to.equal("IB1C+AB1CL>AG1C/option5");
         click = g.handleClick(click.move, 2, 7);
-        expect(click.move).to.equal("IB1C+AB1CL>AG1C/option1");
+        expect(click.move).to.equal("IG1C+AG1CL>AB1C/option2/stay");
+        click = g.handleClick(click.move, 2, 8);
+        expect(click.move).to.equal("IG1C+AG1CL>AB1C/option3");
+        click = g.handleClick(click.move, 2, 7);
+        expect(click.move).to.equal("IG1C+AG1CL>AB1C/option4");
+        click = g.handleClick(click.move, 2, 8);
+        expect(click.move).to.equal("IG1C+AG1CL>AB1C/option5");
+        click = g.handleClick(click.move, 2, 2);
+        expect(click.move).to.equal("IG1C+AG1CL>AB1C/option1");
         // a click elsewhere changes nothing
-        expect(g.handleClick("IB1C+AB1CL>AG1C/option3", 0, 0).move).to.equal("IB1C+AB1CL>AG1C/option3");
+        expect(g.handleClick("IG1C+AG1CL>AB1C/option3", 0, 5).move).to.equal("IG1C+AG1CL>AB1C/option3");
         // the previewed position offers the pending decisions as buttons that continue the ply
         const preview = g.clone();
-        preview.move("IB1C+AB1CL>AG1C", { partial: true });
-        expect(preview.getButtons().map(b => b.move)).to.deep.equal([1, 2, 3, 4, 5].map(n => `IB1C+AB1CL>AG1C/option${n}`));
+        preview.move("IG1C+AG1CL>AB1C", { partial: true });
+        expect(preview.getButtons().map(b => b.move)).to.deep.equal([1, 2, 3, 4, 5].map(n => `IG1C+AG1CL>AB1C/option${n}`));
         const advance = g.clone();
-        advance.move("IB1C+AB1CL>AG1C/option2", { partial: true });
-        expect(advance.getButtons().map(b => [b.label, b.move])).to.deep.equal([["squares.advance", "IB1C+AB1CL>AG1C/option2/advance"], ["squares.stay", "IB1C+AB1CL>AG1C/option2/stay"]]);
-        expect(advance.render().annotations).to.deep.include({ type: "exit", targets: [{ row: 2, col: 7 }] });
+        advance.move("IG1C+AG1CL>AB1C/option2", { partial: true });
+        expect(advance.getButtons().map(b => [b.label, b.move])).to.deep.equal([["squares.advance", "IG1C+AG1CL>AB1C/option2/advance"], ["squares.stay", "IG1C+AG1CL>AB1C/option2/stay"]]);
+        expect(advance.render().annotations).to.deep.include({ type: "exit", targets: [{ row: 2, col: 2 }] });
         // decisions in the wrong place are refused with a reason
-        expect(g.validateMove("IB1C/option2").message).to.contain("too early");
-        expect(g.validateMove("IB1C-B2CL/advance").message).to.contain("not needed");
-        expect(g.validateMove("IB1C+AB1CL>AG1C/option1/advance").message).to.contain("not needed");
-        expect(g.validateMove("IB1C+AB1CL>AG1C/stand").valid).to.be.false;
+        expect(g.validateMove("IG1C/option2").message).to.contain("too early");
+        expect(g.validateMove("IG1C-G2CL/advance").message).to.contain("not needed");
+        expect(g.validateMove("IG1C+AG1CL>AB1C/option1/advance").message).to.contain("not needed");
+        expect(g.validateMove("IG1C+AG1CL>AB1C/stand").valid).to.be.false;
         // the whole thing is one ply, by the attacker
-        g.move("IB1C+AB1CL>AG1C/option2/advance");
-        expect(g.unit("1I1").loc).to.equal("G1C");
+        g.move("IG1C+AG1CL>AB1C/option2/advance");
+        expect(g.unit("1I1").loc).to.equal("B1C");
         expect(alive(g, "1A1")).to.be.false;
         expect(alive(g, "2A1")).to.be.false;
         expect(g.stack.length).to.equal(2);
-        expect(g.getPlies().map(p => [p.actor, p.move])).to.deep.equal([[1, "IB1C+AB1CL>AG1C/option2/advance"]]);
+        expect(g.getPlies().map(p => [p.actor, p.move])).to.deep.equal([[1, "IG1C+AG1CL>AB1C/option2/advance"]]);
         expect(g.currplayer).to.equal(2);
     });
 
     it("lets a cavalry support's retreat square be clicked after stepping to option 1 or 5", () => {
         const g = new SquaresGame();
-        place(g, "1I1", "B1CL");
-        place(g, "1C1", "B1C");
-        place(g, "2A1", "G1CR");
+        place(g, "1I1", "G1CL");
+        place(g, "1C1", "G1C");
+        place(g, "2A1", "B1CR");
         commit(g);
-        expect(g.moves().filter(m => m.startsWith("IB1CL+CB1C>AG1CR/option5"))).to.have.members(["IB1CL+CB1C>AG1CR/option5:CB1C-B2CR", "IB1CL+CB1C>AG1CR/option5:CB1C-B2CL"]);
-        let click = g.handleClick("IB1CL+CB1C>AG1CR", 2, 6);
-        expect(click.move).to.equal("IB1CL+CB1C>AG1CR/option1:");
+        expect(g.moves().filter(m => m.startsWith("IG1CL+CG1C>AB1CR/option5"))).to.have.members(["IG1CL+CG1C>AB1CR/option5:CG1C-G2CR", "IG1CL+CG1C>AB1CR/option5:CG1C-G2CL"]);
+        let click = g.handleClick("IG1CL+CG1C>AB1CR", 2, 1);
+        expect(click.move).to.equal("IG1CL+CG1C>AB1CR/option1:");
         expect(click.complete).to.equal(-1);
-        click = g.handleClick(click.move, 1, 1);
-        expect(click.move).to.equal("IB1CL+CB1C>AG1CR/option1:CB1C-B2CR");
+        click = g.handleClick(click.move, 1, 6);
+        expect(click.move).to.equal("IG1CL+CG1C>AB1CR/option1:CG1C-G2CR");
         expect(click.complete).to.equal(0);
         // stepping on from a chosen retreat square, and filling in the square for option 5
-        click = g.handleClick(click.move, 2, 6);
-        expect(click.move).to.equal("IB1CL+CB1C>AG1CR/option2");
-        click = g.handleClick("IB1CL+CB1C>AG1CR/option4", 2, 6);
-        expect(click.move).to.equal("IB1CL+CB1C>AG1CR/option5:");
-        click = g.handleClick(click.move, 1, 2);
-        expect(click.move).to.equal("IB1CL+CB1C>AG1CR/option5:CB1C-B2CL");
+        click = g.handleClick(click.move, 2, 1);
+        expect(click.move).to.equal("IG1CL+CG1C>AB1CR/option2");
+        click = g.handleClick("IG1CL+CG1C>AB1CR/option4", 2, 1);
+        expect(click.move).to.equal("IG1CL+CG1C>AB1CR/option5:");
+        click = g.handleClick(click.move, 1, 7);
+        expect(click.move).to.equal("IG1CL+CG1C>AB1CR/option5:CG1C-G2CL");
         expect(click.complete).to.equal(0);
         const preview = g.clone();
         preview.move(click.move, { partial: true });
-        expect(preview.render().annotations).to.deep.include({ type: "move", targets: [{ row: 2, col: 2 }, { row: 1, col: 2 }], style: "dashed" });
+        expect(preview.render().annotations).to.deep.include({ type: "move", targets: [{ row: 2, col: 7 }, { row: 1, col: 7 }], style: "dashed" });
         g.move(click.move);
-        expect(g.unit("1C1").loc).to.equal("B2CL");
+        expect(g.unit("1C1").loc).to.equal("G2CL");
         expect(alive(g, "2A1")).to.be.true;
         expect(g.currplayer).to.equal(2);
     });
 
     it("adds the advance to a ply whose defender was swept aside, by clicking the target or the attacker", () => {
         const g = new SquaresGame();
-        place(g, "1C1", "G3C");
-        place(g, "1I1", "G1C");
-        place(g, "2I1", "G2CL");
+        place(g, "1C1", "B3C");
+        place(g, "1I1", "B1C");
+        place(g, "2I1", "B2CL");
         commit(g);
-        let click = g.handleClick("CG3C+IG1C>IG2CL", 1, 7);
-        expect(click.move).to.equal("CG3C+IG1C>IG2CL/advance");
+        let click = g.handleClick("CB3C+IB1C>IB2CL", 1, 2);
+        expect(click.move).to.equal("CB3C+IB1C>IB2CL/advance");
         expect(click.complete).to.equal(0);
-        click = g.handleClick(click.move, 0, 6);
-        expect(click.move).to.equal("CG3C+IG1C>IG2CL/stay");
+        click = g.handleClick(click.move, 0, 1);
+        expect(click.move).to.equal("CB3C+IB1C>IB2CL/stay");
         // there is no option to change here, so the support's square does nothing
-        expect(g.handleClick(click.move, 2, 7).move).to.equal("CG3C+IG1C>IG2CL/stay");
+        expect(g.handleClick(click.move, 2, 2).move).to.equal("CB3C+IB1C>IB2CL/stay");
         const preview = g.clone();
-        preview.move("CG3C+IG1C>IG2CL", { partial: true });
-        expect(preview.getButtons().map(b => b.move)).to.deep.equal(["CG3C+IG1C>IG2CL/advance", "CG3C+IG1C>IG2CL/stay"]);
-        expect(preview.render().annotations).to.deep.include({ type: "exit", targets: [{ row: 1, col: 7 }] });
+        preview.move("CB3C+IB1C>IB2CL", { partial: true });
+        expect(preview.getButtons().map(b => b.move)).to.deep.equal(["CB3C+IB1C>IB2CL/advance", "CB3C+IB1C>IB2CL/stay"]);
+        expect(preview.render().annotations).to.deep.include({ type: "exit", targets: [{ row: 1, col: 2 }] });
     });
 
     it("explains why a retreat square is not allowed", () => {
         addResource("en");
         const g = new SquaresGame();
-        place(g, "1I1", "B1C");
-        place(g, "1C1", "B1CL");
-        place(g, "2I1", "G1C");
-        g.move("IB1C+CB1CL>IG1C");
-        expect(g.validateMove("retreat:IG1C-G2CL").message).to.contain("retreat to their reserve");
-        expect(g.validateMove("retreat:IG1C-EF").message).to.contain("attacked while in a forest");
+        place(g, "1I1", "G1C");
+        place(g, "1C1", "G1CL");
+        place(g, "2I1", "B1C");
+        g.move("IG1C+CG1CL>IB1C");
+        expect(g.validateMove("retreat:IB1C-B2CL").message).to.contain("retreat to their reserve");
+        expect(g.validateMove("retreat:IB1C-WF").message).to.contain("attacked while in a forest");
         // lone cavalry attacking cavalry: the defender may stand or take the one vacant square
         const h = new SquaresGame();
-        place(h, "1C1", "B1C");
-        place(h, "2C1", "G1C");
-        place(h, "2I1", "G2CL");
-        h.move("CB1C>CG1C");
-        expect(h.moves()).to.have.members(["stand", "retreat:CG1C-G2CR"]);
-        expect(h.validateMove("retreat:CG1C-G2CL,IG2CL-GR").message).to.contain("vacant");
-        expect(h.validateMove("retreat:CG1C-B1CR").message).to.contain("not closer");
-        expect(h.validateMove("retreat:CG1C-G3C").message).to.contain("touching");
-        expect(h.validateMove("retreat:CG1C-G2CR").valid).to.be.true;
+        place(h, "1C1", "G1C");
+        place(h, "2C1", "B1C");
+        place(h, "2I1", "B2CL");
+        h.move("CG1C>CB1C");
+        expect(h.moves()).to.have.members(["stand", "retreat:CB1C-B2CR"]);
+        expect(h.validateMove("retreat:CB1C-B2CL,IB2CL-BR").message).to.contain("vacant");
+        expect(h.validateMove("retreat:CB1C-G1CR").message).to.contain("not closer");
+        expect(h.validateMove("retreat:CB1C-B3C").message).to.contain("touching");
+        expect(h.validateMove("retreat:CB1C-B2CR").valid).to.be.true;
         // supported attack with two vacant squares behind: the cavalry must retreat
         const k = new SquaresGame();
-        place(k, "1C1", "B1C");
-        place(k, "1I1", "B1CL");
-        place(k, "2C1", "G1C");
-        k.move("CB1C+IB1CL>CG1C");
-        expect(k.moves()).to.have.members(["retreat:CG1C-G2CL", "retreat:CG1C-G2CR"]);
+        place(k, "1C1", "G1C");
+        place(k, "1I1", "G1CL");
+        place(k, "2C1", "B1C");
+        k.move("CG1C+IG1CL>CB1C");
+        expect(k.moves()).to.have.members(["retreat:CB1C-B2CL", "retreat:CB1C-B2CR"]);
         expect(k.validateMove("stand").message).to.contain("must retreat");
     });
 
     it("previews selections, attacks and reserve-bound retreats", () => {
         const g = new SquaresGame();
-        place(g, "1I1", "B1C");
-        place(g, "1C1", "B1CL");
-        place(g, "2I1", "G1C");
+        place(g, "1I1", "G1C");
+        place(g, "1C1", "G1CL");
+        place(g, "2I1", "B1C");
         commit(g);
-        expect(g.validateMove("IB1C").canrender).to.be.true;
+        expect(g.validateMove("IG1C").canrender).to.be.true;
         const sel = g.clone();
-        sel.move("IB1C", { partial: true });
-        expect(sel.render().annotations).to.deep.include({ type: "enter", targets: [{ row: 2, col: 2 }] });
+        sel.move("IG1C", { partial: true });
+        expect(sel.render().annotations).to.deep.include({ type: "enter", targets: [{ row: 2, col: 7 }] });
         const atk = g.clone();
-        atk.move("IB1C>IG1C", { partial: true });
-        expect(atk.render().annotations).to.deep.include({ type: "move", targets: [{ row: 2, col: 2 }, { row: 2, col: 7 }], style: "solid" });
+        atk.move("IG1C>IB1C", { partial: true });
+        expect(atk.render().annotations).to.deep.include({ type: "move", targets: [{ row: 2, col: 7 }, { row: 2, col: 2 }], style: "solid" });
         const sup = g.clone();
-        sup.move("IB1C+CB1CL>IG1C", { partial: true });
-        expect(sup.render().annotations).to.deep.include({ type: "move", targets: [{ row: 2, col: 3 }, { row: 2, col: 7 }], style: "dashed" });
+        sup.move("IG1C+CG1CL>IB1C", { partial: true });
+        expect(sup.render().annotations).to.deep.include({ type: "move", targets: [{ row: 2, col: 8 }, { row: 2, col: 2 }], style: "dashed" });
         const r = g.clone();
-        r.move("IB1C>IG1C");
-        r.move("retreat:IG1C-GR");
+        r.move("IG1C>IB1C");
+        r.move("retreat:IB1C-BR");
         const rep = r.render({ perspective: 2 });
-        expect(rep.board).to.deep.equal({ style: "dvgc", markers: [{ type: "edge", edge: "S", colour: r.getPlayerColour(2) }] });
-        expect(rep.annotations).to.deep.include({ type: "exit", targets: [{ row: 2, col: 7 }] });
+        expect(rep.board).to.deep.equal({ style: "dvgc", rotate: 180, markers: [{ type: "edge", edge: "N", colour: r.getPlayerColour(2) }] });
+        expect(rep.annotations).to.deep.include({ type: "exit", targets: [{ row: 2, col: 2 }] });
         expect(rep.annotations!.some(a => a.type === "move")).to.be.false;
         expect(JSON.stringify(rep.annotations)).to.not.contain("#c00");
         const out = new SquaresGame();
-        out.move("IBR-B3C");
-        expect(out.render().board).to.deep.equal({ style: "dvgc", rotate: 180, markers: [{ type: "edge", edge: "N", colour: out.getPlayerColour(1) }] });
-        expect(out.render().annotations).to.deep.include({ type: "enter", targets: [{ row: 0, col: 1 }] });
+        out.move("IGR-G3C");
+        expect(out.render().board).to.deep.equal({ style: "dvgc", markers: [{ type: "edge", edge: "S", colour: out.getPlayerColour(1) }] });
+        expect(out.render().annotations).to.deep.include({ type: "enter", targets: [{ row: 0, col: 6 }] });
+    });
+
+    it("fades a unit that the move being entered would lose, instead of removing it", () => {
+        const g = new SquaresGame();
+        place(g, "1I1", "G1R");
+        place(g, "1C1", "G2R");
+        place(g, "2I1", "EF");
+        commit(g);
+        // an unsupported attack on a forest costs the attacker, so the preview shows it going
+        expect(g.validateMove("IG1R>IEF").complete).to.equal(0);
+        const preview = g.clone();
+        preview.move("IG1R>IEF", { partial: true });
+        const rep = preview.render();
+        expect(rep.legend!.GIx).to.deep.equal({ name: "nato-infantry", colour: g.getPlayerColour(1), opacity: 0.5 });
+        expect(rep.pieces!.split("\n")[2].split(",")[5]).to.equal("GIx");
+        expect(rep.annotations).to.deep.include({ type: "exit", targets: [{ row: 2, col: 5 }] });
+        // with support added, the attacker is back in full
+        const supported = g.clone();
+        supported.move("IG1R+CG2R>IEF", { partial: true });
+        expect(supported.render().pieces).to.not.contain("GIx");
+        // played for real, it is gone
+        g.move("IG1R>IEF");
+        expect(g.render().pieces).to.not.contain("GIx");
+        expect(g.render().legend).to.not.have.property("GIx");
+        // a forced loss from the reserve fades in the strip
+        const h = new SquaresGame();
+        evacuate(h, 2, ["B2L", "B2CL", "B2CR", "B2R", "B1L", "B1CL", "B1C", "B1CR", "B1R", "G2L", "G2R", "G3R", "NEF", "NWF", "EF"]);
+        place(h, "1I1", "B3C");
+        commit(h);
+        const strip = h.clone();
+        strip.move("IB3C>BR", { partial: true });
+        const north = strip.render().areas![1] as { pieces: string[] };
+        expect(north.pieces).to.deep.equal(["BCx"]);
+    });
+
+    it("shows a unit that has entered the enemy reserve inside that reserve", () => {
+        const g = new SquaresGame();
+        evacuate(g, 2, ["B2L", "B2CL", "B2CR", "B2R", "B1L", "B1CL", "B1C", "B1CR", "B1R", "G2L", "G2R", "G3R", "NEF", "NWF", "EF", "WF"]);
+        expect(g.reserveUnits(2).length).to.equal(0);
+        place(g, "1I1", "B3C");
+        commit(g);
+        g.move("IB3C-BR");
+        expect(g.gameover).to.be.true;
+        expect(g.winner).to.deep.equal([1]);
+        const areas = g.render().areas as { side: string; pieces: string[] }[];
+        expect(areas[1].side).to.equal("N");
+        expect(areas[1].pieces).to.deep.equal(["GI"]);
+        expect(areas[0].pieces.length).to.equal(15);
     });
 
     it("reports losses with glyphs and points with unit counts", () => {
         const g = new SquaresGame();
-        place(g, "1I1", "B1C");
-        place(g, "2I1", "G1C");
-        g.move("IB1C>IG1C");
+        place(g, "1I1", "G1C");
+        place(g, "2I1", "B1C");
+        g.move("IG1C>IB1C");
         g.move("stand");
         expect(JSON.stringify(g.sidebarStatuses())).to.contain('"glyph":"nato-infantry"');
         expect(g.sidebarScores()[0].scores).to.deep.equal(["1 (1)", "1 (1)"]);
@@ -1013,12 +1061,12 @@ describe("Squares: interface helpers", () => {
 
     it("draws by threefold repetition", () => {
         const g = new SquaresGame();
-        place(g, "1C1", "B1C");
-        place(g, "1I1", "B2R");
-        place(g, "2C1", "G1C");
-        place(g, "2I1", "G2L");
+        place(g, "1C1", "G1C");
+        place(g, "1I1", "G2R");
+        place(g, "2C1", "B1C");
+        place(g, "2I1", "B2L");
         commit(g);
-        const cycle = ["CB1C-B1CL", "CG1C-G1CL", "CB1CL-B1C", "CG1CL-G1C", "IB2R-B2CR", "IG2L-G2CL", "IB2CR-B2R", "IG2CL-G2L"];
+        const cycle = ["CG1C-G1CL", "CB1C-B1CL", "CG1CL-G1C", "CB1CL-B1C", "IG2R-G2CR", "IB2L-B2CL", "IG2CR-G2R", "IB2CL-B2L"];
         let plies = 0;
         while (!g.gameover && plies < 40) {
             g.move(cycle[plies % cycle.length]);
@@ -1039,40 +1087,40 @@ describe("Squares: annotation safety", () => {
         // out of the reserve straight onto the back line, previewed and played
         const g = new SquaresGame();
         const preview = g.clone();
-        preview.move("IBR-B3C", { partial: true });
+        preview.move("IGR-G3C", { partial: true });
         expect(sameEnds(preview)).to.be.false;
-        g.move("IBR-B3C");
+        g.move("IGR-G3C");
         expect(sameEnds(g)).to.be.false;
         // an attack on a reserve from the back line, previewed, pending and resolved
         const h = new SquaresGame();
-        place(h, "1I1", "G3C");
-        place(h, "1I2", "G3L");
+        place(h, "1I1", "B3C");
+        place(h, "1I2", "B3L");
         commit(h);
         const hp = h.clone();
-        hp.move("IG3C+IG3L>GR", { partial: true });
+        hp.move("IB3C+IB3L>BR", { partial: true });
         expect(sameEnds(hp)).to.be.false;
-        h.move("IG3C+IG3L>GR");
+        h.move("IB3C+IB3L>BR");
         expect(sameEnds(h)).to.be.false;
         h.move("lose:A");
         expect(sameEnds(h)).to.be.false;
         // a retreat into the reserve from the back line itself
         const k = new SquaresGame();
-        place(k, "1I1", "G3C");
-        place(k, "2I1", "G2CL");
-        place(k, "1C1", "G1C");
+        place(k, "1I1", "B3C");
+        place(k, "2I1", "B2CL");
+        place(k, "1C1", "B1C");
         commit(k);
         const kp = k.clone();
-        kp.move("IG3C+CG1C>IG2CL", { partial: true });
+        kp.move("IB3C+CB1C>IB2CL", { partial: true });
         expect(sameEnds(kp)).to.be.false;
-        k.move("IG3C+CG1C>IG2CL/stay");
+        k.move("IB3C+CB1C>IB2CL/stay");
         expect(sameEnds(k)).to.be.false;
         const m = new SquaresGame();
-        place(m, "1I1", "B1C");
-        place(m, "2I1", "G3C");
+        place(m, "1I1", "G1C");
+        place(m, "2I1", "B3C");
         commit(m);
-        m.move("IB1C-B2CL");
-        m.move("IG3C-GR");
+        m.move("IG1C-G2CL");
+        m.move("IB3C-BR");
         expect(sameEnds(m)).to.be.false;
-        expect(m.render().board).to.deep.include({ markers: [{ type: "edge", edge: "S", colour: m.getPlayerColour(2) }] });
+        expect(m.render().board).to.deep.include({ markers: [{ type: "edge", edge: "N", colour: m.getPlayerColour(2) }] });
     });
 });

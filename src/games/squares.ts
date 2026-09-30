@@ -24,7 +24,7 @@ interface IRect { x1: number; y1: number; x2: number; y2: number; }
 
 /**
  * The renderer's `dvgc` board is three rings of ten cells. The cells carry the DVGC
- * rulebook's identification codes: B = Blue (player 1, at the north), G = Gray (player 2,
+ * rulebook's identification codes: B = Blue (player 2, at the north), G = Gray (player 1,
  * at the south), the digit is the line number counting from the front, L/C/R are left,
  * centre and right from the owner's point of view, and the six forests are named by
  * compass direction. The rectangles are the renderer's own cell polygons, so adjacency
@@ -54,7 +54,11 @@ const RECT_ROWS: readonly (readonly IRect[])[] = [
     ],
 ];
 export const FORESTS: ReadonlySet<string> = new Set(["NWF", "NEF", "WF", "EF", "SWF", "SEF"]);
-export const RESERVES: Readonly<Record<playerid, string>> = { 1: "BR", 2: "GR" };
+/** Blue's reserve lies beyond the north edge of the board, Gray's beyond the south edge. */
+const NORTH_RESERVE = "BR";
+const SOUTH_RESERVE = "GR";
+/** Gray (the south) moves first, so that the board's natural orientation is the first player's. */
+export const RESERVES: Readonly<Record<playerid, string>> = { 1: SOUTH_RESERVE, 2: NORTH_RESERVE };
 const BOARD_HEIGHT = 300;
 
 const rects = new Map<string, IRect>();
@@ -96,10 +100,10 @@ for (let i = 0; i < BOARD_CELLS.length; i++) {
 for (const cell of BOARD_CELLS) {
     const r = rects.get(cell)!;
     if (r.y1 === 0) {
-        link(connectedMap, cell, RESERVES[1]);
+        link(connectedMap, cell, NORTH_RESERVE);
     }
     if (r.y2 === BOARD_HEIGHT) {
-        link(connectedMap, cell, RESERVES[2]);
+        link(connectedMap, cell, SOUTH_RESERVE);
     }
 }
 
@@ -114,10 +118,10 @@ export const isCell = (loc: string): boolean => rects.has(loc);
 export const isLocation = (loc: string): boolean => isCell(loc) || isReserve(loc);
 
 const centreY = (loc: string): number => {
-    if (loc === RESERVES[1]) {
+    if (loc === NORTH_RESERVE) {
         return -25;
     }
-    if (loc === RESERVES[2]) {
+    if (loc === SOUTH_RESERVE) {
         return BOARD_HEIGHT + 25;
     }
     const r = rects.get(loc);
@@ -127,7 +131,7 @@ const centreY = (loc: string): number => {
     return (r.y1 + r.y2) / 2;
 };
 /** Distance of a location from `player`'s reserve, measured from the centre of the square. */
-export const distance = (loc: string, player: playerid): number => player === 1 ? centreY(loc) : BOARD_HEIGHT - centreY(loc);
+export const distance = (loc: string, player: playerid): number => player === 1 ? BOARD_HEIGHT - centreY(loc) : centreY(loc);
 /** True when `a` is strictly closer to `player`'s reserve than `b`. */
 export const isCloser = (a: string, b: string, player: playerid): boolean => distance(a, player) < distance(b, player);
 export const otherPlayer = (player: playerid): playerid => player === 1 ? 2 : 1;
@@ -175,6 +179,8 @@ interface IPreview {
     attack?: { from: string; target: string; support?: string };
     /** The ply as entered so far, once its head has been played out: buttons offered mid-entry build on it. */
     move?: string;
+    /** Units the ply would eliminate, as they were before it, so that they can still be drawn (faded). */
+    ghosts?: IUnit[];
 }
 
 /** One decision a ply's author has to make after its head, and what was entered for it. */
@@ -270,14 +276,14 @@ export class SquaresGame extends GameBaseSequenced {
         customizations: [
             {
                 num: 1,
-                default: "#1f78b4",
-                explanation: "Colour of the first player (Blue)",
+                default: "#8c8c8c",
+                explanation: "Colour of the first player (Gray)",
                 player: 1,
             },
             {
                 num: 2,
-                default: "#8c8c8c",
-                explanation: "Colour of the second player (Gray)",
+                default: "#1f78b4",
+                explanation: "Colour of the second player (Blue)",
                 player: 2,
             },
         ],
@@ -1246,6 +1252,7 @@ export class SquaresGame extends GameBaseSequenced {
     private applyPreview(move: string): void {
         const [head, ...decisions] = move.split("/");
         const actor = this.currplayer;
+        const before = cloneUnits(this.units);
         const preview: IPreview = { outline: [] };
         this.preview = preview;
         const headResult = this.combat !== undefined ? this.validateCombatMove(head) : this.validateAction(head);
@@ -1262,6 +1269,9 @@ export class SquaresGame extends GameBaseSequenced {
                 applied.push(d);
             }
             preview.move = applied.join("/");
+            preview.ghosts = [...this.units.values()]
+                .filter(u => u.loc === "X" && before.get(u.id)!.loc !== "X")
+                .map(u => ({ ...u, loc: before.get(u.id)!.loc }));
             return;
         }
         if (this.combat !== undefined) {
@@ -1916,11 +1926,11 @@ export class SquaresGame extends GameBaseSequenced {
             if (row >= 0 && col >= 0) {
                 loc = CELL_ROWS[row]?.[col];
             } else if (piece === "_reserves_N") {
-                loc = RESERVES[1];
+                loc = NORTH_RESERVE;
             } else if (piece === "_reserves_S") {
-                loc = RESERVES[2];
+                loc = SOUTH_RESERVE;
             } else if (piece !== undefined && /^[BG][IAC]$/.test(piece)) {
-                loc = piece[0] === "B" ? RESERVES[1] : RESERVES[2];
+                loc = piece[0] === "B" ? NORTH_RESERVE : SOUTH_RESERVE;
                 clickedType = piece[1] as UnitType;
             }
             if (loc === undefined) {
@@ -2239,7 +2249,7 @@ export class SquaresGame extends GameBaseSequenced {
     /* ---------------------------------------------------------- rendering */
 
     public getPlayerColour(p: playerid): Colourfuncs {
-        return { func: "custom", default: p === 1 ? "#1f78b4" : "#8c8c8c", palette: p };
+        return { func: "custom", default: p === 1 ? "#8c8c8c" : "#1f78b4", palette: p };
     }
 
     /** The board is only ever shown the right way up or upside down. */
@@ -2249,23 +2259,41 @@ export class SquaresGame extends GameBaseSequenced {
 
     public render(opts?: IRenderOpts): APRenderRep {
         // Legend keys must not differ only by case: a page in quirks mode matches ids case-insensitively.
-        const key = (p: playerid, t: UnitType): string => `${p === 1 ? "B" : "G"}${t}`;
+        const key = (p: playerid, t: UnitType): string => `${p === 1 ? "G" : "B"}${t}`;
         const legend: { [k: string]: Glyph } = {};
         for (const p of [1, 2] as playerid[]) {
             for (const t of UNIT_TYPES) {
                 legend[key(p, t)] = { name: `nato-${UNIT_NAMES[t]}`, colour: this.getPlayerColour(p) };
             }
         }
+        // A unit that the move being entered would eliminate is still drawn where it stood, faded.
+        const faded = (p: playerid, t: UnitType): string => {
+            const k = `${key(p, t)}x`;
+            legend[k] = { name: `nato-${UNIT_NAMES[t]}`, colour: this.getPlayerColour(p), opacity: 0.5 };
+            return k;
+        };
+        const ghosts = this.preview?.ghosts ?? [];
         const pstr = CELL_ROWS.map(row => row.map(cell => {
             const u = this.unitAt(cell);
-            return u === undefined ? "-" : key(u.owner, u.type);
+            if (u !== undefined) {
+                return key(u.owner, u.type);
+            }
+            const ghost = ghosts.find(x => x.loc === cell);
+            return ghost === undefined ? "-" : faded(ghost.owner, ghost.type);
         }).join(",")).join("\n");
-        const reserves = (p: playerid): AreaReserves => ({
-            type: "reserves",
-            side: p === 1 ? "N" : "S",
-            background: this.getPlayerColour(p),
-            pieces: UNIT_TYPES.flatMap(t => this.reserveUnits(p).filter(u => u.type === t).map(() => key(p, t))),
-        });
+        const reserves = (p: playerid): AreaReserves => {
+            const inside = [...this.units.values()].filter(u => u.loc === RESERVES[p]);
+            const own = UNIT_TYPES.flatMap(t => inside.filter(u => u.owner === p && u.type === t).map(() => key(p, t)));
+            // An enemy unit that has entered this reserve is shown in it: that is how the game was won.
+            const intruders = inside.filter(u => u.owner !== p).map(u => key(u.owner, u.type));
+            const lost = ghosts.filter(u => u.loc === RESERVES[p]).map(u => faded(u.owner, u.type));
+            return {
+                type: "reserves",
+                side: p === 1 ? "S" : "N",
+                background: this.getPlayerColour(p),
+                pieces: [...own, ...intruders, ...lost],
+            };
+        };
         const annotations: NonNullable<APRenderRep["annotations"]> = [];
         const edges = new Set<"N" | "S">();
         const at = (loc: string | undefined): { row: number; col: number } | undefined => {
@@ -2273,9 +2301,9 @@ export class SquaresGame extends GameBaseSequenced {
             return rc === undefined ? undefined : { row: rc[0], col: rc[1] };
         };
         const markEdge = (loc: string | undefined): void => {
-            if (loc === RESERVES[1]) {
+            if (loc === NORTH_RESERVE) {
                 edges.add("N");
-            } else if (loc === RESERVES[2]) {
+            } else if (loc === SOUTH_RESERVE) {
                 edges.add("S");
             }
         };
@@ -2364,10 +2392,10 @@ export class SquaresGame extends GameBaseSequenced {
             }
         }
 
-        // Blue sits at the north in the rulebook's diagram; each player sees their own side at the bottom.
-        const board: APRenderRep["board"] = opts?.perspective === 2 ? { style: "dvgc" } : { style: "dvgc", rotate: 180 };
+        // Gray (player 1) sits at the south, as in the rulebook's diagram; each player sees their own side at the bottom.
+        const board: APRenderRep["board"] = opts?.perspective === 2 ? { style: "dvgc", rotate: 180 } : { style: "dvgc" };
         if (edges.size > 0) {
-            board.markers = [...edges].map(edge => ({ type: "edge" as const, edge, colour: this.getPlayerColour(edge === "N" ? 1 : 2) }));
+            board.markers = [...edges].map(edge => ({ type: "edge" as const, edge, colour: this.getPlayerColour(edge === "N" ? 2 : 1) }));
         }
         const rep: APRenderRep = {
             board,
@@ -2387,7 +2415,7 @@ export class SquaresGame extends GameBaseSequenced {
         if (r === undefined) {
             return undefined;
         }
-        const line = player === 1 ? CELL_ROWS[0].slice(0, 3) : CELL_ROWS[0].slice(5, 8);
+        const line = player === 1 ? CELL_ROWS[0].slice(5, 8) : CELL_ROWS[0].slice(0, 3);
         if (line.includes(from)) {
             return undefined;
         }
