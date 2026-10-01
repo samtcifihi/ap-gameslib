@@ -1330,6 +1330,10 @@
         "name": "Nesimetriaj pezitaj nuboj (eksponentaj)",
         "description": "Ne estas fazo por meti nubojn. La sistemo metas nubojn unu post alia sen postuli simetrion, hazarde sed plej forte el la pezitaj elektoj preferante ĉelojn, kiuj rompas longajn liberajn pafliniojn, kaj evitante la randon de la tabulo kaj ekzistantajn nubojn. La ŝanco de ĉiu ĉelo estas proporcia al e potencigita al ĝia poentaro."
       },
+      "asymmetric-softmax-start": {
+        "name": "Nesimetriaj pezitaj nuboj (softmax)",
+        "description": "Ne estas fazo por meti nubojn. La sistemo metas nubojn unu post alia sen postuli simetrion, hazarde preferante ĉelojn, kiuj rompas longajn liberajn pafliniojn, kaj evitante la randon de la tabulo. Kiel Nesimetriaj pezitaj nuboj (eksponentaj), sed apudaj nuboj estas nur iomete malinstigataj, do nubaroj formiĝas pli ofte."
+      },
             "unbounded-cloud-banks": {
                 "name": "Senlimaj nubaroj",
                 "description": "Nubaroj povas enhavi ajnan nombron da nuboj."

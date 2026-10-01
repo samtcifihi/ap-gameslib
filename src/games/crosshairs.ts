@@ -120,6 +120,9 @@ export interface ICrosshairsState extends IAPGameState {
 }
 
 export class CrosshairsGame extends GameBase {
+    // Softmax sharpness for the Asymmetric weighted clouds (softmax) setup.
+    private static readonly SOFTMAX_SETUP_K = 1;
+
     public static readonly gameinfo: APGamesInformation = {
         name: "Crosshairs",
         uid: "crosshairs",
@@ -190,6 +193,11 @@ export class CrosshairsGame extends GameBase {
             },
             {
                 uid: "asymmetric-weighted-exp-start",
+                group: "setup",
+                experimental: true,
+            },
+            {
+                uid: "asymmetric-softmax-start",
                 group: "setup",
                 experimental: true,
             },
@@ -265,6 +273,11 @@ export class CrosshairsGame extends GameBase {
                 placedClouds = this.placeWeightedClouds("piecewise-conjugate");
             } else if (this.variants.includes("asymmetric-weighted-exp-start")) {
                 placedClouds = this.placeWeightedClouds("exp");
+            } else if (this.variants.includes("asymmetric-softmax-start")) {
+                placedClouds = this.placeWeightedClouds("exp", {
+                    adjacentPenalty: 1 / 6,
+                    k: CrosshairsGame.SOFTMAX_SETUP_K,
+                });
             }
             if (placedClouds !== undefined) {
                 for (const cell of placedClouds) {
@@ -509,11 +522,15 @@ export class CrosshairsGame extends GameBase {
     // in proportion to its weight. If no cell qualifies, the board is returned
     // as it stands.
     //
-    // In "exp" mode the weight is e^s. The piecewise modes keep e^s for
-    // non-negative scores but map negative ones to s + 1 or 2 - e^-s (pieces
-    // meeting with matching value and slope at 0), then shift every weight so
-    // the lowest is 1, which flattens the preference.
-    private placeWeightedClouds(mode: "exp" | "piecewise-linear" | "piecewise-conjugate"): string[] {
+    // In "exp" mode the weight is e^(k * s), a softmax where larger k sharpens
+    // the preference and smaller k flattens it toward uniform. The piecewise
+    // modes keep e^s for non-negative scores but map negative ones to s + 1 or
+    // 2 - e^-s (pieces meeting with matching value and slope at 0), then shift
+    // every weight so the lowest is 1, which flattens the preference.
+    private placeWeightedClouds(
+        mode: "exp" | "piecewise-linear" | "piecewise-conjugate",
+        { adjacentPenalty = 1, k = 1 }: { adjacentPenalty?: number; k?: number } = {},
+    ): string[] {
         const rays = this.getAllCellRays();
         const cells = this.graph.listCells() as string[];
         const clouds = new Set<string>();
@@ -530,7 +547,7 @@ export class CrosshairsGame extends GameBase {
                 if (clouds.has(cell) || this.wouldCreateIllegallyLargeCloudBank(cell, clouds)) continue;
                 const cellRays = rays.get(cell)!;
                 let s = cellRays.some(ray => ray.length === 0) ? -1 : 0;
-                s -= cellRays.filter(ray => ray.length > 0 && clouds.has(ray[0])).length;
+                s -= adjacentPenalty * cellRays.filter(ray => ray.length > 0 && clouds.has(ray[0])).length;
                 let sumOfSquares = 0;
                 for (let axis = 0; axis < 3; axis++) {
                     const split = Math.min(
@@ -551,7 +568,7 @@ export class CrosshairsGame extends GameBase {
                 // Subtracting the maximum keeps every weight at or below 1
                 // without changing the proportions between them.
                 const max = Math.max(...scores);
-                weights = scores.map(s => Math.exp(s - max));
+                weights = scores.map(s => Math.exp(k * (s - max)));
             } else {
                 const transformed = scores.map(s => s >= 0
                     ? Math.exp(s)

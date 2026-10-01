@@ -193,6 +193,7 @@ describe("Crosshairs", () => {
                 "asymmetric-weighted-start",
                 "asymmetric-weighted-conjugate-start",
                 "asymmetric-weighted-exp-start",
+                "asymmetric-softmax-start",
             ]);
             expect(setupVariants.find(variant => variant.uid === "random-start")!.name)
                 .to.equal("Symmetric random clouds");
@@ -307,7 +308,7 @@ describe("Crosshairs", () => {
             expect(experimental).to.deep.equal([
                 "spread-start", "asymmetric-spread-start", "split-start",
                 "asymmetric-split-start", "asymmetric-weighted-start", "asymmetric-weighted-conjugate-start",
-                "asymmetric-weighted-exp-start",
+                "asymmetric-weighted-exp-start", "asymmetric-softmax-start",
             ]);
         });
 
@@ -349,6 +350,7 @@ describe("Crosshairs", () => {
 
             for (const weighted of [
                 "asymmetric-weighted-start", "asymmetric-weighted-conjugate-start", "asymmetric-weighted-exp-start",
+                "asymmetric-softmax-start",
             ]) {
                 it(`should place ${weighted} clouds within the bank limit (${target})`, () => {
                     for (let run = 0; run < 10; run++) {
@@ -382,6 +384,7 @@ describe("Crosshairs", () => {
         it("should place the full 16 weighted clouds on the default board", () => {
             for (const weighted of [
                 "asymmetric-weighted-start", "asymmetric-weighted-conjugate-start", "asymmetric-weighted-exp-start",
+                "asymmetric-softmax-start",
             ]) {
                 for (let run = 0; run < 10; run++) {
                     expect(new CrosshairsGame(undefined, [weighted]).clouds.size).to.equal(16);
