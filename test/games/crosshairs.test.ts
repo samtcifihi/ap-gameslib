@@ -206,10 +206,10 @@ describe("Crosshairs", () => {
                 "asymmetric-softmax-mean-k5-start",
                 "asymmetric-softmax-mean-k8-start",
                 "asymmetric-softmax-mean-k13-start",
-                "asymmetric-softmax-rms-k3-start",
-                "asymmetric-softmax-rms-k5-start",
-                "asymmetric-softmax-rms-k8-start",
-                "asymmetric-softmax-rms-k13-start",
+                "asymmetric-softmax-sqrtmean-k3-start",
+                "asymmetric-softmax-sqrtmean-k5-start",
+                "asymmetric-softmax-sqrtmean-k8-start",
+                "asymmetric-softmax-sqrtmean-k13-start",
             ]);
             expect(setupVariants.find(variant => variant.uid === "random-start")!.name)
                 .to.equal("Symmetric random clouds");
@@ -337,10 +337,10 @@ describe("Crosshairs", () => {
                 "asymmetric-softmax-mean-k5-start",
                 "asymmetric-softmax-mean-k8-start",
                 "asymmetric-softmax-mean-k13-start",
-                "asymmetric-softmax-rms-k3-start",
-                "asymmetric-softmax-rms-k5-start",
-                "asymmetric-softmax-rms-k8-start",
-                "asymmetric-softmax-rms-k13-start",
+                "asymmetric-softmax-sqrtmean-k3-start",
+                "asymmetric-softmax-sqrtmean-k5-start",
+                "asymmetric-softmax-sqrtmean-k8-start",
+                "asymmetric-softmax-sqrtmean-k13-start",
             ]);
         });
 
@@ -395,10 +395,10 @@ describe("Crosshairs", () => {
                 "asymmetric-softmax-mean-k5-start",
                 "asymmetric-softmax-mean-k8-start",
                 "asymmetric-softmax-mean-k13-start",
-                "asymmetric-softmax-rms-k3-start",
-                "asymmetric-softmax-rms-k5-start",
-                "asymmetric-softmax-rms-k8-start",
-                "asymmetric-softmax-rms-k13-start",
+                "asymmetric-softmax-sqrtmean-k3-start",
+                "asymmetric-softmax-sqrtmean-k5-start",
+                "asymmetric-softmax-sqrtmean-k8-start",
+                "asymmetric-softmax-sqrtmean-k13-start",
             ]) {
                 it(`should place ${weighted} clouds within the bank limit (${target})`, () => {
                     for (let run = 0; run < 10; run++) {
@@ -445,10 +445,10 @@ describe("Crosshairs", () => {
                 "asymmetric-softmax-mean-k5-start",
                 "asymmetric-softmax-mean-k8-start",
                 "asymmetric-softmax-mean-k13-start",
-                "asymmetric-softmax-rms-k3-start",
-                "asymmetric-softmax-rms-k5-start",
-                "asymmetric-softmax-rms-k8-start",
-                "asymmetric-softmax-rms-k13-start",
+                "asymmetric-softmax-sqrtmean-k3-start",
+                "asymmetric-softmax-sqrtmean-k5-start",
+                "asymmetric-softmax-sqrtmean-k8-start",
+                "asymmetric-softmax-sqrtmean-k13-start",
             ]) {
                 for (let run = 0; run < 10; run++) {
                     expect(new CrosshairsGame(undefined, [weighted]).clouds.size).to.equal(16);

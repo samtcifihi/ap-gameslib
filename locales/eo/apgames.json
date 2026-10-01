@@ -1382,21 +1382,21 @@
         "name": "Nesimetriaj pezitaj nuboj (aritmetika meznombro, malvasta bruo, k=13)",
         "description": "Ne estas fazo por meti nubojn. La sistemo metas nubojn unu post alia sen postuli simetrion, hazarde preferante ĉelojn sur longaj liberaj paflinioj, juĝante laŭ la meza libera distanco en la ses direktoj, kun elekta akreco 13. Ne estas aldona puno por la rando de la tabulo aŭ por tuŝi nubon."
       },
-      "asymmetric-softmax-rms-k3-start": {
-        "name": "Nesimetriaj pezitaj nuboj (kvadrata meznombro, malvasta bruo, k=3)",
-        "description": "Ne estas fazo por meti nubojn. La sistemo metas nubojn unu post alia sen postuli simetrion, hazarde preferante ĉelojn sur longaj liberaj paflinioj, juĝante laŭ la kvadrata meznombro de la liberaj distancoj en la ses direktoj, kun elekta akreco 3. Laŭ unuopa linio tio emas al la finoj, do nuboj falas sur la randon de la tabulo proksimume same ofte kiel ĉe unuforma hazarda metado."
+      "asymmetric-softmax-sqrtmean-k3-start": {
+        "name": "Nesimetriaj pezitaj nuboj (radika meznombro, malvasta bruo, k=3)",
+        "description": "Ne estas fazo por meti nubojn. La sistemo metas nubojn unu post alia sen postuli simetrion, hazarde preferante ĉelojn sur longaj liberaj paflinioj, juĝante laŭ la kvadrato de la meza kvadrata radiko de la liberaj distancoj en la ses direktoj, kun elekta akreco 3. Tio preferas egale dividi liniojn, inter la versioj kun geometria kaj aritmetika meznombro. Ne estas aldona puno por la rando de la tabulo aŭ por tuŝi nubon."
       },
-      "asymmetric-softmax-rms-k5-start": {
-        "name": "Nesimetriaj pezitaj nuboj (kvadrata meznombro, malvasta bruo, k=5)",
-        "description": "Ne estas fazo por meti nubojn. La sistemo metas nubojn unu post alia sen postuli simetrion, hazarde preferante ĉelojn sur longaj liberaj paflinioj, juĝante laŭ la kvadrata meznombro de la liberaj distancoj en la ses direktoj, kun elekta akreco 5. Laŭ unuopa linio tio emas al la finoj, do nuboj falas sur la randon de la tabulo proksimume same ofte kiel ĉe unuforma hazarda metado."
+      "asymmetric-softmax-sqrtmean-k5-start": {
+        "name": "Nesimetriaj pezitaj nuboj (radika meznombro, malvasta bruo, k=5)",
+        "description": "Ne estas fazo por meti nubojn. La sistemo metas nubojn unu post alia sen postuli simetrion, hazarde preferante ĉelojn sur longaj liberaj paflinioj, juĝante laŭ la kvadrato de la meza kvadrata radiko de la liberaj distancoj en la ses direktoj, kun elekta akreco 5. Tio preferas egale dividi liniojn, inter la versioj kun geometria kaj aritmetika meznombro. Ne estas aldona puno por la rando de la tabulo aŭ por tuŝi nubon."
       },
-      "asymmetric-softmax-rms-k8-start": {
-        "name": "Nesimetriaj pezitaj nuboj (kvadrata meznombro, malvasta bruo, k=8)",
-        "description": "Ne estas fazo por meti nubojn. La sistemo metas nubojn unu post alia sen postuli simetrion, hazarde preferante ĉelojn sur longaj liberaj paflinioj, juĝante laŭ la kvadrata meznombro de la liberaj distancoj en la ses direktoj, kun elekta akreco 8. Laŭ unuopa linio tio emas al la finoj, do nuboj falas sur la randon de la tabulo proksimume same ofte kiel ĉe unuforma hazarda metado."
+      "asymmetric-softmax-sqrtmean-k8-start": {
+        "name": "Nesimetriaj pezitaj nuboj (radika meznombro, malvasta bruo, k=8)",
+        "description": "Ne estas fazo por meti nubojn. La sistemo metas nubojn unu post alia sen postuli simetrion, hazarde preferante ĉelojn sur longaj liberaj paflinioj, juĝante laŭ la kvadrato de la meza kvadrata radiko de la liberaj distancoj en la ses direktoj, kun elekta akreco 8. Tio preferas egale dividi liniojn, inter la versioj kun geometria kaj aritmetika meznombro. Ne estas aldona puno por la rando de la tabulo aŭ por tuŝi nubon."
       },
-      "asymmetric-softmax-rms-k13-start": {
-        "name": "Nesimetriaj pezitaj nuboj (kvadrata meznombro, malvasta bruo, k=13)",
-        "description": "Ne estas fazo por meti nubojn. La sistemo metas nubojn unu post alia sen postuli simetrion, hazarde preferante ĉelojn sur longaj liberaj paflinioj, juĝante laŭ la kvadrata meznombro de la liberaj distancoj en la ses direktoj, kun elekta akreco 13. Laŭ unuopa linio tio emas al la finoj, do nuboj falas sur la randon de la tabulo proksimume same ofte kiel ĉe unuforma hazarda metado."
+      "asymmetric-softmax-sqrtmean-k13-start": {
+        "name": "Nesimetriaj pezitaj nuboj (radika meznombro, malvasta bruo, k=13)",
+        "description": "Ne estas fazo por meti nubojn. La sistemo metas nubojn unu post alia sen postuli simetrion, hazarde preferante ĉelojn sur longaj liberaj paflinioj, juĝante laŭ la kvadrato de la meza kvadrata radiko de la liberaj distancoj en la ses direktoj, kun elekta akreco 13. Tio preferas egale dividi liniojn, inter la versioj kun geometria kaj aritmetika meznombro. Ne estas aldona puno por la rando de la tabulo aŭ por tuŝi nubon."
       },
             "unbounded-cloud-banks": {
                 "name": "Senlimaj nubaroj",
