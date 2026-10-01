@@ -490,9 +490,11 @@ export class CrosshairsGame extends GameBase {
     // Weighted random placement. Each round, every cell that respects the
     // bank-size rule is scored: -1 on the edge, -1 per adjacent cloud, plus
     // the root mean square over the three axes of the shorter open run to
-    // either side, plus Beta(2,2) noise scaled to [-1.5, 1.5]. Scores are
-    // exponentiated and shifted so the lowest is 1, then one cell is drawn in
-    // proportion. If no cell qualifies, the board is returned as it stands.
+    // either side, plus Beta(2,2) noise scaled to [-1.5, 1.5]. Non-negative
+    // scores become e^s and negative ones s + 1, which meet with matching
+    // slope at 0 so a score crossing zero doesn't jump. All are then shifted
+    // so the lowest is 1, and one cell is drawn in proportion. If no cell
+    // qualifies, the board is returned as it stands.
     private placeWeightedClouds(): string[] {
         const rays = this.getAllCellRays();
         const cells = this.graph.listCells() as string[];
@@ -505,7 +507,7 @@ export class CrosshairsGame extends GameBase {
 
         while (clouds.size < target) {
             const candidates: string[] = [];
-            const expScores: number[] = [];
+            const transformed: number[] = [];
             for (const cell of cells) {
                 if (clouds.has(cell) || this.wouldCreateIllegallyLargeCloudBank(cell, clouds)) continue;
                 const cellRays = rays.get(cell)!;
@@ -522,12 +524,12 @@ export class CrosshairsGame extends GameBase {
                 s += Math.sqrt(sumOfSquares / 3);
                 s += (sampleBeta22() - 0.5) * 3;
                 candidates.push(cell);
-                expScores.push(Math.exp(s));
+                transformed.push(s >= 0 ? Math.exp(s) : s + 1);
             }
             if (candidates.length === 0) break;
 
-            const shift = 1 - Math.min(...expScores);
-            const weights = expScores.map(w => w + shift);
+            const shift = 1 - Math.min(...transformed);
+            const weights = transformed.map(w => w + shift);
             let pick = Math.random() * weights.reduce((a, b) => a + b, 0);
             let idx = 0;
             while (idx < weights.length - 1 && pick >= weights[idx]) {
