@@ -15,7 +15,6 @@ Since the `1.0.0-beta` release, the version in `package.json` has stayed at `1.0
 
 - **New games (dev / experimental only):** Agents of MARS, Bagh Chal, Bashni, Clearpath, Croda, Dama, Ice Palace, Kill-All Go, Neutron, Thricewise, Yodd.
 - **Bao:** `malawi-full` variant (Figure 2 Bawo rules); `malawi` renamed to setup-only (8 kuu / 20 reserve, Zanzibar rules); Zanzibar / kujifunza / Malawi variants share one `rules` radio group.
-- **Arimaa:** Dicey Moves variant (experimental): a die cast before each move caps that turn's steps and is shown on the board; exploration is off while it is active. Endless endgame is now tagged as a community variant, credited to clyring.
 
 ## [1.0.0-ci] - 2026-09-30
 
