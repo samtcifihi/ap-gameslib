@@ -3,7 +3,7 @@ import "mocha";
 import { expect } from "chai";
 import i18next from "i18next";
 import { addResource } from "../../src";
-import { ArimaaGame } from '../../src/games';
+import { ArimaaGame, resolveGameFlags } from '../../src/games';
 
 describe("Arimaa", () => {
     before(() => {
@@ -1095,4 +1095,163 @@ describe("Arimaa click coverage", () => {
             expect(missed, `${missed.length} of ${reachable.size} turns could not be entered`).to.be.empty;
         });
     }
+});
+
+describe("Arimaa Dicey Moves", () => {
+    before(() => {
+        addResource("en");
+    });
+
+    // run `fn` with the engine's source of randomness pinned to `value`
+    const withRandom = <T>(value: number, fn: () => T): T => {
+        const original = Math.random;
+        Math.random = () => value;
+        try {
+            return fn();
+        } finally {
+            Math.random = original;
+        }
+    };
+    const traps = ["c3", "f3", "c6", "f6"];
+    // a free setup with the die cast for Gold's first move
+    const freeStart = (): ArimaaGame => {
+        const g = new ArimaaGame(undefined, ["free", "dicey"]);
+        g.move("Ed2, Ra2");
+        return g;
+    };
+
+    it("casts no die during setup and one for every move after", () => {
+        const g = new ArimaaGame(undefined, ["dicey"]);
+        expect(g.die).to.be.undefined;
+        // the standard setup keeps its conveniences
+        expect(g.getButtons().length).to.equal(1);
+        g.move("Ee2,Md2,Hb2,Hg2,Dc2,Df2,Cb1,Cg1");
+        expect(g.board.size).to.equal(16);
+        expect(g.die).to.be.undefined;
+        expect(g.getButtons().length).to.equal(2);
+        g.move("ee7,md7,hb7,hg7,dc7,df7,cb8,cg8");
+        expect(g.board.size).to.equal(32);
+        expect(g.die).to.not.be.undefined;
+        expect(g.die!.steps).to.be.within(1, 4);
+        // shown on an empty square, off the traps, in the open centre
+        expect(g.board.has(g.die!.square)).to.be.false;
+        expect(traps).to.not.include(g.die!.square);
+        expect(["d4", "d5", "e4", "e5"]).to.include(g.die!.square);
+        expect(g.stack[g.stack.length - 1].die).to.deep.equal(g.die);
+        expect(g.validateMove("").message).to.contain(i18next.t("apgames:validation.arimaa.DIE", {count: g.die!.steps}));
+    });
+
+    it("caps a d6 at four steps", () => {
+        expect(withRandom(0, () => freeStart().move("ee7, ra7").die!.steps)).to.equal(1);
+        expect(withRandom(0.34, () => freeStart().move("ee7, ra7").die!.steps)).to.equal(3);
+        expect(withRandom(0.5, () => freeStart().move("ee7, ra7").die!.steps)).to.equal(4);
+        expect(withRandom(0.99, () => freeStart().move("ee7, ra7").die!.steps)).to.equal(4);
+        const seen = new Set<number>();
+        for (let i = 0; i < 120; i++) {
+            seen.add(freeStart().move("ee7, ra7").die!.steps);
+        }
+        expect([...seen].sort()).to.deep.equal([1, 2, 3, 4]);
+    });
+
+    it("gives the opening move of Endless endgame one step or two", () => {
+        const seen = new Set<number>();
+        for (let i = 0; i < 60; i++) {
+            const g = new ArimaaGame(undefined, ["eee", "dicey"]);
+            expect(g.die).to.not.be.undefined;
+            expect([1, 2]).to.include(g.die!.steps);
+            expect(g.board.has(g.die!.square)).to.be.false;
+            expect(traps).to.not.include(g.die!.square);
+            seen.add(g.die!.steps);
+        }
+        expect(seen.size).to.equal(2);
+        // without the die, the opening move is still two steps
+        expect(new ArimaaGame(undefined, ["eee"]).validateMove("Ed4").valid).to.be.false;
+    });
+
+    it("limits the turn to the die in both notations", () => {
+        const g = freeStart().move("ee7, ra7");
+        g.die = {steps: 1, square: g.die!.square};
+        let result = g.validateMove("Ed3");
+        expect(result.valid).to.be.true;
+        expect(result.complete).to.equal(1);
+        result = g.validateMove("Ed4");
+        expect(result.valid).to.be.false;
+        result = g.validateMove("Ed2d4");
+        expect(result.valid).to.be.false;
+        expect(result.message).to.equal(i18next.t("apgames:validation.arimaa.TOO_LONG", {num: 1}));
+        result = g.validateMove("Ed2d3");
+        expect(result.valid).to.be.true;
+        expect(result.complete).to.equal(1);
+        result = g.validateMove("Ed2d3,Ed3d4");
+        expect(result.valid).to.be.false;
+        expect(result.message).to.equal(i18next.t("apgames:validation.arimaa.TOO_MANY", {num: 1}));
+        // the roll heads the turn's record, and the next die is cast for Silver
+        g.move("Ed3");
+        expect(g.results[0]).to.deep.equal({type: "roll", values: [1]});
+        expect(g.lastmove).to.equal("Ed3");
+        expect(g.die!.steps).to.be.within(1, 4);
+        expect(g.board.has(g.die!.square)).to.be.false;
+        expect(g.currplayer).to.equal(2);
+        const lines = g.chatLogEntries(["Gold", "Silver"]).pop()!.lines;
+        expect(lines[0].textKey).to.equal("apresults:ROLL.arimaa");
+        expect(lines[0].textParams!.count).to.equal(1);
+        expect(g.chatLog(["Gold", "Silver"]).flat().join(" ")).to.contain("a single step this turn");
+    });
+
+    it("ends the game when the die allows one step and only a push remains", () => {
+        // Gold's elephant is boxed in by rabbits it could push; its rabbit is frozen
+        const boxed = (): ArimaaGame => new ArimaaGame(undefined, ["free", "dicey"]).move("Ea8, Rh1");
+        let g = withRandom(0, () => boxed().move("ra7, rb8, ch2, dg1"));
+        expect(g.gameover).to.be.true;
+        expect(g.winner).to.deep.equal([2]);
+        expect(g.die).to.be.undefined;
+        g = withRandom(0.99, () => boxed().move("ra7, rb8, ch2, dg1"));
+        expect(g.gameover).to.be.false;
+        expect(g.die!.steps).to.equal(4);
+        expect(g.validateMove("Ea7").valid).to.be.true;
+    });
+
+    it("keeps the die where it is while a move is entered and draws it under the pieces", () => {
+        const g = freeStart().move("ee7, ra7");
+        const die = {...g.die!};
+        const partial = g.clone();
+        partial.move("Ed3", {partial: true});
+        expect(partial.die).to.deep.equal(die);
+        const rep = partial.render();
+        expect((rep.legend as Record<string, {name: string}>).DIE.name).to.equal(`d6-${die.steps}`);
+        const [x, y] = ArimaaGame.algebraic2coords(die.square);
+        const markers = (rep.board as {markers: Array<{type: string; glyph?: string; points?: Array<{row: number; col: number}>}>}).markers;
+        const marker = markers.find(m => m.type === "glyph" && m.glyph === "DIE");
+        expect(marker).to.not.be.undefined;
+        expect(marker!.points).to.deep.equal([{row: y, col: x}]);
+        // a resumed game carries it
+        const resumed = new ArimaaGame(g.serialize());
+        expect(resumed.die).to.deep.equal(die);
+        expect(resumed.variants).to.deep.equal(["free", "dicey"]);
+    });
+
+    it("turns exploration off only with the die", () => {
+        expect(new ArimaaGame().getFlags()).to.not.include("no-explore");
+        expect(new ArimaaGame(undefined, ["eee"]).getFlags()).to.not.include("no-explore");
+        expect(new ArimaaGame(undefined, ["dicey"]).getFlags()).to.include("no-explore");
+        expect(resolveGameFlags("arimaa", {variants: ["free", "dicey"]})).to.include("no-explore");
+        expect(resolveGameFlags("arimaa", {variants: []})).to.not.include("no-explore");
+    });
+
+    it("leaves games without the die untouched", () => {
+        const g = new ArimaaGame();
+        g.move("Ee2,Md2,Hb2,Hg2,Dc2,Df2,Cb1,Cg1");
+        g.move("ee7,md7,hb7,hg7,dc7,df7,cb8,cg8");
+        g.move("Ee4");
+        expect(g.die).to.be.undefined;
+        expect(JSON.stringify(g.state())).to.not.contain('"die"');
+        expect(g.results.some(r => r.type === "roll")).to.be.false;
+        expect(g.render().legend).to.not.have.property("DIE");
+        expect(g.validateMove("").message).to.equal(i18next.t("apgames:validation.arimaa.INITIAL_INSTRUCTIONS", {context: "play"}));
+        const variants = g.allvariants()!;
+        expect(variants.find(v => v.uid === "eee")!.fans).to.equal(true);
+        expect(variants.find(v => v.uid === "dicey")!.fans).to.not.equal(true);
+        expect(ArimaaGame.gameinfo.variants!.find(v => v.uid === "dicey")!.experimental).to.equal(true);
+        expect(ArimaaGame.gameinfo.variants!.find(v => v.uid === "eee")!.people![0].name).to.equal("clyring");
+    });
 });

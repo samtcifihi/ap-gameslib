@@ -1,4 +1,4 @@
-import {  GameBase, IAPGameState, IClickResult, ICustomButton, IIndividualState, IStatus, IValidationResult, type ChatLogCollectContext, type ChatLogLine } from "./_base.js";
+import {  GameBase, IAPGameState, IClickResult, ICustomButton, IIndividualState, IStatus, IValidationResult, type ChatLogCollectContext, type ChatLogLine, type FlagContext, type GameFlag } from "./_base.js";
 import type { APGamesInformation } from "../schemas/gameinfo.js";
 import { APRenderRep, AreaPieces, BoardBasic, Colourfuncs, Glyph } from "@abstractplay/renderer/build/schemas/schema";
 import type { APMoveResult } from "../schemas/moveresults.js";
@@ -21,11 +21,20 @@ export const pc2name = new Map<Piece, string>([
 ]);
 const traps = ["f3", "f6", "c3", "c6"];
 
+// Dicey Moves: the die cast for a turn
+export interface IDie {
+    // steps the mover may take
+    steps: number;
+    // the empty square it is shown on until a piece covers it
+    square: string;
+}
+
 export interface IMoveState extends IIndividualState {
     currplayer: playerid;
     board: Map<string, CellContents>;
     lastmove?: string;
     hands?: [Piece[], Piece[]];
+    die?: IDie;
 };
 
 export interface IArimaaState extends IAPGameState {
@@ -75,8 +84,19 @@ export class ArimaaGame extends GameBase {
             },
         ],
         variants: [
-            { uid: "eee", group: "setup" },
+            {
+                uid: "eee",
+                group: "setup",
+                fans: true,
+                people: [
+                    {
+                        type: "designer",
+                        name: "clyring",
+                    },
+                ],
+            },
             { uid: "free", group: "setup", unrated: true },
+            { uid: "dicey", experimental: true },
         ],
         customizations: [
             {
@@ -119,6 +139,15 @@ export class ArimaaGame extends GameBase {
         categories: ["goal>breakthrough", "goal>cripple", "goal>immobilize", "mechanic>capture", "mechanic>move", "mechanic>coopt", "mechanic>random>setup", "board>shape>rect", "board>connect>rect", "components>chess"],
         flags: ["perspective", "no-moves", "custom-buttons", "random-start", "custom-colours"]
     };
+    public static resolveFlags(context: FlagContext = {}): readonly GameFlag[] {
+        const flags: GameFlag[] = [...(this.gameinfo.flags ?? [])];
+        // a Dicey Moves turn opens with a roll nobody has seen yet, so there
+        // is no position beyond the current one to explore
+        if (context.variants?.includes("dicey")) {
+            flags.push("no-explore");
+        }
+        return flags;
+    }
     public static coords2algebraic(x: number, y: number): string {
         return GameBase.coords2algebraic(x, y, 8);
     }
@@ -197,6 +226,52 @@ export class ArimaaGame extends GameBase {
         return {gold: combinedGold, silver: combinedSilver};
     }
 
+    // Dicey Moves: the die for a turn. A d6 capped at four: one, two and
+    // three steps come up a sixth of the time each, four the other half. The
+    // opening move of Endless endgame is half a turn, so its die is one or
+    // two, evenly, which halves both the maximum and the mean.
+    private static castDie(board: Map<string, CellContents>, opening = false): IDie {
+        const steps = opening ? randomInt(2, 1) : Math.min(4, randomInt(6, 1));
+        return {steps, square: ArimaaGame.dieSquare(board)};
+    }
+
+    // Where the die sits for a turn: an empty square, never a trap, in the
+    // most open part of the board (counting empty squares within two of it,
+    // with squares off the board counting as full), nearest the centre among
+    // equals. Chosen once from the position the turn starts in, so a piece
+    // that arrives there covers it.
+    private static dieSquare(board: Map<string, CellContents>): string {
+        let best: string|undefined;
+        let bestScore = -Infinity;
+        for (let row = 0; row < 8; row++) {
+            for (let col = 0; col < 8; col++) {
+                const cell = ArimaaGame.coords2algebraic(col, row);
+                if (board.has(cell) || traps.includes(cell)) {
+                    continue;
+                }
+                let open = 0;
+                for (let dy = -2; dy <= 2; dy++) {
+                    for (let dx = -2; dx <= 2; dx++) {
+                        const x = col + dx;
+                        const y = row + dy;
+                        if (x >= 0 && x < 8 && y >= 0 && y < 8 && !board.has(ArimaaGame.coords2algebraic(x, y))) {
+                            open++;
+                        }
+                    }
+                }
+                // between 1 and 7, so an extra open square always outweighs it
+                const fromCentre = Math.abs(col - 3.5) + Math.abs(row - 3.5);
+                const score = open * 8 - fromCentre;
+                if (score > bestScore) {
+                    bestScore = score;
+                    best = cell;
+                }
+            }
+        }
+        // only a free setup can fill every square; the die then sits under a piece
+        return best ?? "d4";
+    }
+
     // strip any parentheticals and just return the base move
     private static baseMove(mv: string): [Piece, playerid, string?, string?] {
         mv = mv.replace(/\s+/g, "");
@@ -228,6 +303,7 @@ export class ArimaaGame extends GameBase {
     public currplayer: playerid = 1;
     public board!: Map<string, CellContents>;
     public hands?: [Piece[], Piece[]];
+    public die?: IDie;
     public lastmove?: string;
     public gameover = false;
     public winner: playerid[] = [];
@@ -267,6 +343,13 @@ export class ArimaaGame extends GameBase {
                 ];
             }
 
+            // only Endless endgame opens with a move; the other setups cast
+            // their first die once the pieces are down
+            let die: IDie|undefined;
+            if (this.variants.includes("dicey") && this.variants.includes("eee")) {
+                die = ArimaaGame.castDie(board, true);
+            }
+
             const fresh: IMoveState = {
                 _version: ArimaaGame.gameinfo.version,
                 _results: [],
@@ -274,6 +357,7 @@ export class ArimaaGame extends GameBase {
                 currplayer: 1,
                 board,
                 hands,
+                die,
             };
             this.stack = [fresh];
         } else {
@@ -304,6 +388,7 @@ export class ArimaaGame extends GameBase {
         this.board = cloneState(state.board);
         this.lastmove = state.lastmove;
         this.hands = cloneState(state.hands);
+        this.die = cloneState(state.die);
         this.results = [...state._results];
         // what a turn did is drawn from its results; anything left over from a
         // partial move belongs to the entry being typed, not to this state
@@ -314,9 +399,14 @@ export class ArimaaGame extends GameBase {
         return this;
     }
 
+    // the standard 16-piece setup, which the setup variants replace
+    private standardSetup(): boolean {
+        return !this.variants.includes("eee") && !this.variants.includes("free");
+    }
+
     public getButtons(): ICustomButton[] {
         // base game, gold setup
-        if (this.variants.length === 0 && this.stack.length === 1) {
+        if (this.standardSetup() && this.stack.length === 1) {
             return [
                 {
                     label: "apgames:buttons.arimaa.gold99",
@@ -325,7 +415,7 @@ export class ArimaaGame extends GameBase {
             ];
         }
         // base game, silver setup
-        else if (this.variants.length === 0 && this.stack.length === 2) {
+        else if (this.standardSetup() && this.stack.length === 2) {
             return [
                 {
                     label: "apgames:buttons.arimaa.silver99e7",
@@ -344,7 +434,7 @@ export class ArimaaGame extends GameBase {
     // Once they have, the rest of their setup area gets filled with rabbits.
     // Returns the move untouched in every other circumstance.
     private fillRabbits(m: string): string {
-        if (this.variants.length > 0 || this.hands === undefined || this.hands[this.currplayer - 1].length === 0) {
+        if (!this.standardSetup() || this.hands === undefined || this.hands[this.currplayer - 1].length === 0) {
             return m;
         }
         const mvs = m.split(",").filter(Boolean);
@@ -484,7 +574,7 @@ export class ArimaaGame extends GameBase {
             // - either still pieces in hand
             // - or we're in standard setup and ply 1 or 2, no matter the hands
             const placing = (this.hands !== undefined && this.hands[this.currplayer - 1].length > 0) ||
-                (this.variants.length === 0 && this.stack.length <= 2);
+                (this.standardSetup() && this.stack.length <= 2);
             const newmove = placing ? this.setupClick(move, row, col, piece) : this.moveClick(move, row, col);
             let result = this.validateMove(newmove) as IClickResult;
             if (! result.valid) {
@@ -730,6 +820,9 @@ export class ArimaaGame extends GameBase {
             }
             result.canrender = true;
             result.message = i18next.t("apgames:validation.arimaa.INITIAL_INSTRUCTIONS", {context: (this.hands !== undefined && this.hands[this.currplayer - 1].length > 0) ? "place" : "play"});
+            if (this.die !== undefined) {
+                result.message = [i18next.t("apgames:validation.arimaa.DIE", {count: this.die.steps}), result.message].join(" ");
+            }
             return result;
         }
 
@@ -897,10 +990,7 @@ export class ArimaaGame extends GameBase {
         const classifications = ArimaaGame.classify(this.currplayer, m.split(",").filter(Boolean));
         const steps = m.split(",").filter(Boolean).map(mv => ArimaaGame.baseMove(mv));
             // can't make too many moves
-            let maxMoves = 4;
-            if (this.variants.includes("eee") && this.stack.length === 1) {
-                maxMoves = 2;
-            }
+            const maxMoves = this.maxSteps();
             if (steps.length > maxMoves) {
                 result.valid = false;
                 result.message = i18next.t("apgames:validation.arimaa.TOO_MANY", {num: maxMoves});
@@ -1106,7 +1196,12 @@ export class ArimaaGame extends GameBase {
             return result;
     }
 
+    // Steps the mover may take this turn: what the die says in Dicey Moves,
+    // two for the opening move of Endless endgame, otherwise four.
     private maxSteps(): number {
+        if (this.die !== undefined) {
+            return this.die.steps;
+        }
         if (this.variants.includes("eee") && this.stack.length === 1) {
             return 2;
         }
@@ -1289,6 +1384,10 @@ export class ArimaaGame extends GameBase {
         const initial = this.clone(); // used to triple check that the board state changes
         const lastmove: string[] = [];
         this.results = [];
+        // the die that governs this turn heads its record
+        if (this.die !== undefined) {
+            this.results.push({type: "roll", values: [this.die.steps]});
+        }
         this._selected = undefined;
         this._arrows = undefined;
         this._holds = undefined;
@@ -1362,7 +1461,17 @@ export class ArimaaGame extends GameBase {
         }
         this.currplayer = newplayer as playerid;
 
+        // Dicey Moves: the coming turn's die is cast before the game-over
+        // checks, which need to know how many steps the mover will have
+        if (this.variants.includes("dicey") && this.hands === undefined) {
+            this.die = ArimaaGame.castDie(this.board);
+        } else {
+            this.die = undefined;
+        }
         this.checkEOG();
+        if (this.gameover) {
+            this.die = undefined;
+        }
         this.saveState();
         return this;
 
@@ -1505,9 +1614,10 @@ export class ArimaaGame extends GameBase {
                 this.winner = [this.currplayer];
             }
         }
-        // Check if currplayer has no possible move (all pieces are frozen or have no place to move). If so prevPlayer wins.
+        // Check if currplayer has no possible move (all pieces are frozen or have no place to move,
+        // or in Dicey Moves a single step is all the die allows and only pushes and pulls remain). If so prevPlayer wins.
         if (!this.gameover) {
-            if (!hasAnyMove(this.board, this.currplayer)) {
+            if (!hasAnyMove(this.board, this.currplayer, this.maxSteps())) {
                 this.gameover = true;
                 this.winner = [prevPlayer];
             }
@@ -1546,6 +1656,7 @@ export class ArimaaGame extends GameBase {
             lastmove: this.lastmove,
             board: new Map(this.board),
             hands: cloneState(this.hands),
+            die: cloneState(this.die),
         };
     }
 
@@ -1702,6 +1813,21 @@ export class ArimaaGame extends GameBase {
             areas,
         };
 
+        // Dicey Moves: the turn's die, drawn under whatever moves onto its square
+        if (this.die !== undefined) {
+            legend.DIE = {
+                name: `d6-${this.die.steps}`,
+                scale: 0.6,
+                opacity: 0.75,
+            };
+            const [dx, dy] = ArimaaGame.algebraic2coords(this.die.square);
+            (rep.board as BoardBasic).markers!.push({
+                type: "glyph",
+                glyph: "DIE",
+                points: [{row: dy, col: dx}],
+            });
+        }
+
         // Add annotations: one arrow per piece from where it started the turn
         // to where it ended up, the enter glyph for a piece back where it began,
         // and the exit glyph on a trap that claimed a piece
@@ -1825,6 +1951,9 @@ export class ArimaaGame extends GameBase {
                 return true;
             case "announce":
                 this.pushNeutralChatLine(lines, "apresults:ANNOUNCE.arimaa");
+                return true;
+            case "roll":
+                this.pushSeatChatLine(lines, ctx.defaultSeat, "apresults:ROLL.arimaa", {count: r.values[0]});
                 return true;
             default:
                 return super.collectChatLogLine(lines, r, ctx);
