@@ -194,6 +194,7 @@ describe("Crosshairs", () => {
                 "asymmetric-weighted-conjugate-start",
                 "asymmetric-weighted-exp-start",
                 "asymmetric-softmax-start",
+                "asymmetric-softmax-geomean-start",
             ]);
             expect(setupVariants.find(variant => variant.uid === "random-start")!.name)
                 .to.equal("Symmetric random clouds");
@@ -309,6 +310,7 @@ describe("Crosshairs", () => {
                 "spread-start", "asymmetric-spread-start", "split-start",
                 "asymmetric-split-start", "asymmetric-weighted-start", "asymmetric-weighted-conjugate-start",
                 "asymmetric-weighted-exp-start", "asymmetric-softmax-start",
+                "asymmetric-softmax-geomean-start",
             ]);
         });
 
@@ -351,6 +353,7 @@ describe("Crosshairs", () => {
             for (const weighted of [
                 "asymmetric-weighted-start", "asymmetric-weighted-conjugate-start", "asymmetric-weighted-exp-start",
                 "asymmetric-softmax-start",
+                "asymmetric-softmax-geomean-start",
             ]) {
                 it(`should place ${weighted} clouds within the bank limit (${target})`, () => {
                     for (let run = 0; run < 10; run++) {
@@ -385,6 +388,7 @@ describe("Crosshairs", () => {
             for (const weighted of [
                 "asymmetric-weighted-start", "asymmetric-weighted-conjugate-start", "asymmetric-weighted-exp-start",
                 "asymmetric-softmax-start",
+                "asymmetric-softmax-geomean-start",
             ]) {
                 for (let run = 0; run < 10; run++) {
                     expect(new CrosshairsGame(undefined, [weighted]).clouds.size).to.equal(16);
@@ -402,6 +406,22 @@ describe("Crosshairs", () => {
             expect(openLength(["f6", "f7", "f8"], new Set(["f8"]))).to.equal(2);
             expect(openLength(["f6", "f7", "f8"], new Set())).to.equal(3);
             expect(openLength([], new Set())).to.equal(0);
+        });
+
+        it("should have five open cells in every direction from the centre and a zero run on edge cells", () => {
+            const g = new CrosshairsGame(undefined, ["asymmetric-softmax-geomean-start"]);
+            const centre = (g.graph.listCells() as string[]).find(cell => g.graph.rot180(cell) === cell)!;
+            const rayLengths = (cell: string): number[] => {
+                const [x, y] = g.graph.algebraic2coords(cell);
+                const getRay = (g as unknown as { getRay: (x: number, y: number, d: string) => string[] }).getRay.bind(g);
+                return ["N", "NE", "SE", "S", "SW", "NW"].map(dir => getRay(x, y, dir).length);
+            };
+
+            // Every direction from the centre runs 5 cells to the edge, which is v.
+            expect(rayLengths(centre)).to.deep.equal([5, 5, 5, 5, 5, 5]);
+            // An edge cell has a zero-length run, so its geometric mean is 0.
+            const edgeCell = (g.graph.listCells() as string[]).find(cell => isEdgeCell(g, cell))!;
+            expect(rayLengths(edgeCell)).to.include(0);
         });
 
         it("should return a partial split board instead of throwing when cells run out", () => {

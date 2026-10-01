@@ -122,6 +122,10 @@ export interface ICrosshairsState extends IAPGameState {
 export class CrosshairsGame extends GameBase {
     // Softmax sharpness for the Asymmetric weighted clouds (softmax) setup.
     private static readonly SOFTMAX_SETUP_K = 1;
+    // Softmax sharpness for the geometric-mean softmax setup. Its line score
+    // only spans [0, 1] against noise spanning [-1.5, 1.5], so k = 1 is close
+    // to uniform; simulations suggest 4 to 8 for clearly line-breaking boards.
+    private static readonly SOFTMAX_GEOMEAN_SETUP_K = 1;
 
     public static readonly gameinfo: APGamesInformation = {
         name: "Crosshairs",
@@ -202,6 +206,11 @@ export class CrosshairsGame extends GameBase {
                 experimental: true,
             },
             {
+                uid: "asymmetric-softmax-geomean-start",
+                group: "setup",
+                experimental: true,
+            },
+            {
                 uid: "unbounded-cloud-banks",
             },
             {
@@ -277,6 +286,13 @@ export class CrosshairsGame extends GameBase {
                 placedClouds = this.placeWeightedClouds("exp", {
                     adjacentPenalty: 1 / 6,
                     k: CrosshairsGame.SOFTMAX_SETUP_K,
+                });
+            } else if (this.variants.includes("asymmetric-softmax-geomean-start")) {
+                placedClouds = this.placeWeightedClouds("exp", {
+                    edgePenalty: 0,
+                    adjacentPenalty: 1 / 6,
+                    lineScore: "geomean6",
+                    k: CrosshairsGame.SOFTMAX_GEOMEAN_SETUP_K,
                 });
             }
             if (placedClouds !== undefined) {
@@ -529,12 +545,33 @@ export class CrosshairsGame extends GameBase {
     // every weight so the lowest is 1, which flattens the preference.
     private placeWeightedClouds(
         mode: "exp" | "piecewise-linear" | "piecewise-conjugate",
-        { adjacentPenalty = 1, k = 1 }: { adjacentPenalty?: number; k?: number } = {},
+        {
+            edgePenalty = 1,
+            adjacentPenalty = 1,
+            lineScore = "rms3",
+            k = 1,
+        }: {
+            edgePenalty?: number;
+            adjacentPenalty?: number;
+            lineScore?: "rms3" | "geomean6";
+            k?: number;
+        } = {},
     ): string[] {
         const rays = this.getAllCellRays();
         const cells = this.graph.listCells() as string[];
         const clouds = new Set<string>();
         const target = this.getTargetCloudCount();
+
+        // "geomean6": the geometric mean of the open runs in all six
+        // directions, divided by its largest possible value so it spans
+        // [0, 1]. A zero run in any direction (board edge or adjacent cloud)
+        // makes it 0. Clouds only shorten runs, so the empty board gives the
+        // maximum, reached at the centre: 5 on the side-6 board, where every
+        // direction from the centre runs 5 cells to the edge.
+        const geomean = (cellRays: string[][], blocked: Set<string>): number =>
+            cellRays.reduce((product, ray) => product * this.openLength(ray, blocked), 1) ** (1 / 6);
+        const noClouds = new Set<string>();
+        const geomeanMax = Math.max(...cells.map(cell => geomean(rays.get(cell)!, noClouds)));
 
         // The median of three uniform samples is Beta(2,2)-distributed.
         const sampleBeta22 = (): number =>
@@ -546,17 +583,21 @@ export class CrosshairsGame extends GameBase {
             for (const cell of cells) {
                 if (clouds.has(cell) || this.wouldCreateIllegallyLargeCloudBank(cell, clouds)) continue;
                 const cellRays = rays.get(cell)!;
-                let s = cellRays.some(ray => ray.length === 0) ? -1 : 0;
+                let s = cellRays.some(ray => ray.length === 0) ? -edgePenalty : 0;
                 s -= adjacentPenalty * cellRays.filter(ray => ray.length > 0 && clouds.has(ray[0])).length;
-                let sumOfSquares = 0;
-                for (let axis = 0; axis < 3; axis++) {
-                    const split = Math.min(
-                        this.openLength(cellRays[axis], clouds),
-                        this.openLength(cellRays[axis + 3], clouds),
-                    );
-                    sumOfSquares += split * split;
+                if (lineScore === "geomean6") {
+                    s += geomean(cellRays, clouds) / geomeanMax;
+                } else {
+                    let sumOfSquares = 0;
+                    for (let axis = 0; axis < 3; axis++) {
+                        const split = Math.min(
+                            this.openLength(cellRays[axis], clouds),
+                            this.openLength(cellRays[axis + 3], clouds),
+                        );
+                        sumOfSquares += split * split;
+                    }
+                    s += Math.sqrt(sumOfSquares / 3);
                 }
-                s += Math.sqrt(sumOfSquares / 3);
                 s += (sampleBeta22() - 0.5) * 3;
                 candidates.push(cell);
                 scores.push(s);

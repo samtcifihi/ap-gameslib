@@ -1816,6 +1816,10 @@
                 "name": "Asymmetric weighted clouds (softmax)",
                 "description": "There is no cloud placing phase. The system places clouds one at a time without requiring symmetry, randomly favouring cells that break up long open lines of fire and avoiding the board edge. Like Asymmetric weighted clouds (exponential), but neighbouring clouds are only lightly discouraged, so banks form more often."
             },
+            "asymmetric-softmax-geomean-start": {
+                "name": "Asymmetric weighted clouds (softmax, geometric mean)",
+                "description": "There is no cloud placing phase. The system places clouds one at a time without requiring symmetry, randomly favouring cells with long open lines of fire in all six directions. A cell next to a cloud or on the board edge gets no credit for open lines."
+            },
             "unbounded-cloud-banks": {
                 "name": "Unbounded cloud banks",
                 "description": "Cloud banks may contain any number of clouds."
