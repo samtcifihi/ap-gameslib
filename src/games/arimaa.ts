@@ -27,7 +27,12 @@ export interface IMoveState extends IIndividualState {
     board: Map<string, CellContents>;
     lastmove?: string;
     hands?: [Piece[], Piece[]];
-    /** Dicey Moves: the die for the turn starting here; absent during setup, in other variants, and once a move has ended the game */
+    /**
+     * Dicey Moves: the die for the turn starting here; absent during setup and
+     * in other variants. A move that ends the game clears it, as no turn
+     * follows, but a resignation, timeout or agreed draw keeps it, since it
+     * may have informed that decision.
+     */
     die?: IDie;
 };
 
@@ -1413,8 +1418,11 @@ export class ArimaaGame extends GameBase {
         // Dicey Moves: cast the die for the turn about to start, once setup is
         // over and no hands are left. It comes before the game-over checks,
         // which need its allowance to tell whether the next player can move
-        // at all, and is cleared if the game has ended. Partial moves have
-        // already returned, so the die never changes while a move is entered.
+        // at all. If the rules have ended the game, no turn follows, so the
+        // die goes. Resignations, timeouts and agreed draws end the game in
+        // GameBase instead and keep the die, since it may have informed the
+        // decision. Partial moves have already returned, so the die never
+        // changes while a move is entered.
         this.die = this.variants.includes("dicey") && this.hands === undefined ? castDie(this.board) : undefined;
         this.checkEOG();
         if (this.gameover) {

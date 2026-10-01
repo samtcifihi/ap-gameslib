@@ -1236,6 +1236,28 @@ describe("Arimaa Dicey Moves", () => {
         expect(g.validateMove("Ea7").valid).to.be.true;
     });
 
+    it("hides the die when the rules end the game, but not after a resignation, timeout or draw", () => {
+        const drawsDie = (g: ArimaaGame): boolean => (g.render().legend as Record<string, unknown>).DIE !== undefined;
+        // a Gold rabbit one step from goal, so any roll lets it score
+        const nearGoal = (): ArimaaGame => new ArimaaGame(undefined, ["free", "dicey"]).move("Rd7, Ee2").move("ee5, ra7");
+        const won = nearGoal().move("Rd8");
+        expect(won.gameover).to.be.true;
+        expect(won.winner).to.deep.equal([1]);
+        expect(won.die).to.be.undefined;
+        expect(drawsDie(won)).to.be.false;
+        // the die that was showing may have informed the decision, so it stays
+        const endings: Array<(g: ArimaaGame) => void> = [g => g.resign(1), g => g.resign(2), g => g.timeout(1), g => g.draw()];
+        for (const end of endings) {
+            const g = nearGoal();
+            const die = {...g.die!};
+            end(g);
+            expect(g.gameover).to.be.true;
+            g.load();
+            expect(g.die).to.deep.equal(die);
+            expect(drawsDie(g)).to.be.true;
+        }
+    });
+
     it("keeps the die where it is while a move is entered and draws it under the pieces", () => {
         const g = freeStart().move("ee7, ra7");
         const die = {...g.die!};
