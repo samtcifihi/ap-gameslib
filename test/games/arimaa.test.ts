@@ -1140,7 +1140,7 @@ describe("Arimaa Dicey Moves", () => {
         expect(g.validateMove("").message).to.contain(i18next.t("apgames:validation.arimaa.DIE", {count: g.die!.steps}));
     });
 
-    it("places the die by openness plus distance from the edge, empty traps included", () => {
+    it("places the die by openness, empty traps included", () => {
         // every square full but the ones named
         const boardWithout = (...empty: string[]): Map<string, CellContents> => {
             const board = new Map<string, CellContents>();
@@ -1154,9 +1154,8 @@ describe("Arimaa Dicey Moves", () => {
             }
             return board;
         };
-        // b4 scores 5 + 2 + 3/8 + 1/6 for openness and 1 for the edge. That
-        // beats b5, which has e4 four steps away rather than three, and e4,
-        // which is central but has nothing near it, though b5 is read first.
+        // b4 scores 5 + 2 + 3/8 + 1/6. That beats b5 and a4, which have e4
+        // four steps away rather than three, though both are read first.
         expect(ArimaaGame.dieSquare(boardWithout("a4", "a5", "b4", "b5", "e4"))).to.equal("b4");
         // an empty trap can take the die
         expect(ArimaaGame.dieSquare(boardWithout("c3"))).to.equal("c3");
