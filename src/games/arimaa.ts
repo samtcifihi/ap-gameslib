@@ -235,33 +235,54 @@ export class ArimaaGame extends GameBase {
         return {steps, square: ArimaaGame.dieSquare(board)};
     }
 
-    // Where the die sits for a turn: an empty square, never a trap, in the
-    // most open part of the board (counting empty squares within two of it,
-    // with squares off the board counting as full), nearest the centre among
-    // equals. Chosen once from the position the turn starts in, so a piece
-    // that arrives there covers it.
-    private static dieSquare(board: Map<string, CellContents>): string {
+    // Where the die sits for a turn: the empty square, traps included, with
+    // the highest score, the first found among equals, reading from rank 8
+    // down and from a to h. A square scores its openness plus its distance
+    // from the nearest edge. Openness sums f(n) = SE(n) * (5 - n) / S(n) for
+    // n from 0 to 4: SE(n) counts the empty squares exactly n steps away, the
+    // square itself for n = 0, and S(n) counts every square that far, those
+    // off the board included, so it is 1 for n = 0 and 4n otherwise. Traps
+    // and squares off the board count as full. Chosen once from the position
+    // the turn starts in, so a piece that arrives there covers it.
+    public static dieSquare(board: Map<string, CellContents>): string {
+        const empty = (x: number, y: number): boolean => {
+            if (x < 0 || x > 7 || y < 0 || y > 7) {
+                return false;
+            }
+            const cell = ArimaaGame.coords2algebraic(x, y);
+            return !board.has(cell) && !traps.includes(cell);
+        };
+        // S(n)
+        const ringSize = (n: number): number => n === 0 ? 1 : 4 * n;
+        // Scores are kept in 48ths, 48 being the least common multiple of
+        // S(0) to S(4), so every term is a whole number and equal scores
+        // compare as equal.
+        const unit = 48;
         let best: string|undefined;
         let bestScore = -Infinity;
         for (let row = 0; row < 8; row++) {
             for (let col = 0; col < 8; col++) {
                 const cell = ArimaaGame.coords2algebraic(col, row);
-                if (board.has(cell) || traps.includes(cell)) {
+                if (board.has(cell)) {
                     continue;
                 }
-                let open = 0;
-                for (let dy = -2; dy <= 2; dy++) {
-                    for (let dx = -2; dx <= 2; dx++) {
-                        const x = col + dx;
-                        const y = row + dy;
-                        if (x >= 0 && x < 8 && y >= 0 && y < 8 && !board.has(ArimaaGame.coords2algebraic(x, y))) {
-                            open++;
+                let openness = 0;
+                for (let n = 0; n < 5; n++) {
+                    // SE(n), walking the ring of squares exactly n steps away
+                    let emptyInRing = 0;
+                    for (let dx = -n; dx <= n; dx++) {
+                        const dy = n - Math.abs(dx);
+                        if (empty(col + dx, row + dy)) {
+                            emptyInRing++;
+                        }
+                        if (dy > 0 && empty(col + dx, row - dy)) {
+                            emptyInRing++;
                         }
                     }
+                    openness += emptyInRing * (5 - n) * unit / ringSize(n);
                 }
-                // between 1 and 7, so an extra open square always outweighs it
-                const fromCentre = Math.abs(col - 3.5) + Math.abs(row - 3.5);
-                const score = open * 8 - fromCentre;
+                const centreBias = Math.min(col, 7 - col, row, 7 - row) * unit;
+                const score = openness + centreBias;
                 if (score > bestScore) {
                     bestScore = score;
                     best = cell;

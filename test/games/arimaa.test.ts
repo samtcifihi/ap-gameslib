@@ -1112,7 +1112,6 @@ describe("Arimaa Dicey Moves", () => {
             Math.random = original;
         }
     };
-    const traps = ["c3", "f3", "c6", "f6"];
     // a free setup with the die cast for Gold's first move
     const freeStart = (): ArimaaGame => {
         const g = new ArimaaGame(undefined, ["free", "dicey"]);
@@ -1133,12 +1132,38 @@ describe("Arimaa Dicey Moves", () => {
         expect(g.board.size).to.equal(32);
         expect(g.die).to.not.be.undefined;
         expect(g.die!.steps).to.be.within(1, 4);
-        // shown on an empty square, off the traps, in the open centre
+        // shown on an empty square in the open centre: the four centre
+        // squares tie, and d5 is the first of them read from rank 8 down
         expect(g.board.has(g.die!.square)).to.be.false;
-        expect(traps).to.not.include(g.die!.square);
-        expect(["d4", "d5", "e4", "e5"]).to.include(g.die!.square);
+        expect(g.die!.square).to.equal("d5");
         expect(g.stack[g.stack.length - 1].die).to.deep.equal(g.die);
         expect(g.validateMove("").message).to.contain(i18next.t("apgames:validation.arimaa.DIE", {count: g.die!.steps}));
+    });
+
+    it("places the die by openness plus distance from the edge, empty traps included", () => {
+        // every square full but the ones named
+        const boardWithout = (...empty: string[]): Map<string, CellContents> => {
+            const board = new Map<string, CellContents>();
+            for (let row = 0; row < 8; row++) {
+                for (let col = 0; col < 8; col++) {
+                    const cell = ArimaaGame.coords2algebraic(col, row);
+                    if (!empty.includes(cell)) {
+                        board.set(cell, ["R", 1]);
+                    }
+                }
+            }
+            return board;
+        };
+        // b4 scores 5 + 2 + 3/8 + 1/6 for openness and 1 for the edge. That
+        // beats b5, which has e4 four steps away rather than three, and e4,
+        // which is central but has nothing near it, though b5 is read first.
+        expect(ArimaaGame.dieSquare(boardWithout("a4", "a5", "b4", "b5", "e4"))).to.equal("b4");
+        // an empty trap can take the die
+        expect(ArimaaGame.dieSquare(boardWithout("c3"))).to.equal("c3");
+        // but it counts as full in its own openness, so even a corner beats it
+        expect(ArimaaGame.dieSquare(boardWithout("c3", "a1"))).to.equal("a1");
+        // with every square full, the die sits under the piece on d4
+        expect(ArimaaGame.dieSquare(boardWithout())).to.equal("d4");
     });
 
     it("caps a d6 at four steps", () => {
@@ -1160,7 +1185,6 @@ describe("Arimaa Dicey Moves", () => {
             expect(g.die).to.not.be.undefined;
             expect([1, 2]).to.include(g.die!.steps);
             expect(g.board.has(g.die!.square)).to.be.false;
-            expect(traps).to.not.include(g.die!.square);
             seen.add(g.die!.steps);
         }
         expect(seen.size).to.equal(2);
