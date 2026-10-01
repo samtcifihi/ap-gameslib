@@ -1784,6 +1784,14 @@
         "name": "Nuages aléatoires asymétriques",
         "description": "Il n'y a pas de phase de placement des nuages. Le système place les nuages aléatoirement sans exiger de symétrie."
       },
+      "spread-start": {
+        "name": "Répartition symétrique des nuages",
+        "description": "Il n'y a pas de phase de placement des nuages. Le système place les nuages avec une symétrie de rotation de 180 degrés en utilisant l'algorithme de l'auteur, qui bloque d'abord les lignes de tir ouvertes puis comble les espaces."
+      },
+      "asymmetric-spread-start": {
+        "name": "Répartition asymétrique des nuages",
+        "description": "Il n'y a pas de phase de placement des nuages. Le système place les nuages sans exiger de symétrie en utilisant l'algorithme de l'auteur, qui bloque d'abord les lignes de tir ouvertes puis comble les espaces."
+      },
       "unbounded-cloud-banks": {
         "name": "Réserves de nuages illimitées",
         "description": "Les réserves de nuages peuvent contenir n'importe quel nombre de nuages."
