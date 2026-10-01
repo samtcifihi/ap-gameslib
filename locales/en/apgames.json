@@ -1864,6 +1864,22 @@
                 "name": "Asymmetric weighted clouds (arithmetic mean, narrow noise, k=13)",
                 "description": "There is no cloud placing phase. The system places clouds one at a time without requiring symmetry, randomly favouring cells on long open lines of fire, judged by the average open run in the six directions, with a selection sharpness of 13. There is no extra penalty for the board edge or for touching a cloud."
             },
+            "asymmetric-softmax-rms-k3-start": {
+                "name": "Asymmetric weighted clouds (root mean square, narrow noise, k=3)",
+                "description": "There is no cloud placing phase. The system places clouds one at a time without requiring symmetry, randomly favouring cells on long open lines of fire, judged by the root mean square of the open runs in the six directions, with a selection sharpness of 3. Along a single line this leans toward the ends, so clouds land on the board edge about as often as with uniform random placement."
+            },
+            "asymmetric-softmax-rms-k5-start": {
+                "name": "Asymmetric weighted clouds (root mean square, narrow noise, k=5)",
+                "description": "There is no cloud placing phase. The system places clouds one at a time without requiring symmetry, randomly favouring cells on long open lines of fire, judged by the root mean square of the open runs in the six directions, with a selection sharpness of 5. Along a single line this leans toward the ends, so clouds land on the board edge about as often as with uniform random placement."
+            },
+            "asymmetric-softmax-rms-k8-start": {
+                "name": "Asymmetric weighted clouds (root mean square, narrow noise, k=8)",
+                "description": "There is no cloud placing phase. The system places clouds one at a time without requiring symmetry, randomly favouring cells on long open lines of fire, judged by the root mean square of the open runs in the six directions, with a selection sharpness of 8. Along a single line this leans toward the ends, so clouds land on the board edge about as often as with uniform random placement."
+            },
+            "asymmetric-softmax-rms-k13-start": {
+                "name": "Asymmetric weighted clouds (root mean square, narrow noise, k=13)",
+                "description": "There is no cloud placing phase. The system places clouds one at a time without requiring symmetry, randomly favouring cells on long open lines of fire, judged by the root mean square of the open runs in the six directions, with a selection sharpness of 13. Along a single line this leans toward the ends, so clouds land on the board edge about as often as with uniform random placement."
+            },
             "unbounded-cloud-banks": {
                 "name": "Unbounded cloud banks",
                 "description": "Cloud banks may contain any number of clouds."

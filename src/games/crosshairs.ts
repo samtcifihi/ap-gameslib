@@ -131,7 +131,7 @@ export class CrosshairsGame extends GameBase {
     // no edge penalty, keyed by uid.
     private static readonly SOFTMAX_NARROW_SETUPS: ReadonlyMap<
         string,
-        { lineScore: "geomean6" | "mean6"; k: number; adjacentPenalty: number }
+        { lineScore: "geomean6" | "mean6" | "rms6"; k: number; adjacentPenalty: number }
     > = new Map([
         ["asymmetric-softmax-geomean-k5-start", { lineScore: "geomean6", k: 5, adjacentPenalty: 1 / 6 }],
         ["asymmetric-softmax-geomean-k8-start", { lineScore: "geomean6", k: 8, adjacentPenalty: 1 / 6 }],
@@ -144,6 +144,10 @@ export class CrosshairsGame extends GameBase {
         ["asymmetric-softmax-mean-k5-start", { lineScore: "mean6", k: 5, adjacentPenalty: 0 }],
         ["asymmetric-softmax-mean-k8-start", { lineScore: "mean6", k: 8, adjacentPenalty: 0 }],
         ["asymmetric-softmax-mean-k13-start", { lineScore: "mean6", k: 13, adjacentPenalty: 0 }],
+        ["asymmetric-softmax-rms-k3-start", { lineScore: "rms6", k: 3, adjacentPenalty: 0 }],
+        ["asymmetric-softmax-rms-k5-start", { lineScore: "rms6", k: 5, adjacentPenalty: 0 }],
+        ["asymmetric-softmax-rms-k8-start", { lineScore: "rms6", k: 8, adjacentPenalty: 0 }],
+        ["asymmetric-softmax-rms-k13-start", { lineScore: "rms6", k: 13, adjacentPenalty: 0 }],
     ]);
 
     public static readonly gameinfo: APGamesInformation = {
@@ -281,6 +285,26 @@ export class CrosshairsGame extends GameBase {
             },
             {
                 uid: "asymmetric-softmax-mean-k13-start",
+                group: "setup",
+                experimental: true,
+            },
+            {
+                uid: "asymmetric-softmax-rms-k3-start",
+                group: "setup",
+                experimental: true,
+            },
+            {
+                uid: "asymmetric-softmax-rms-k5-start",
+                group: "setup",
+                experimental: true,
+            },
+            {
+                uid: "asymmetric-softmax-rms-k8-start",
+                group: "setup",
+                experimental: true,
+            },
+            {
+                uid: "asymmetric-softmax-rms-k13-start",
                 group: "setup",
                 experimental: true,
             },
@@ -641,7 +665,7 @@ export class CrosshairsGame extends GameBase {
         }: {
             edgePenalty?: number;
             adjacentPenalty?: number;
-            lineScore?: "rms3" | "geomean6" | "mean6";
+            lineScore?: "rms3" | "geomean6" | "mean6" | "rms6";
             noiseScale?: number;
             k?: number;
         } = {},
@@ -663,6 +687,12 @@ export class CrosshairsGame extends GameBase {
         // 5). Opposite runs on an axis add up to that line's open length, so
         // this rewards cells on long open lines wherever they sit along them,
         // and a zero run in one direction only costs that one direction.
+        //
+        // "rms6": the root mean square of the same six runs over its
+        // empty-board maximum, which is again 5, reached at the centre and at
+        // the six corners. With opposite runs summing to a fixed line length,
+        // their squares are smallest when equal, so along any one line this
+        // leans toward the ends rather than the middle.
         const geomean = (cellRays: string[][], blocked: Set<string>): number =>
             cellRays.reduce((product, ray) => product * this.openLength(ray, blocked), 1) ** (1 / 6);
         const mean = (cellRays: string[][], blocked: Set<string>): number =>
@@ -670,6 +700,9 @@ export class CrosshairsGame extends GameBase {
         const noClouds = new Set<string>();
         const geomeanMax = Math.max(...cells.map(cell => geomean(rays.get(cell)!, noClouds)));
         const meanMax = Math.max(...cells.map(cell => mean(rays.get(cell)!, noClouds)));
+        const rms = (cellRays: string[][], blocked: Set<string>): number =>
+            Math.sqrt(cellRays.reduce((sum, ray) => sum + this.openLength(ray, blocked) ** 2, 0) / 6);
+        const rmsMax = Math.max(...cells.map(cell => rms(rays.get(cell)!, noClouds)));
 
         // The median of three uniform samples is Beta(2,2)-distributed.
         const sampleBeta22 = (): number =>
@@ -687,6 +720,8 @@ export class CrosshairsGame extends GameBase {
                     s += geomean(cellRays, clouds) / geomeanMax;
                 } else if (lineScore === "mean6") {
                     s += mean(cellRays, clouds) / meanMax;
+                } else if (lineScore === "rms6") {
+                    s += rms(cellRays, clouds) / rmsMax;
                 } else {
                     let sumOfSquares = 0;
                     for (let axis = 0; axis < 3; axis++) {
