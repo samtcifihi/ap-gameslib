@@ -1784,14 +1784,6 @@
         "name": "Asymmetrische zufällige Wolken",
         "description": "Es gibt keine Wolkenplatzierungsphase. Das System platziert die Wolken zufällig, ohne Symmetrie zu erfordern."
       },
-      "spread-start": {
-        "name": "Symmetrisch verteilte Wolken",
-        "description": "Es gibt keine Wolkenplatzierungsphase. Das System platziert die Wolken mit 180-Grad-Rotationssymmetrie nach dem Algorithmus des Autors, der zuerst offene Schusslinien blockiert und danach die Lücken füllt."
-      },
-      "asymmetric-spread-start": {
-        "name": "Asymmetrisch verteilte Wolken",
-        "description": "Es gibt keine Wolkenplatzierungsphase. Das System platziert die Wolken ohne Symmetrie nach dem Algorithmus des Autors, der zuerst offene Schusslinien blockiert und danach die Lücken füllt."
-      },
       "unbounded-cloud-banks": {
         "name": "Unbegrenzte Wolkenbänke",
         "description": "Wolkenbänke können eine beliebige Anzahl von Wolken enthalten."

@@ -120,34 +120,12 @@ export interface ICrosshairsState extends IAPGameState {
 }
 
 export class CrosshairsGame extends GameBase {
-    // Softmax sharpness for the Asymmetric weighted clouds (softmax) setup.
-    private static readonly SOFTMAX_SETUP_K = 1;
-    // Softmax sharpness for the geometric-mean softmax setup. Its line score
-    // only spans [0, 1] against noise spanning [-1.5, 1.5], so k = 1 is close
-    // to uniform; simulations suggest 4 to 8 for clearly line-breaking boards.
-    private static readonly SOFTMAX_GEOMEAN_SETUP_K = 1;
-    // Line score, softmax sharpness and adjacency penalty for each six-direction
-    // softmax setup with narrowed noise (Beta(2,2) - 0.5, so [-0.5, 0.5]) and
-    // no edge penalty, keyed by uid.
-    private static readonly SOFTMAX_NARROW_SETUPS: ReadonlyMap<
-        string,
-        { lineScore: "geomean6" | "mean6" | "sqrtmean6"; k: number; adjacentPenalty: number }
-    > = new Map([
-        ["asymmetric-softmax-geomean-k5-start", { lineScore: "geomean6", k: 5, adjacentPenalty: 1 / 6 }],
-        ["asymmetric-softmax-geomean-k8-start", { lineScore: "geomean6", k: 8, adjacentPenalty: 1 / 6 }],
-        ["asymmetric-softmax-geomean-k13-start", { lineScore: "geomean6", k: 13, adjacentPenalty: 1 / 6 }],
-        ["asymmetric-softmax-geomean-noadj-k3-start", { lineScore: "geomean6", k: 3, adjacentPenalty: 0 }],
-        ["asymmetric-softmax-geomean-noadj-k5-start", { lineScore: "geomean6", k: 5, adjacentPenalty: 0 }],
-        ["asymmetric-softmax-geomean-noadj-k8-start", { lineScore: "geomean6", k: 8, adjacentPenalty: 0 }],
-        ["asymmetric-softmax-geomean-noadj-k13-start", { lineScore: "geomean6", k: 13, adjacentPenalty: 0 }],
-        ["asymmetric-softmax-mean-k3-start", { lineScore: "mean6", k: 3, adjacentPenalty: 0 }],
-        ["asymmetric-softmax-mean-k5-start", { lineScore: "mean6", k: 5, adjacentPenalty: 0 }],
-        ["asymmetric-softmax-mean-k8-start", { lineScore: "mean6", k: 8, adjacentPenalty: 0 }],
-        ["asymmetric-softmax-mean-k13-start", { lineScore: "mean6", k: 13, adjacentPenalty: 0 }],
-        ["asymmetric-softmax-sqrtmean-k3-start", { lineScore: "sqrtmean6", k: 3, adjacentPenalty: 0 }],
-        ["asymmetric-softmax-sqrtmean-k5-start", { lineScore: "sqrtmean6", k: 5, adjacentPenalty: 0 }],
-        ["asymmetric-softmax-sqrtmean-k8-start", { lineScore: "sqrtmean6", k: 8, adjacentPenalty: 0 }],
-        ["asymmetric-softmax-sqrtmean-k13-start", { lineScore: "sqrtmean6", k: 13, adjacentPenalty: 0 }],
+    // Softmax sharpness for each square-root-mean setup, keyed by variant uid.
+    private static readonly SQRTMEAN_SETUP_KS: ReadonlyMap<string, number> = new Map([
+        ["asymmetric-softmax-sqrtmean-k3-start", 3],
+        ["asymmetric-softmax-sqrtmean-k5-start", 5],
+        ["asymmetric-softmax-sqrtmean-k8-start", 8],
+        ["asymmetric-softmax-sqrtmean-k13-start", 13],
     ]);
 
     public static readonly gameinfo: APGamesInformation = {
@@ -187,16 +165,6 @@ export class CrosshairsGame extends GameBase {
                 group: "setup",
             },
             {
-                uid: "spread-start",
-                group: "setup",
-                experimental: true,
-            },
-            {
-                uid: "asymmetric-spread-start",
-                group: "setup",
-                experimental: true,
-            },
-            {
                 uid: "split-start",
                 group: "setup",
                 experimental: true,
@@ -207,86 +175,6 @@ export class CrosshairsGame extends GameBase {
                 group: "setup",
                 experimental: true,
                 requires: ["unbounded-cloud-banks"],
-            },
-            {
-                uid: "asymmetric-weighted-start",
-                group: "setup",
-                experimental: true,
-            },
-            {
-                uid: "asymmetric-weighted-conjugate-start",
-                group: "setup",
-                experimental: true,
-            },
-            {
-                uid: "asymmetric-weighted-exp-start",
-                group: "setup",
-                experimental: true,
-            },
-            {
-                uid: "asymmetric-softmax-start",
-                group: "setup",
-                experimental: true,
-            },
-            {
-                uid: "asymmetric-softmax-geomean-start",
-                group: "setup",
-                experimental: true,
-            },
-            {
-                uid: "asymmetric-softmax-geomean-k5-start",
-                group: "setup",
-                experimental: true,
-            },
-            {
-                uid: "asymmetric-softmax-geomean-k8-start",
-                group: "setup",
-                experimental: true,
-            },
-            {
-                uid: "asymmetric-softmax-geomean-k13-start",
-                group: "setup",
-                experimental: true,
-            },
-            {
-                uid: "asymmetric-softmax-geomean-noadj-k3-start",
-                group: "setup",
-                experimental: true,
-            },
-            {
-                uid: "asymmetric-softmax-geomean-noadj-k5-start",
-                group: "setup",
-                experimental: true,
-            },
-            {
-                uid: "asymmetric-softmax-geomean-noadj-k8-start",
-                group: "setup",
-                experimental: true,
-            },
-            {
-                uid: "asymmetric-softmax-geomean-noadj-k13-start",
-                group: "setup",
-                experimental: true,
-            },
-            {
-                uid: "asymmetric-softmax-mean-k3-start",
-                group: "setup",
-                experimental: true,
-            },
-            {
-                uid: "asymmetric-softmax-mean-k5-start",
-                group: "setup",
-                experimental: true,
-            },
-            {
-                uid: "asymmetric-softmax-mean-k8-start",
-                group: "setup",
-                experimental: true,
-            },
-            {
-                uid: "asymmetric-softmax-mean-k13-start",
-                group: "setup",
-                experimental: true,
             },
             {
                 uid: "asymmetric-softmax-sqrtmean-k3-start",
@@ -366,43 +254,15 @@ export class CrosshairsGame extends GameBase {
                 placedClouds = this.placeRandomAsymmetricClouds();
             } else if (this.variants.includes("random-start")) {
                 placedClouds = this.placeRandomSymmetricClouds();
-            } else if (this.variants.includes("asymmetric-spread-start")) {
-                placedClouds = this.placeSpreadRandomClouds(false);
-            } else if (this.variants.includes("spread-start")) {
-                placedClouds = this.placeSpreadRandomClouds(true);
             } else if (this.variants.includes("asymmetric-split-start")) {
                 placedClouds = this.placeSplitClouds(false);
             } else if (this.variants.includes("split-start")) {
                 placedClouds = this.placeSplitClouds(true);
-            } else if (this.variants.includes("asymmetric-weighted-start")) {
-                placedClouds = this.placeWeightedClouds("piecewise-linear");
-            } else if (this.variants.includes("asymmetric-weighted-conjugate-start")) {
-                placedClouds = this.placeWeightedClouds("piecewise-conjugate");
-            } else if (this.variants.includes("asymmetric-weighted-exp-start")) {
-                placedClouds = this.placeWeightedClouds("exp");
-            } else if (this.variants.includes("asymmetric-softmax-start")) {
-                placedClouds = this.placeWeightedClouds("exp", {
-                    adjacentPenalty: 1 / 6,
-                    k: CrosshairsGame.SOFTMAX_SETUP_K,
-                });
-            } else if (this.variants.includes("asymmetric-softmax-geomean-start")) {
-                placedClouds = this.placeWeightedClouds("exp", {
-                    edgePenalty: 0,
-                    adjacentPenalty: 1 / 6,
-                    lineScore: "geomean6",
-                    k: CrosshairsGame.SOFTMAX_GEOMEAN_SETUP_K,
-                });
             } else {
-                const narrow = [...CrosshairsGame.SOFTMAX_NARROW_SETUPS]
+                const k = [...CrosshairsGame.SQRTMEAN_SETUP_KS]
                     .find(([uid]) => this.variants.includes(uid))?.[1];
-                if (narrow !== undefined) {
-                    placedClouds = this.placeWeightedClouds("exp", {
-                        edgePenalty: 0,
-                        adjacentPenalty: narrow.adjacentPenalty,
-                        lineScore: narrow.lineScore,
-                        noiseScale: 1,
-                        k: narrow.k,
-                    });
+                if (k !== undefined) {
+                    placedClouds = this.placeSqrtMeanClouds(k);
                 }
             }
             if (placedClouds !== undefined) {
@@ -510,61 +370,6 @@ export class CrosshairsGame extends GameBase {
         return this.placeRandomCloudGroups(singles);
     }
 
-    // Place clouds with the designer's coverage-first algorithm. Cells are
-    // visited in one random order over several passes, and a cell qualifies in
-    // pass N only if at most N of its six rays already contain a cloud, so the
-    // earliest clouds block completely open lines and later passes fill the
-    // gaps. The final pass accepts anything the bank-size rule allows. Symmetric
-    // mode places rotational pairs; the centre is its own mirror and places a
-    // single cloud, after which no pair fits the even target, so a board with
-    // a centre cloud ends one short (15, 21, or 27), as the designer intends.
-    private placeSpreadRandomClouds(symmetric: boolean): string[] {
-        const target = this.getTargetCloudCount();
-        const cells = this.graph.listCells() as string[];
-        for (let i = cells.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
-            [cells[i], cells[j]] = [cells[j], cells[i]];
-        }
-
-        const clouds = new Set<string>();
-        const raysBlocked = (cell: string): number => {
-            const [x, y] = this.graph.algebraic2coords(cell);
-            let blocked = 0;
-            for (const dir of allDirections) {
-                if (this.getRay(x, y, dir).some(c => clouds.has(c))) blocked++;
-            }
-            return blocked;
-        };
-
-        for (let pass = 0; pass <= allDirections.length && clouds.size < target; pass++) {
-            for (const cell of cells) {
-                if (clouds.size >= target) break;
-                if (clouds.has(cell)) continue;
-                const mirror = this.getSymmetricCell(cell);
-                const group = symmetric && mirror !== cell ? [cell, mirror] : [cell];
-                if (clouds.size + group.length > target) continue;
-                if (group.some(c => raysBlocked(c) > pass)) continue;
-
-                // Check each cell of a pair against the growing set so a pair
-                // straddling an existing cloud cannot form a three-bank.
-                const placed: string[] = [];
-                let legal = true;
-                for (const c of group) {
-                    if (this.wouldCreateIllegallyLargeCloudBank(c, clouds)) {
-                        legal = false;
-                        break;
-                    }
-                    clouds.add(c);
-                    placed.push(c);
-                }
-                if (!legal) {
-                    for (const c of placed) clouds.delete(c);
-                }
-            }
-        }
-        return Array.from(clouds);
-    }
-
     // The six rays from each cell, indexed like allDirections, so ray d and
     // ray d + 3 lie on the same axis in opposite directions.
     private getAllCellRays(): Map<string, string[][]> {
@@ -640,69 +445,26 @@ export class CrosshairsGame extends GameBase {
         return Array.from(clouds);
     }
 
-    // Weighted random placement. Each round, every cell that respects the
-    // bank-size rule is scored: -1 on the edge, -1 per adjacent cloud, plus
-    // the root mean square over the three axes of the shorter open run to
-    // either side, plus Beta(2,2) noise scaled to [-1.5, 1.5] unless narrowed
-    // with noiseScale. An adjacent
-    // cloud or the board edge makes that side's run 0. One cell is then drawn
-    // in proportion to its weight. If no cell qualifies, the board is returned
-    // as it stands.
-    //
-    // In "exp" mode the weight is e^(k * s), a softmax where larger k sharpens
-    // the preference and smaller k flattens it toward uniform. The piecewise
-    // modes keep e^s for non-negative scores but map negative ones to s + 1 or
-    // 2 - e^-s (pieces meeting with matching value and slope at 0), then shift
-    // every weight so the lowest is 1, which flattens the preference.
-    private placeWeightedClouds(
-        mode: "exp" | "piecewise-linear" | "piecewise-conjugate",
-        {
-            edgePenalty = 1,
-            adjacentPenalty = 1,
-            lineScore = "rms3",
-            noiseScale = 3,
-            k = 1,
-        }: {
-            edgePenalty?: number;
-            adjacentPenalty?: number;
-            lineScore?: "rms3" | "geomean6" | "mean6" | "sqrtmean6";
-            noiseScale?: number;
-            k?: number;
-        } = {},
-    ): string[] {
+    // Softmax placement. Each round, every cell that respects the bank-size
+    // rule is scored by the power mean with exponent 1/2 of its open runs in
+    // the six directions, (mean of the runs' square roots)^2, divided by its
+    // empty-board maximum so it spans [0, 1]. That maximum is 5 on the side-6
+    // board, reached only at the centre, where every direction runs 5 cells to
+    // the edge. An adjacent cloud or the board edge makes that direction's run
+    // 0, lowering the score without zeroing it. Beta(2,2) - 0.5 noise is added
+    // and one cell is drawn with weight e^(k * (s - max)), where larger k
+    // sharpens the preference. If no cell qualifies, the board is returned as
+    // it stands.
+    private placeSqrtMeanClouds(k: number): string[] {
         const rays = this.getAllCellRays();
         const cells = this.graph.listCells() as string[];
         const clouds = new Set<string>();
         const target = this.getTargetCloudCount();
 
-        // "geomean6": the geometric mean of the open runs in all six
-        // directions, divided by its largest possible value so it spans
-        // [0, 1]. A zero run in any direction (board edge or adjacent cloud)
-        // makes it 0. Clouds only shorten runs, so the empty board gives the
-        // maximum, reached at the centre: 5 on the side-6 board, where every
-        // direction from the centre runs 5 cells to the edge.
-        //
-        // "mean6": the arithmetic mean of the same six runs, likewise divided
-        // by its empty-board maximum (also 5 at the centre, where every run is
-        // 5). Opposite runs on an axis add up to that line's open length, so
-        // this rewards cells on long open lines wherever they sit along them,
-        // and a zero run in one direction only costs that one direction.
-        //
-        // "sqrtmean6": the square of the mean of the six runs' square roots
-        // (the power mean with exponent 1/2), over its empty-board maximum,
-        // again 5 at the centre. It sits between the geometric and arithmetic
-        // means: being concave, it favours splitting a line evenly, but a
-        // single zero run lowers the term instead of zeroing it.
-        const geomean = (cellRays: string[][], blocked: Set<string>): number =>
-            cellRays.reduce((product, ray) => product * this.openLength(ray, blocked), 1) ** (1 / 6);
-        const mean = (cellRays: string[][], blocked: Set<string>): number =>
-            cellRays.reduce((sum, ray) => sum + this.openLength(ray, blocked), 0) / 6;
-        const noClouds = new Set<string>();
-        const geomeanMax = Math.max(...cells.map(cell => geomean(rays.get(cell)!, noClouds)));
-        const meanMax = Math.max(...cells.map(cell => mean(rays.get(cell)!, noClouds)));
         const sqrtMean = (cellRays: string[][], blocked: Set<string>): number =>
             (cellRays.reduce((sum, ray) => sum + Math.sqrt(this.openLength(ray, blocked)), 0) / 6) ** 2;
-        const sqrtMeanMax = Math.max(...cells.map(cell => sqrtMean(rays.get(cell)!, noClouds)));
+        const noClouds = new Set<string>();
+        const v = Math.max(...cells.map(cell => sqrtMean(rays.get(cell)!, noClouds)));
 
         // The median of three uniform samples is Beta(2,2)-distributed.
         const sampleBeta22 = (): number =>
@@ -713,45 +475,15 @@ export class CrosshairsGame extends GameBase {
             const scores: number[] = [];
             for (const cell of cells) {
                 if (clouds.has(cell) || this.wouldCreateIllegallyLargeCloudBank(cell, clouds)) continue;
-                const cellRays = rays.get(cell)!;
-                let s = cellRays.some(ray => ray.length === 0) ? -edgePenalty : 0;
-                s -= adjacentPenalty * cellRays.filter(ray => ray.length > 0 && clouds.has(ray[0])).length;
-                if (lineScore === "geomean6") {
-                    s += geomean(cellRays, clouds) / geomeanMax;
-                } else if (lineScore === "mean6") {
-                    s += mean(cellRays, clouds) / meanMax;
-                } else if (lineScore === "sqrtmean6") {
-                    s += sqrtMean(cellRays, clouds) / sqrtMeanMax;
-                } else {
-                    let sumOfSquares = 0;
-                    for (let axis = 0; axis < 3; axis++) {
-                        const split = Math.min(
-                            this.openLength(cellRays[axis], clouds),
-                            this.openLength(cellRays[axis + 3], clouds),
-                        );
-                        sumOfSquares += split * split;
-                    }
-                    s += Math.sqrt(sumOfSquares / 3);
-                }
-                s += (sampleBeta22() - 0.5) * noiseScale;
                 candidates.push(cell);
-                scores.push(s);
+                scores.push(sqrtMean(rays.get(cell)!, clouds) / v + sampleBeta22() - 0.5);
             }
             if (candidates.length === 0) break;
 
-            let weights: number[];
-            if (mode === "exp") {
-                // Subtracting the maximum keeps every weight at or below 1
-                // without changing the proportions between them.
-                const max = Math.max(...scores);
-                weights = scores.map(s => Math.exp(k * (s - max)));
-            } else {
-                const transformed = scores.map(s => s >= 0
-                    ? Math.exp(s)
-                    : mode === "piecewise-conjugate" ? 2 - Math.exp(-s) : s + 1);
-                const shift = 1 - Math.min(...transformed);
-                weights = transformed.map(w => w + shift);
-            }
+            // Subtracting the maximum keeps every weight at or below 1 without
+            // changing the proportions between them.
+            const max = Math.max(...scores);
+            const weights = scores.map(s => Math.exp(k * (s - max)));
             let pick = Math.random() * weights.reduce((a, b) => a + b, 0);
             let idx = 0;
             while (idx < weights.length - 1 && pick >= weights[idx]) {

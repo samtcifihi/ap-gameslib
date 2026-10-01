@@ -186,26 +186,8 @@ describe("Crosshairs", () => {
                 "#setup",
                 "random-start",
                 "asymmetric-random-start",
-                "spread-start",
-                "asymmetric-spread-start",
                 "split-start",
                 "asymmetric-split-start",
-                "asymmetric-weighted-start",
-                "asymmetric-weighted-conjugate-start",
-                "asymmetric-weighted-exp-start",
-                "asymmetric-softmax-start",
-                "asymmetric-softmax-geomean-start",
-                "asymmetric-softmax-geomean-k5-start",
-                "asymmetric-softmax-geomean-k8-start",
-                "asymmetric-softmax-geomean-k13-start",
-                "asymmetric-softmax-geomean-noadj-k3-start",
-                "asymmetric-softmax-geomean-noadj-k5-start",
-                "asymmetric-softmax-geomean-noadj-k8-start",
-                "asymmetric-softmax-geomean-noadj-k13-start",
-                "asymmetric-softmax-mean-k3-start",
-                "asymmetric-softmax-mean-k5-start",
-                "asymmetric-softmax-mean-k8-start",
-                "asymmetric-softmax-mean-k13-start",
                 "asymmetric-softmax-sqrtmean-k3-start",
                 "asymmetric-softmax-sqrtmean-k5-start",
                 "asymmetric-softmax-sqrtmean-k8-start",
@@ -280,35 +262,6 @@ describe("Crosshairs", () => {
             }
         }
 
-        for (const setup of ["spread-start", "asymmetric-spread-start"] as const) {
-            for (const [variant, target] of [[undefined, 16], ["clouds-22", 22], ["clouds-28", 28]] as const) {
-                it(`should place ${target} legal clouds with ${setup}${variant ? ` and ${variant}` : ""}`, () => {
-                    const variants = variant ? [setup, variant] : [setup];
-                    const g = new CrosshairsGame(undefined, variants);
-
-                    expect(g.turnNumber).to.equal(1);
-                    expect(largestCloudBank(g)).to.be.at.most(2);
-                    if (setup === "spread-start") {
-                        // A centre cloud is its own mirror, leaving the board one short.
-                        const hasCentre = [...g.clouds].some(cloud => g.graph.rot180(cloud) === cloud);
-                        expect(g.clouds.size).to.equal(hasCentre ? target - 1 : target);
-                        for (const cloud of g.clouds) {
-                            expect(g.clouds.has(g.graph.rot180(cloud))).to.be.true;
-                        }
-                    } else {
-                        expect(g.clouds.size).to.equal(target);
-                    }
-                });
-            }
-        }
-
-        it("should let spread placement form larger banks under unbounded cloud banks", () => {
-            const g = new CrosshairsGame(undefined, ["asymmetric-spread-start", "clouds-28", "unbounded-cloud-banks"]);
-
-            expect(g.clouds.size).to.equal(28);
-            expect(g.turnNumber).to.equal(1);
-        });
-
         const isEdgeCell = (g: CrosshairsGame, cell: string): boolean => {
             const [x, y] = g.graph.algebraic2coords(cell);
             const getRay = (g as unknown as { getRay: (x: number, y: number, d: string) => string[] }).getRay.bind(g);
@@ -322,21 +275,8 @@ describe("Crosshairs", () => {
             expect(setup.filter(v => !v.experimental).map(v => v.uid))
                 .to.deep.equal(["random-start", "asymmetric-random-start"]);
             expect(experimental).to.deep.equal([
-                "spread-start", "asymmetric-spread-start", "split-start",
-                "asymmetric-split-start", "asymmetric-weighted-start", "asymmetric-weighted-conjugate-start",
-                "asymmetric-weighted-exp-start", "asymmetric-softmax-start",
-                "asymmetric-softmax-geomean-start",
-                "asymmetric-softmax-geomean-k5-start",
-                "asymmetric-softmax-geomean-k8-start",
-                "asymmetric-softmax-geomean-k13-start",
-                "asymmetric-softmax-geomean-noadj-k3-start",
-                "asymmetric-softmax-geomean-noadj-k5-start",
-                "asymmetric-softmax-geomean-noadj-k8-start",
-                "asymmetric-softmax-geomean-noadj-k13-start",
-                "asymmetric-softmax-mean-k3-start",
-                "asymmetric-softmax-mean-k5-start",
-                "asymmetric-softmax-mean-k8-start",
-                "asymmetric-softmax-mean-k13-start",
+                "split-start",
+                "asymmetric-split-start",
                 "asymmetric-softmax-sqrtmean-k3-start",
                 "asymmetric-softmax-sqrtmean-k5-start",
                 "asymmetric-softmax-sqrtmean-k8-start",
@@ -380,29 +320,15 @@ describe("Crosshairs", () => {
                 }
             });
 
-            for (const weighted of [
-                "asymmetric-weighted-start", "asymmetric-weighted-conjugate-start", "asymmetric-weighted-exp-start",
-                "asymmetric-softmax-start",
-                "asymmetric-softmax-geomean-start",
-                "asymmetric-softmax-geomean-k5-start",
-                "asymmetric-softmax-geomean-k8-start",
-                "asymmetric-softmax-geomean-k13-start",
-                "asymmetric-softmax-geomean-noadj-k3-start",
-                "asymmetric-softmax-geomean-noadj-k5-start",
-                "asymmetric-softmax-geomean-noadj-k8-start",
-                "asymmetric-softmax-geomean-noadj-k13-start",
-                "asymmetric-softmax-mean-k3-start",
-                "asymmetric-softmax-mean-k5-start",
-                "asymmetric-softmax-mean-k8-start",
-                "asymmetric-softmax-mean-k13-start",
+            for (const sqrtMean of [
                 "asymmetric-softmax-sqrtmean-k3-start",
                 "asymmetric-softmax-sqrtmean-k5-start",
                 "asymmetric-softmax-sqrtmean-k8-start",
                 "asymmetric-softmax-sqrtmean-k13-start",
             ]) {
-                it(`should place ${weighted} clouds within the bank limit (${target})`, () => {
+                it(`should place ${sqrtMean} clouds within the bank limit (${target})`, () => {
                     for (let run = 0; run < 10; run++) {
-                        const g = new CrosshairsGame(undefined, [weighted, ...extra]);
+                        const g = new CrosshairsGame(undefined, [sqrtMean, ...extra]);
 
                         expect(g.turnNumber).to.equal(1);
                         expect(g.clouds.size).to.be.at.most(target);
@@ -429,29 +355,15 @@ describe("Crosshairs", () => {
             expect(sawCentre).to.be.true;
         });
 
-        it("should place the full 16 weighted clouds on the default board", () => {
-            for (const weighted of [
-                "asymmetric-weighted-start", "asymmetric-weighted-conjugate-start", "asymmetric-weighted-exp-start",
-                "asymmetric-softmax-start",
-                "asymmetric-softmax-geomean-start",
-                "asymmetric-softmax-geomean-k5-start",
-                "asymmetric-softmax-geomean-k8-start",
-                "asymmetric-softmax-geomean-k13-start",
-                "asymmetric-softmax-geomean-noadj-k3-start",
-                "asymmetric-softmax-geomean-noadj-k5-start",
-                "asymmetric-softmax-geomean-noadj-k8-start",
-                "asymmetric-softmax-geomean-noadj-k13-start",
-                "asymmetric-softmax-mean-k3-start",
-                "asymmetric-softmax-mean-k5-start",
-                "asymmetric-softmax-mean-k8-start",
-                "asymmetric-softmax-mean-k13-start",
+        it("should place the full 16 square-root-mean clouds on the default board", () => {
+            for (const sqrtMean of [
                 "asymmetric-softmax-sqrtmean-k3-start",
                 "asymmetric-softmax-sqrtmean-k5-start",
                 "asymmetric-softmax-sqrtmean-k8-start",
                 "asymmetric-softmax-sqrtmean-k13-start",
             ]) {
                 for (let run = 0; run < 10; run++) {
-                    expect(new CrosshairsGame(undefined, [weighted]).clouds.size).to.equal(16);
+                    expect(new CrosshairsGame(undefined, [sqrtMean]).clouds.size).to.equal(16);
                 }
             }
         });
@@ -469,7 +381,7 @@ describe("Crosshairs", () => {
         });
 
         it("should have five open cells in every direction from the centre and a zero run on edge cells", () => {
-            const g = new CrosshairsGame(undefined, ["asymmetric-softmax-geomean-start"]);
+            const g = new CrosshairsGame(undefined, ["asymmetric-softmax-sqrtmean-k8-start"]);
             const centre = (g.graph.listCells() as string[]).find(cell => g.graph.rot180(cell) === cell)!;
             const rayLengths = (cell: string): number[] => {
                 const [x, y] = g.graph.algebraic2coords(cell);

@@ -17451,14 +17451,6 @@
     "src": "Asymmetric random clouds",
     "out": "Nuvole casuali asimmetriche"
   },
-  "variants.crosshairs.asymmetric-spread-start.description": {
-    "src": "There is no cloud placing phase. The system places the clouds without requiring symmetry using the designer's algorithm, which blocks open lines of fire first and then fills in the gaps.",
-    "out": "Non c'è alcuna fase di piazzamento delle nuvole. Il sistema piazza le nuvole senza richiedere simmetria utilizzando l'algoritmo dell'autore, che blocca prima le linee di tiro libere e poi riempie gli spazi vuoti."
-  },
-  "variants.crosshairs.asymmetric-spread-start.name": {
-    "src": "Asymmetric spread clouds",
-    "out": "Nuvole a diffusione asimmetrica"
-  },
   "variants.crosshairs.clouds-22.description": {
     "src": "Place 22 clouds instead of 16. With the default cloud bank size limit, the full count may not always be achievable.",
     "out": "Posiziona 22 nuvole invece di 16. Con il limite di dimensione predefinito per i banchi di nuvole, potrebbe non essere sempre possibile raggiungere il numero totale."
@@ -17490,14 +17482,6 @@
   "variants.crosshairs.random-start.name": {
     "src": "Symmetric random clouds",
     "out": "Nuvole casuali simmetriche"
-  },
-  "variants.crosshairs.spread-start.description": {
-    "src": "There is no cloud placing phase. The system places the clouds with 180-degree rotational symmetry using the designer's algorithm, which blocks open lines of fire first and then fills in the gaps.",
-    "out": "Non c'è alcuna fase di piazzamento delle nuvole. Il sistema piazza le nuvole con una simmetria rotazionale di 180 gradi utilizzando l'algoritmo dell'autore, che blocca prima le linee di tiro libere e poi riempie gli spazi vuoti."
-  },
-  "variants.crosshairs.spread-start.name": {
-    "src": "Symmetric spread clouds",
-    "out": "Nuvole a diffusione simmetrica"
   },
   "variants.crosshairs.turbulence.description": {
     "src": "Each time a plane enters a cloud, it loses 1 height.",

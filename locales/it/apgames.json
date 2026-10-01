@@ -1784,14 +1784,6 @@
         "name": "Nuvole casuali asimmetriche",
         "description": "Non c'è alcuna fase di posizionamento delle nuvole. Il sistema posiziona le nuvole in modo casuale senza richiedere simmetria."
       },
-      "spread-start": {
-        "name": "Nuvole a diffusione simmetrica",
-        "description": "Non c'è alcuna fase di piazzamento delle nuvole. Il sistema piazza le nuvole con una simmetria rotazionale di 180 gradi utilizzando l'algoritmo dell'autore, che blocca prima le linee di tiro libere e poi riempie gli spazi vuoti."
-      },
-      "asymmetric-spread-start": {
-        "name": "Nuvole a diffusione asimmetrica",
-        "description": "Non c'è alcuna fase di piazzamento delle nuvole. Il sistema piazza le nuvole senza richiedere simmetria utilizzando l'algoritmo dell'autore, che blocca prima le linee di tiro libere e poi riempie gli spazi vuoti."
-      },
       "unbounded-cloud-banks": {
         "name": "Banchi di nuvole illimitati",
         "description": "I banchi di nuvole possono contenere qualsiasi numero di nuvole."

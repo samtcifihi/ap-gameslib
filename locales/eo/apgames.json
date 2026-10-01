@@ -1302,14 +1302,6 @@
                 "name": "Nesimetriaj hazardaj nuboj",
                 "description": "Ne estas fazo por meti nubojn. La sistemo hazarde metas ilin sen postuli simetrion."
             },
-            "spread-start": {
-                "name": "Simetriaj disvastigitaj nuboj",
-                "description": "Ne estas fazo por meti nubojn. La sistemo metas ilin kun rotacia simetrio je 180 gradoj laŭ la algoritmo de la aŭtoro, kiu unue baras liberajn pafliniojn kaj poste plenigas la breĉojn."
-            },
-            "asymmetric-spread-start": {
-                "name": "Nesimetriaj disvastigitaj nuboj",
-                "description": "Ne estas fazo por meti nubojn. La sistemo metas ilin sen postuli simetrion laŭ la algoritmo de la aŭtoro, kiu unue baras liberajn pafliniojn kaj poste plenigas la breĉojn."
-            },
       "split-start": {
         "name": "Simetriaj dividaj nuboj",
         "description": "Ne estas fazo por meti nubojn. La sistemo metas nubojn en paroj kun rotacia simetrio je 180 gradoj for de la rando de la tabulo, ĉiufoje elektante inter la ĉeloj, kiuj plej egale dividas liberan paflinion. Nubo en la centro kalkuliĝas kiel paro, do al la tabulo mankas unu nubo. Postulas Senlimajn nubarojn."
@@ -1317,70 +1309,6 @@
       "asymmetric-split-start": {
         "name": "Nesimetriaj dividaj nuboj",
         "description": "Ne estas fazo por meti nubojn. La sistemo metas nubojn unu post alia for de la rando de la tabulo, ĉiufoje elektante inter la ĉeloj, kiuj plej egale dividas liberan paflinion. Postulas Senlimajn nubarojn."
-      },
-      "asymmetric-weighted-start": {
-        "name": "Nesimetriaj pezitaj nuboj",
-        "description": "Ne estas fazo por meti nubojn. La sistemo metas nubojn unu post alia sen postuli simetrion, hazarde sed forte preferante ĉelojn, kiuj rompas longajn liberajn pafliniojn, kaj evitante la randon de la tabulo kaj ekzistantajn nubojn."
-      },
-      "asymmetric-weighted-conjugate-start": {
-        "name": "Nesimetriaj pezitaj nuboj (konjugitaj)",
-        "description": "Ne estas fazo por meti nubojn. La sistemo metas nubojn unu post alia sen postuli simetrion, hazarde preferante ĉelojn, kiuj rompas longajn liberajn pafliniojn, kaj evitante la randon de la tabulo kaj ekzistantajn nubojn. Kompare kun Nesimetriaj pezitaj nuboj, ĝi malpli akre preferas la plej bonajn ĉelojn, sed pli forte evitas la plej malbonajn."
-      },
-      "asymmetric-weighted-exp-start": {
-        "name": "Nesimetriaj pezitaj nuboj (eksponentaj)",
-        "description": "Ne estas fazo por meti nubojn. La sistemo metas nubojn unu post alia sen postuli simetrion, hazarde sed plej forte el la pezitaj elektoj preferante ĉelojn, kiuj rompas longajn liberajn pafliniojn, kaj evitante la randon de la tabulo kaj ekzistantajn nubojn. La ŝanco de ĉiu ĉelo estas proporcia al e potencigita al ĝia poentaro."
-      },
-      "asymmetric-softmax-start": {
-        "name": "Nesimetriaj pezitaj nuboj (softmax)",
-        "description": "Ne estas fazo por meti nubojn. La sistemo metas nubojn unu post alia sen postuli simetrion, hazarde preferante ĉelojn, kiuj rompas longajn liberajn pafliniojn, kaj evitante la randon de la tabulo. Kiel Nesimetriaj pezitaj nuboj (eksponentaj), sed apudaj nuboj estas nur iomete malinstigataj, do nubaroj formiĝas pli ofte."
-      },
-      "asymmetric-softmax-geomean-start": {
-        "name": "Nesimetriaj pezitaj nuboj (softmax, geometria meznombro)",
-        "description": "Ne estas fazo por meti nubojn. La sistemo metas nubojn unu post alia sen postuli simetrion, hazarde preferante ĉelojn kun longaj liberaj paflinioj en ĉiuj ses direktoj. Ĉelo apud nubo aŭ ĉe la rando de la tabulo ricevas neniun krediton por liberaj linioj."
-      },
-      "asymmetric-softmax-geomean-k5-start": {
-        "name": "Nesimetriaj pezitaj nuboj (geometria meznombro, malvasta bruo, k=5)",
-        "description": "Kiel Nesimetriaj pezitaj nuboj (softmax, geometria meznombro), sed kun triono de la hazarda bruo kaj elekta akreco 5. Pli alta akreco pli fidinde rompas liberajn pafliniojn."
-      },
-      "asymmetric-softmax-geomean-k8-start": {
-        "name": "Nesimetriaj pezitaj nuboj (geometria meznombro, malvasta bruo, k=8)",
-        "description": "Kiel Nesimetriaj pezitaj nuboj (softmax, geometria meznombro), sed kun triono de la hazarda bruo kaj elekta akreco 8. Pli alta akreco pli fidinde rompas liberajn pafliniojn."
-      },
-      "asymmetric-softmax-geomean-k13-start": {
-        "name": "Nesimetriaj pezitaj nuboj (geometria meznombro, malvasta bruo, k=13)",
-        "description": "Kiel Nesimetriaj pezitaj nuboj (softmax, geometria meznombro), sed kun triono de la hazarda bruo kaj elekta akreco 13. Pli alta akreco pli fidinde rompas liberajn pafliniojn."
-      },
-      "asymmetric-softmax-geomean-noadj-k3-start": {
-        "name": "Nesimetriaj pezitaj nuboj (geometria meznombro, malvasta bruo, sen apudeca puno, k=3)",
-        "description": "Kiel Nesimetriaj pezitaj nuboj (geometria meznombro, malvasta bruo, k=3), sed sen aldona puno por tuŝi ekzistantan nubon, do nuboj pli ofte tuŝas unu la alian."
-      },
-      "asymmetric-softmax-geomean-noadj-k5-start": {
-        "name": "Nesimetriaj pezitaj nuboj (geometria meznombro, malvasta bruo, sen apudeca puno, k=5)",
-        "description": "Kiel Nesimetriaj pezitaj nuboj (geometria meznombro, malvasta bruo, k=5), sed sen aldona puno por tuŝi ekzistantan nubon, do nuboj pli ofte tuŝas unu la alian."
-      },
-      "asymmetric-softmax-geomean-noadj-k8-start": {
-        "name": "Nesimetriaj pezitaj nuboj (geometria meznombro, malvasta bruo, sen apudeca puno, k=8)",
-        "description": "Kiel Nesimetriaj pezitaj nuboj (geometria meznombro, malvasta bruo, k=8), sed sen aldona puno por tuŝi ekzistantan nubon, do nuboj pli ofte tuŝas unu la alian."
-      },
-      "asymmetric-softmax-geomean-noadj-k13-start": {
-        "name": "Nesimetriaj pezitaj nuboj (geometria meznombro, malvasta bruo, sen apudeca puno, k=13)",
-        "description": "Kiel Nesimetriaj pezitaj nuboj (geometria meznombro, malvasta bruo, k=13), sed sen aldona puno por tuŝi ekzistantan nubon, do nuboj pli ofte tuŝas unu la alian."
-      },
-      "asymmetric-softmax-mean-k3-start": {
-        "name": "Nesimetriaj pezitaj nuboj (aritmetika meznombro, malvasta bruo, k=3)",
-        "description": "Ne estas fazo por meti nubojn. La sistemo metas nubojn unu post alia sen postuli simetrion, hazarde preferante ĉelojn sur longaj liberaj paflinioj, juĝante laŭ la meza libera distanco en la ses direktoj, kun elekta akreco 3. Ne estas aldona puno por la rando de la tabulo aŭ por tuŝi nubon."
-      },
-      "asymmetric-softmax-mean-k5-start": {
-        "name": "Nesimetriaj pezitaj nuboj (aritmetika meznombro, malvasta bruo, k=5)",
-        "description": "Ne estas fazo por meti nubojn. La sistemo metas nubojn unu post alia sen postuli simetrion, hazarde preferante ĉelojn sur longaj liberaj paflinioj, juĝante laŭ la meza libera distanco en la ses direktoj, kun elekta akreco 5. Ne estas aldona puno por la rando de la tabulo aŭ por tuŝi nubon."
-      },
-      "asymmetric-softmax-mean-k8-start": {
-        "name": "Nesimetriaj pezitaj nuboj (aritmetika meznombro, malvasta bruo, k=8)",
-        "description": "Ne estas fazo por meti nubojn. La sistemo metas nubojn unu post alia sen postuli simetrion, hazarde preferante ĉelojn sur longaj liberaj paflinioj, juĝante laŭ la meza libera distanco en la ses direktoj, kun elekta akreco 8. Ne estas aldona puno por la rando de la tabulo aŭ por tuŝi nubon."
-      },
-      "asymmetric-softmax-mean-k13-start": {
-        "name": "Nesimetriaj pezitaj nuboj (aritmetika meznombro, malvasta bruo, k=13)",
-        "description": "Ne estas fazo por meti nubojn. La sistemo metas nubojn unu post alia sen postuli simetrion, hazarde preferante ĉelojn sur longaj liberaj paflinioj, juĝante laŭ la meza libera distanco en la ses direktoj, kun elekta akreco 13. Ne estas aldona puno por la rando de la tabulo aŭ por tuŝi nubon."
       },
       "asymmetric-softmax-sqrtmean-k3-start": {
         "name": "Nesimetriaj pezitaj nuboj (radika meznombro, malvasta bruo, k=3)",

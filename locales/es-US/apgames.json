@@ -1784,14 +1784,6 @@
         "name": "Nubes aleatorias asimétricas",
         "description": "No hay fase de colocación de nubes. El sistema coloca las nubes al azar sin requerir simetría."
       },
-      "spread-start": {
-        "name": "Nubes dispersas simétricas",
-        "description": "No hay fase de colocación de nubes. El sistema coloca las nubes con una simetría rotacional de 180 grados utilizando el algoritmo del diseñador, el cual bloquea primero las líneas de fuego abiertas y luego llena los espacios vacíos."
-      },
-      "asymmetric-spread-start": {
-        "name": "Nubes dispersas asimétricas",
-        "description": "No hay fase de colocación de nubes. El sistema coloca las nubes sin requerir simetría utilizando el algoritmo del diseñador, el cual bloquea primero las líneas de fuego abiertas y luego llena los espacios vacíos."
-      },
       "unbounded-cloud-banks": {
         "name": "Bancos de nubes ilimitados",
         "description": "Los bancos de nubes pueden contener cualquier cantidad de nubes."
