@@ -4,6 +4,7 @@ import { expect } from "chai";
 import i18next from "i18next";
 import { addResource } from "../../src";
 import { ArimaaGame, resolveGameFlags } from '../../src/games';
+import { dieSquare } from "../../src/games/arimaa/dice";
 
 describe("Arimaa", () => {
     before(() => {
@@ -1112,7 +1113,8 @@ describe("Arimaa Dicey Moves", () => {
             Math.random = original;
         }
     };
-    // a free setup with the die cast for Gold's first move
+    // a free setup with Gold's pieces placed; Silver's placement then casts
+    // the die for Gold's first move
     const freeStart = (): ArimaaGame => {
         const g = new ArimaaGame(undefined, ["free", "dicey"]);
         g.move("Ed2, Ra2");
@@ -1156,13 +1158,13 @@ describe("Arimaa Dicey Moves", () => {
         };
         // b4 scores 5 + 2 + 3/8 + 1/6. That beats b5 and a4, which have e4
         // four steps away rather than three, though both are read first.
-        expect(ArimaaGame.dieSquare(boardWithout("a4", "a5", "b4", "b5", "e4"))).to.equal("b4");
+        expect(dieSquare(boardWithout("a4", "a5", "b4", "b5", "e4"))).to.equal("b4");
         // an empty trap can take the die
-        expect(ArimaaGame.dieSquare(boardWithout("c3"))).to.equal("c3");
+        expect(dieSquare(boardWithout("c3"))).to.equal("c3");
         // but it counts as full in its own openness, so even a corner beats it
-        expect(ArimaaGame.dieSquare(boardWithout("c3", "a1"))).to.equal("a1");
+        expect(dieSquare(boardWithout("c3", "a1"))).to.equal("a1");
         // with every square full, the die sits under the piece on d4
-        expect(ArimaaGame.dieSquare(boardWithout())).to.equal("d4");
+        expect(dieSquare(boardWithout())).to.equal("d4");
     });
 
     it("caps a d6 at four steps", () => {

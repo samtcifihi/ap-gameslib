@@ -6,6 +6,7 @@ import { randomInt, RectGrid, reviver, shuffle, SquareOrthGraph, UserFacingError
 import i18next from "i18next";
 import { arrowToken, captureToken, isArrow, isLegacy, isMark, isHold, joinMove, normalize, parseMove, pieceChar, holdToken, tokenText, NotationError, type ParsedMove, type Token } from "./arimaa/notation.js";
 import { hasAnyMove, inferred, resolve, serializeTurn, sqName, turnFromSteps, type Turn } from "./arimaa/turns.js";
+import { castDie, type IDie } from "./arimaa/dice.js";
 
 export type playerid = 1|2;
 export type Piece = "E" | "M" | "H" | "D" | "C" | "R";
@@ -21,19 +22,12 @@ export const pc2name = new Map<Piece, string>([
 ]);
 const traps = ["f3", "f6", "c3", "c6"];
 
-// Dicey Moves: the die cast for a turn
-export interface IDie {
-    // steps the mover may take
-    steps: number;
-    // the empty square it is shown on until a piece covers it
-    square: string;
-}
-
 export interface IMoveState extends IIndividualState {
     currplayer: playerid;
     board: Map<string, CellContents>;
     lastmove?: string;
     hands?: [Piece[], Piece[]];
+    /** Dicey Moves: the die for the turn starting here; absent during setup, in other variants, and once a move has ended the game */
     die?: IDie;
 };
 
@@ -226,70 +220,6 @@ export class ArimaaGame extends GameBase {
         return {gold: combinedGold, silver: combinedSilver};
     }
 
-    // Dicey Moves: the die for a turn. A d6 capped at four: one, two and
-    // three steps come up a sixth of the time each, four the other half. The
-    // opening move of Endless endgame is half a turn, so its die is one or
-    // two, evenly, which halves both the maximum and the mean.
-    private static castDie(board: Map<string, CellContents>, opening = false): IDie {
-        const steps = opening ? randomInt(2, 1) : Math.min(4, randomInt(6, 1));
-        return {steps, square: ArimaaGame.dieSquare(board)};
-    }
-
-    // Where the die sits for a turn: the empty square, traps included, with
-    // the highest openness, the first found among equals, reading from rank 8
-    // down and from a to h. Openness sums f(a) = SE(a) * (5 - a) / S(a) for a
-    // from 0 to 4: SE(a) counts the empty squares exactly a steps away, the
-    // square itself for a = 0, and S(a) counts every square that far, those
-    // off the board included, so it is 1 for a = 0 and 4a otherwise. Traps
-    // and squares off the board count as full. Chosen once from the position
-    // the turn starts in, so a piece that arrives there covers it.
-    public static dieSquare(board: Map<string, CellContents>): string {
-        const empty = (x: number, y: number): boolean => {
-            if (x < 0 || x > 7 || y < 0 || y > 7) {
-                return false;
-            }
-            const cell = ArimaaGame.coords2algebraic(x, y);
-            return !board.has(cell) && !traps.includes(cell);
-        };
-        // S(a)
-        const ringSize = (a: number): number => a === 0 ? 1 : 4 * a;
-        // Openness is kept in 48ths, 48 being the least common multiple of
-        // S(0) to S(4), so every term is a whole number and equal values
-        // compare as equal.
-        const unit = 48;
-        let best: string|undefined;
-        let bestOpenness = -Infinity;
-        for (let row = 0; row < 8; row++) {
-            for (let col = 0; col < 8; col++) {
-                const cell = ArimaaGame.coords2algebraic(col, row);
-                if (board.has(cell)) {
-                    continue;
-                }
-                let openness = 0;
-                for (let a = 0; a < 5; a++) {
-                    // SE(a), walking the ring of squares exactly a steps away
-                    let emptyInRing = 0;
-                    for (let dx = -a; dx <= a; dx++) {
-                        const dy = a - Math.abs(dx);
-                        if (empty(col + dx, row + dy)) {
-                            emptyInRing++;
-                        }
-                        if (dy > 0 && empty(col + dx, row - dy)) {
-                            emptyInRing++;
-                        }
-                    }
-                    openness += emptyInRing * (5 - a) * unit / ringSize(a);
-                }
-                if (openness > bestOpenness) {
-                    bestOpenness = openness;
-                    best = cell;
-                }
-            }
-        }
-        // only a free setup can fill every square; the die then sits under a piece
-        return best ?? "d4";
-    }
-
     // strip any parentheticals and just return the base move
     private static baseMove(mv: string): [Piece, playerid, string?, string?] {
         mv = mv.replace(/\s+/g, "");
@@ -321,6 +251,7 @@ export class ArimaaGame extends GameBase {
     public currplayer: playerid = 1;
     public board!: Map<string, CellContents>;
     public hands?: [Piece[], Piece[]];
+    // Dicey Moves: the die for the turn in progress
     public die?: IDie;
     public lastmove?: string;
     public gameover = false;
@@ -361,12 +292,10 @@ export class ArimaaGame extends GameBase {
                 ];
             }
 
-            // only Endless endgame opens with a move; the other setups cast
-            // their first die once the pieces are down
-            let die: IDie|undefined;
-            if (this.variants.includes("dicey") && this.variants.includes("eee")) {
-                die = ArimaaGame.castDie(board, true);
-            }
+            // Dicey Moves: only Endless endgame opens with a move, and that move
+            // is half a turn; the other setups cast their first die in move()
+            // once the pieces are down
+            const die = this.variants.includes("dicey") && this.variants.includes("eee") ? castDie(board, "opening") : undefined;
 
             const fresh: IMoveState = {
                 _version: ArimaaGame.gameinfo.version,
@@ -838,6 +767,7 @@ export class ArimaaGame extends GameBase {
             }
             result.canrender = true;
             result.message = i18next.t("apgames:validation.arimaa.INITIAL_INSTRUCTIONS", {context: (this.hands !== undefined && this.hands[this.currplayer - 1].length > 0) ? "place" : "play"});
+            // Dicey Moves: lead with what the die allows
             if (this.die !== undefined) {
                 result.message = [i18next.t("apgames:validation.arimaa.DIE", {count: this.die.steps}), result.message].join(" ");
             }
@@ -1402,7 +1332,8 @@ export class ArimaaGame extends GameBase {
         const initial = this.clone(); // used to triple check that the board state changes
         const lastmove: string[] = [];
         this.results = [];
-        // the die that governs this turn heads its record
+        // Dicey Moves: the die that governs this turn heads its results, which
+        // is how the roll reaches the move log and the game record
         if (this.die !== undefined) {
             this.results.push({type: "roll", values: [this.die.steps]});
         }
@@ -1479,13 +1410,12 @@ export class ArimaaGame extends GameBase {
         }
         this.currplayer = newplayer as playerid;
 
-        // Dicey Moves: the coming turn's die is cast before the game-over
-        // checks, which need to know how many steps the mover will have
-        if (this.variants.includes("dicey") && this.hands === undefined) {
-            this.die = ArimaaGame.castDie(this.board);
-        } else {
-            this.die = undefined;
-        }
+        // Dicey Moves: cast the die for the turn about to start, once setup is
+        // over and no hands are left. It comes before the game-over checks,
+        // which need its allowance to tell whether the next player can move
+        // at all, and is cleared if the game has ended. Partial moves have
+        // already returned, so the die never changes while a move is entered.
+        this.die = this.variants.includes("dicey") && this.hands === undefined ? castDie(this.board) : undefined;
         this.checkEOG();
         if (this.gameover) {
             this.die = undefined;
@@ -1831,7 +1761,8 @@ export class ArimaaGame extends GameBase {
             areas,
         };
 
-        // Dicey Moves: the turn's die, drawn under whatever moves onto its square
+        // Dicey Moves: the turn's die, one of the renderer's d6 faces, drawn as
+        // a board marker so that a piece moving onto its square covers it
         if (this.die !== undefined) {
             legend.DIE = {
                 name: `d6-${this.die.steps}`,
@@ -1971,6 +1902,7 @@ export class ArimaaGame extends GameBase {
                 this.pushNeutralChatLine(lines, "apresults:ANNOUNCE.arimaa");
                 return true;
             case "roll":
+                // Dicey Moves: the die that governed the turn
                 this.pushSeatChatLine(lines, ctx.defaultSeat, "apresults:ROLL.arimaa", {count: r.values[0]});
                 return true;
             default:
