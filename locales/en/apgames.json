@@ -1848,6 +1848,22 @@
                 "name": "Asymmetric weighted clouds (geometric mean, narrow noise, no adjacency penalty, k=13)",
                 "description": "Like Asymmetric weighted clouds (geometric mean, narrow noise, k=13), but with no extra penalty for touching an existing cloud, so clouds touch more often."
             },
+            "asymmetric-softmax-mean-k3-start": {
+                "name": "Asymmetric weighted clouds (arithmetic mean, narrow noise, k=3)",
+                "description": "There is no cloud placing phase. The system places clouds one at a time without requiring symmetry, randomly favouring cells on long open lines of fire, judged by the average open run in the six directions, with a selection sharpness of 3. There is no extra penalty for the board edge or for touching a cloud."
+            },
+            "asymmetric-softmax-mean-k5-start": {
+                "name": "Asymmetric weighted clouds (arithmetic mean, narrow noise, k=5)",
+                "description": "There is no cloud placing phase. The system places clouds one at a time without requiring symmetry, randomly favouring cells on long open lines of fire, judged by the average open run in the six directions, with a selection sharpness of 5. There is no extra penalty for the board edge or for touching a cloud."
+            },
+            "asymmetric-softmax-mean-k8-start": {
+                "name": "Asymmetric weighted clouds (arithmetic mean, narrow noise, k=8)",
+                "description": "There is no cloud placing phase. The system places clouds one at a time without requiring symmetry, randomly favouring cells on long open lines of fire, judged by the average open run in the six directions, with a selection sharpness of 8. There is no extra penalty for the board edge or for touching a cloud."
+            },
+            "asymmetric-softmax-mean-k13-start": {
+                "name": "Asymmetric weighted clouds (arithmetic mean, narrow noise, k=13)",
+                "description": "There is no cloud placing phase. The system places clouds one at a time without requiring symmetry, randomly favouring cells on long open lines of fire, judged by the average open run in the six directions, with a selection sharpness of 13. There is no extra penalty for the board edge or for touching a cloud."
+            },
             "unbounded-cloud-banks": {
                 "name": "Unbounded cloud banks",
                 "description": "Cloud banks may contain any number of clouds."

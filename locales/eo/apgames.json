@@ -1366,6 +1366,22 @@
         "name": "Nesimetriaj pezitaj nuboj (geometria meznombro, malvasta bruo, sen apudeca puno, k=13)",
         "description": "Kiel Nesimetriaj pezitaj nuboj (geometria meznombro, malvasta bruo, k=13), sed sen aldona puno por tuŝi ekzistantan nubon, do nuboj pli ofte tuŝas unu la alian."
       },
+      "asymmetric-softmax-mean-k3-start": {
+        "name": "Nesimetriaj pezitaj nuboj (aritmetika meznombro, malvasta bruo, k=3)",
+        "description": "Ne estas fazo por meti nubojn. La sistemo metas nubojn unu post alia sen postuli simetrion, hazarde preferante ĉelojn sur longaj liberaj paflinioj, juĝante laŭ la meza libera distanco en la ses direktoj, kun elekta akreco 3. Ne estas aldona puno por la rando de la tabulo aŭ por tuŝi nubon."
+      },
+      "asymmetric-softmax-mean-k5-start": {
+        "name": "Nesimetriaj pezitaj nuboj (aritmetika meznombro, malvasta bruo, k=5)",
+        "description": "Ne estas fazo por meti nubojn. La sistemo metas nubojn unu post alia sen postuli simetrion, hazarde preferante ĉelojn sur longaj liberaj paflinioj, juĝante laŭ la meza libera distanco en la ses direktoj, kun elekta akreco 5. Ne estas aldona puno por la rando de la tabulo aŭ por tuŝi nubon."
+      },
+      "asymmetric-softmax-mean-k8-start": {
+        "name": "Nesimetriaj pezitaj nuboj (aritmetika meznombro, malvasta bruo, k=8)",
+        "description": "Ne estas fazo por meti nubojn. La sistemo metas nubojn unu post alia sen postuli simetrion, hazarde preferante ĉelojn sur longaj liberaj paflinioj, juĝante laŭ la meza libera distanco en la ses direktoj, kun elekta akreco 8. Ne estas aldona puno por la rando de la tabulo aŭ por tuŝi nubon."
+      },
+      "asymmetric-softmax-mean-k13-start": {
+        "name": "Nesimetriaj pezitaj nuboj (aritmetika meznombro, malvasta bruo, k=13)",
+        "description": "Ne estas fazo por meti nubojn. La sistemo metas nubojn unu post alia sen postuli simetrion, hazarde preferante ĉelojn sur longaj liberaj paflinioj, juĝante laŭ la meza libera distanco en la ses direktoj, kun elekta akreco 13. Ne estas aldona puno por la rando de la tabulo aŭ por tuŝi nubon."
+      },
             "unbounded-cloud-banks": {
                 "name": "Senlimaj nubaroj",
                 "description": "Nubaroj povas enhavi ajnan nombron da nuboj."

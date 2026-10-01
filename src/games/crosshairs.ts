@@ -126,16 +126,24 @@ export class CrosshairsGame extends GameBase {
     // only spans [0, 1] against noise spanning [-1.5, 1.5], so k = 1 is close
     // to uniform; simulations suggest 4 to 8 for clearly line-breaking boards.
     private static readonly SOFTMAX_GEOMEAN_SETUP_K = 1;
-    // Softmax sharpness and adjacency penalty for each geometric-mean setup
-    // with narrowed noise (Beta(2,2) - 0.5, so [-0.5, 0.5]), keyed by uid.
-    private static readonly SOFTMAX_GEOMEAN_NARROW_SETUPS: ReadonlyMap<string, { k: number; adjacentPenalty: number }> = new Map([
-        ["asymmetric-softmax-geomean-k5-start", { k: 5, adjacentPenalty: 1 / 6 }],
-        ["asymmetric-softmax-geomean-k8-start", { k: 8, adjacentPenalty: 1 / 6 }],
-        ["asymmetric-softmax-geomean-k13-start", { k: 13, adjacentPenalty: 1 / 6 }],
-        ["asymmetric-softmax-geomean-noadj-k3-start", { k: 3, adjacentPenalty: 0 }],
-        ["asymmetric-softmax-geomean-noadj-k5-start", { k: 5, adjacentPenalty: 0 }],
-        ["asymmetric-softmax-geomean-noadj-k8-start", { k: 8, adjacentPenalty: 0 }],
-        ["asymmetric-softmax-geomean-noadj-k13-start", { k: 13, adjacentPenalty: 0 }],
+    // Line score, softmax sharpness and adjacency penalty for each six-direction
+    // softmax setup with narrowed noise (Beta(2,2) - 0.5, so [-0.5, 0.5]) and
+    // no edge penalty, keyed by uid.
+    private static readonly SOFTMAX_NARROW_SETUPS: ReadonlyMap<
+        string,
+        { lineScore: "geomean6" | "mean6"; k: number; adjacentPenalty: number }
+    > = new Map([
+        ["asymmetric-softmax-geomean-k5-start", { lineScore: "geomean6", k: 5, adjacentPenalty: 1 / 6 }],
+        ["asymmetric-softmax-geomean-k8-start", { lineScore: "geomean6", k: 8, adjacentPenalty: 1 / 6 }],
+        ["asymmetric-softmax-geomean-k13-start", { lineScore: "geomean6", k: 13, adjacentPenalty: 1 / 6 }],
+        ["asymmetric-softmax-geomean-noadj-k3-start", { lineScore: "geomean6", k: 3, adjacentPenalty: 0 }],
+        ["asymmetric-softmax-geomean-noadj-k5-start", { lineScore: "geomean6", k: 5, adjacentPenalty: 0 }],
+        ["asymmetric-softmax-geomean-noadj-k8-start", { lineScore: "geomean6", k: 8, adjacentPenalty: 0 }],
+        ["asymmetric-softmax-geomean-noadj-k13-start", { lineScore: "geomean6", k: 13, adjacentPenalty: 0 }],
+        ["asymmetric-softmax-mean-k3-start", { lineScore: "mean6", k: 3, adjacentPenalty: 0 }],
+        ["asymmetric-softmax-mean-k5-start", { lineScore: "mean6", k: 5, adjacentPenalty: 0 }],
+        ["asymmetric-softmax-mean-k8-start", { lineScore: "mean6", k: 8, adjacentPenalty: 0 }],
+        ["asymmetric-softmax-mean-k13-start", { lineScore: "mean6", k: 13, adjacentPenalty: 0 }],
     ]);
 
     public static readonly gameinfo: APGamesInformation = {
@@ -257,6 +265,26 @@ export class CrosshairsGame extends GameBase {
                 experimental: true,
             },
             {
+                uid: "asymmetric-softmax-mean-k3-start",
+                group: "setup",
+                experimental: true,
+            },
+            {
+                uid: "asymmetric-softmax-mean-k5-start",
+                group: "setup",
+                experimental: true,
+            },
+            {
+                uid: "asymmetric-softmax-mean-k8-start",
+                group: "setup",
+                experimental: true,
+            },
+            {
+                uid: "asymmetric-softmax-mean-k13-start",
+                group: "setup",
+                experimental: true,
+            },
+            {
                 uid: "unbounded-cloud-banks",
             },
             {
@@ -341,13 +369,13 @@ export class CrosshairsGame extends GameBase {
                     k: CrosshairsGame.SOFTMAX_GEOMEAN_SETUP_K,
                 });
             } else {
-                const narrow = [...CrosshairsGame.SOFTMAX_GEOMEAN_NARROW_SETUPS]
+                const narrow = [...CrosshairsGame.SOFTMAX_NARROW_SETUPS]
                     .find(([uid]) => this.variants.includes(uid))?.[1];
                 if (narrow !== undefined) {
                     placedClouds = this.placeWeightedClouds("exp", {
                         edgePenalty: 0,
                         adjacentPenalty: narrow.adjacentPenalty,
-                        lineScore: "geomean6",
+                        lineScore: narrow.lineScore,
                         noiseScale: 1,
                         k: narrow.k,
                     });
@@ -613,7 +641,7 @@ export class CrosshairsGame extends GameBase {
         }: {
             edgePenalty?: number;
             adjacentPenalty?: number;
-            lineScore?: "rms3" | "geomean6";
+            lineScore?: "rms3" | "geomean6" | "mean6";
             noiseScale?: number;
             k?: number;
         } = {},
@@ -629,10 +657,19 @@ export class CrosshairsGame extends GameBase {
         // makes it 0. Clouds only shorten runs, so the empty board gives the
         // maximum, reached at the centre: 5 on the side-6 board, where every
         // direction from the centre runs 5 cells to the edge.
+        //
+        // "mean6": the arithmetic mean of the same six runs, likewise divided
+        // by its empty-board maximum (also 5 at the centre, where every run is
+        // 5). Opposite runs on an axis add up to that line's open length, so
+        // this rewards cells on long open lines wherever they sit along them,
+        // and a zero run in one direction only costs that one direction.
         const geomean = (cellRays: string[][], blocked: Set<string>): number =>
             cellRays.reduce((product, ray) => product * this.openLength(ray, blocked), 1) ** (1 / 6);
+        const mean = (cellRays: string[][], blocked: Set<string>): number =>
+            cellRays.reduce((sum, ray) => sum + this.openLength(ray, blocked), 0) / 6;
         const noClouds = new Set<string>();
         const geomeanMax = Math.max(...cells.map(cell => geomean(rays.get(cell)!, noClouds)));
+        const meanMax = Math.max(...cells.map(cell => mean(rays.get(cell)!, noClouds)));
 
         // The median of three uniform samples is Beta(2,2)-distributed.
         const sampleBeta22 = (): number =>
@@ -648,6 +685,8 @@ export class CrosshairsGame extends GameBase {
                 s -= adjacentPenalty * cellRays.filter(ray => ray.length > 0 && clouds.has(ray[0])).length;
                 if (lineScore === "geomean6") {
                     s += geomean(cellRays, clouds) / geomeanMax;
+                } else if (lineScore === "mean6") {
+                    s += mean(cellRays, clouds) / meanMax;
                 } else {
                     let sumOfSquares = 0;
                     for (let axis = 0; axis < 3; axis++) {
