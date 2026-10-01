@@ -184,6 +184,11 @@ export class CrosshairsGame extends GameBase {
                 experimental: true,
             },
             {
+                uid: "asymmetric-weighted-conjugate-start",
+                group: "setup",
+                experimental: true,
+            },
+            {
                 uid: "unbounded-cloud-banks",
             },
             {
@@ -250,7 +255,9 @@ export class CrosshairsGame extends GameBase {
             } else if (this.variants.includes("split-start")) {
                 placedClouds = this.placeSplitClouds(true);
             } else if (this.variants.includes("asymmetric-weighted-start")) {
-                placedClouds = this.placeWeightedClouds();
+                placedClouds = this.placeWeightedClouds(false);
+            } else if (this.variants.includes("asymmetric-weighted-conjugate-start")) {
+                placedClouds = this.placeWeightedClouds(true);
             }
             if (placedClouds !== undefined) {
                 for (const cell of placedClouds) {
@@ -491,11 +498,12 @@ export class CrosshairsGame extends GameBase {
     // bank-size rule is scored: -1 on the edge, -1 per adjacent cloud, plus
     // the root mean square over the three axes of the shorter open run to
     // either side, plus Beta(2,2) noise scaled to [-1.5, 1.5]. Non-negative
-    // scores become e^s and negative ones s + 1, which meet with matching
-    // slope at 0 so a score crossing zero doesn't jump. All are then shifted
-    // so the lowest is 1, and one cell is drawn in proportion. If no cell
-    // qualifies, the board is returned as it stands.
-    private placeWeightedClouds(): string[] {
+    // scores become e^s. Negative ones become s + 1, or 2 - e^-s in conjugate
+    // mode; either way the two pieces meet with matching value and slope at 0,
+    // so a score crossing zero doesn't jump. All are then shifted so the
+    // lowest is 1, and one cell is drawn in proportion. If no cell qualifies,
+    // the board is returned as it stands.
+    private placeWeightedClouds(conjugate: boolean): string[] {
         const rays = this.getAllCellRays();
         const cells = this.graph.listCells() as string[];
         const clouds = new Set<string>();
@@ -524,7 +532,7 @@ export class CrosshairsGame extends GameBase {
                 s += Math.sqrt(sumOfSquares / 3);
                 s += (sampleBeta22() - 0.5) * 3;
                 candidates.push(cell);
-                transformed.push(s >= 0 ? Math.exp(s) : s + 1);
+                transformed.push(s >= 0 ? Math.exp(s) : conjugate ? 2 - Math.exp(-s) : s + 1);
             }
             if (candidates.length === 0) break;
 

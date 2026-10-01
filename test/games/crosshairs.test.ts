@@ -191,6 +191,7 @@ describe("Crosshairs", () => {
                 "split-start",
                 "asymmetric-split-start",
                 "asymmetric-weighted-start",
+                "asymmetric-weighted-conjugate-start",
             ]);
             expect(setupVariants.find(variant => variant.uid === "random-start")!.name)
                 .to.equal("Symmetric random clouds");
@@ -296,7 +297,7 @@ describe("Crosshairs", () => {
             return ["N", "NE", "SE", "S", "SW", "NW"].some(dir => getRay(x, y, dir).length === 0);
         };
 
-        it("should keep prod setups unflagged and mark the five newer setups experimental", () => {
+        it("should keep prod setups unflagged and mark the newer setups experimental", () => {
             const setup = CrosshairsGame.gameinfo.variants!.filter(v => v.group === "setup");
             const experimental = setup.filter(v => v.experimental).map(v => v.uid);
 
@@ -304,7 +305,7 @@ describe("Crosshairs", () => {
                 .to.deep.equal(["random-start", "asymmetric-random-start"]);
             expect(experimental).to.deep.equal([
                 "spread-start", "asymmetric-spread-start", "split-start",
-                "asymmetric-split-start", "asymmetric-weighted-start",
+                "asymmetric-split-start", "asymmetric-weighted-start", "asymmetric-weighted-conjugate-start",
             ]);
         });
 
@@ -344,15 +345,17 @@ describe("Crosshairs", () => {
                 }
             });
 
-            it(`should place weighted clouds within the bank limit (${target})`, () => {
-                for (let run = 0; run < 10; run++) {
-                    const g = new CrosshairsGame(undefined, ["asymmetric-weighted-start", ...extra]);
+            for (const weighted of ["asymmetric-weighted-start", "asymmetric-weighted-conjugate-start"]) {
+                it(`should place ${weighted} clouds within the bank limit (${target})`, () => {
+                    for (let run = 0; run < 10; run++) {
+                        const g = new CrosshairsGame(undefined, [weighted, ...extra]);
 
-                    expect(g.turnNumber).to.equal(1);
-                    expect(g.clouds.size).to.be.at.most(target);
-                    expect(largestCloudBank(g)).to.be.at.most(2);
-                }
-            });
+                        expect(g.turnNumber).to.equal(1);
+                        expect(g.clouds.size).to.be.at.most(target);
+                        expect(largestCloudBank(g)).to.be.at.most(2);
+                    }
+                });
+            }
         }
 
         it("should end a symmetric split board one short when the centre is chosen", () => {
@@ -373,8 +376,10 @@ describe("Crosshairs", () => {
         });
 
         it("should place the full 16 weighted clouds on the default board", () => {
-            for (let run = 0; run < 10; run++) {
-                expect(new CrosshairsGame(undefined, ["asymmetric-weighted-start"]).clouds.size).to.equal(16);
+            for (const weighted of ["asymmetric-weighted-start", "asymmetric-weighted-conjugate-start"]) {
+                for (let run = 0; run < 10; run++) {
+                    expect(new CrosshairsGame(undefined, [weighted]).clouds.size).to.equal(16);
+                }
             }
         });
 

@@ -1322,6 +1322,10 @@
         "name": "Nesimetriaj pezitaj nuboj",
         "description": "Ne estas fazo por meti nubojn. La sistemo metas nubojn unu post alia sen postuli simetrion, hazarde sed forte preferante ĉelojn, kiuj rompas longajn liberajn pafliniojn, kaj evitante la randon de la tabulo kaj ekzistantajn nubojn."
       },
+      "asymmetric-weighted-conjugate-start": {
+        "name": "Nesimetriaj pezitaj nuboj (konjugitaj)",
+        "description": "Ne estas fazo por meti nubojn. La sistemo metas nubojn unu post alia sen postuli simetrion, hazarde preferante ĉelojn, kiuj rompas longajn liberajn pafliniojn, kaj evitante la randon de la tabulo kaj ekzistantajn nubojn. Kompare kun Nesimetriaj pezitaj nuboj, ĝi malpli akre preferas la plej bonajn ĉelojn, sed pli forte evitas la plej malbonajn."
+      },
             "unbounded-cloud-banks": {
                 "name": "Senlimaj nubaroj",
                 "description": "Nubaroj povas enhavi ajnan nombron da nuboj."
