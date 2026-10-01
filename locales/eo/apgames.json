@@ -1338,6 +1338,18 @@
         "name": "Nesimetriaj pezitaj nuboj (softmax, geometria meznombro)",
         "description": "Ne estas fazo por meti nubojn. La sistemo metas nubojn unu post alia sen postuli simetrion, hazarde preferante ĉelojn kun longaj liberaj paflinioj en ĉiuj ses direktoj. Ĉelo apud nubo aŭ ĉe la rando de la tabulo ricevas neniun krediton por liberaj linioj."
       },
+      "asymmetric-softmax-geomean-k5-start": {
+        "name": "Nesimetriaj pezitaj nuboj (geometria meznombro, malvasta bruo, k=5)",
+        "description": "Kiel Nesimetriaj pezitaj nuboj (softmax, geometria meznombro), sed kun triono de la hazarda bruo kaj elekta akreco 5. Pli alta akreco pli fidinde rompas liberajn pafliniojn."
+      },
+      "asymmetric-softmax-geomean-k8-start": {
+        "name": "Nesimetriaj pezitaj nuboj (geometria meznombro, malvasta bruo, k=8)",
+        "description": "Kiel Nesimetriaj pezitaj nuboj (softmax, geometria meznombro), sed kun triono de la hazarda bruo kaj elekta akreco 8. Pli alta akreco pli fidinde rompas liberajn pafliniojn."
+      },
+      "asymmetric-softmax-geomean-k13-start": {
+        "name": "Nesimetriaj pezitaj nuboj (geometria meznombro, malvasta bruo, k=13)",
+        "description": "Kiel Nesimetriaj pezitaj nuboj (softmax, geometria meznombro), sed kun triono de la hazarda bruo kaj elekta akreco 13. Pli alta akreco pli fidinde rompas liberajn pafliniojn."
+      },
             "unbounded-cloud-banks": {
                 "name": "Senlimaj nubaroj",
                 "description": "Nubaroj povas enhavi ajnan nombron da nuboj."

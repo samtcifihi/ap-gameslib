@@ -1820,6 +1820,18 @@
                 "name": "Asymmetric weighted clouds (softmax, geometric mean)",
                 "description": "There is no cloud placing phase. The system places clouds one at a time without requiring symmetry, randomly favouring cells with long open lines of fire in all six directions. A cell next to a cloud or on the board edge gets no credit for open lines."
             },
+            "asymmetric-softmax-geomean-k5-start": {
+                "name": "Asymmetric weighted clouds (geometric mean, narrow noise, k=5)",
+                "description": "Like Asymmetric weighted clouds (softmax, geometric mean), but with a third of the random noise and a selection sharpness of 5. Higher sharpness breaks up open lines of fire more reliably."
+            },
+            "asymmetric-softmax-geomean-k8-start": {
+                "name": "Asymmetric weighted clouds (geometric mean, narrow noise, k=8)",
+                "description": "Like Asymmetric weighted clouds (softmax, geometric mean), but with a third of the random noise and a selection sharpness of 8. Higher sharpness breaks up open lines of fire more reliably."
+            },
+            "asymmetric-softmax-geomean-k13-start": {
+                "name": "Asymmetric weighted clouds (geometric mean, narrow noise, k=13)",
+                "description": "Like Asymmetric weighted clouds (softmax, geometric mean), but with a third of the random noise and a selection sharpness of 13. Higher sharpness breaks up open lines of fire more reliably."
+            },
             "unbounded-cloud-banks": {
                 "name": "Unbounded cloud banks",
                 "description": "Cloud banks may contain any number of clouds."

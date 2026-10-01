@@ -126,6 +126,13 @@ export class CrosshairsGame extends GameBase {
     // only spans [0, 1] against noise spanning [-1.5, 1.5], so k = 1 is close
     // to uniform; simulations suggest 4 to 8 for clearly line-breaking boards.
     private static readonly SOFTMAX_GEOMEAN_SETUP_K = 1;
+    // Softmax sharpness for each geometric-mean setup with narrowed noise
+    // (Beta(2,2) - 0.5, so [-0.5, 0.5]), keyed by variant uid.
+    private static readonly SOFTMAX_GEOMEAN_NARROW_KS: ReadonlyMap<string, number> = new Map([
+        ["asymmetric-softmax-geomean-k5-start", 5],
+        ["asymmetric-softmax-geomean-k8-start", 8],
+        ["asymmetric-softmax-geomean-k13-start", 13],
+    ]);
 
     public static readonly gameinfo: APGamesInformation = {
         name: "Crosshairs",
@@ -207,6 +214,21 @@ export class CrosshairsGame extends GameBase {
             },
             {
                 uid: "asymmetric-softmax-geomean-start",
+                group: "setup",
+                experimental: true,
+            },
+            {
+                uid: "asymmetric-softmax-geomean-k5-start",
+                group: "setup",
+                experimental: true,
+            },
+            {
+                uid: "asymmetric-softmax-geomean-k8-start",
+                group: "setup",
+                experimental: true,
+            },
+            {
+                uid: "asymmetric-softmax-geomean-k13-start",
                 group: "setup",
                 experimental: true,
             },
@@ -294,6 +316,18 @@ export class CrosshairsGame extends GameBase {
                     lineScore: "geomean6",
                     k: CrosshairsGame.SOFTMAX_GEOMEAN_SETUP_K,
                 });
+            } else {
+                const narrowK = [...CrosshairsGame.SOFTMAX_GEOMEAN_NARROW_KS]
+                    .find(([uid]) => this.variants.includes(uid))?.[1];
+                if (narrowK !== undefined) {
+                    placedClouds = this.placeWeightedClouds("exp", {
+                        edgePenalty: 0,
+                        adjacentPenalty: 1 / 6,
+                        lineScore: "geomean6",
+                        noiseScale: 1,
+                        k: narrowK,
+                    });
+                }
             }
             if (placedClouds !== undefined) {
                 for (const cell of placedClouds) {
@@ -533,7 +567,8 @@ export class CrosshairsGame extends GameBase {
     // Weighted random placement. Each round, every cell that respects the
     // bank-size rule is scored: -1 on the edge, -1 per adjacent cloud, plus
     // the root mean square over the three axes of the shorter open run to
-    // either side, plus Beta(2,2) noise scaled to [-1.5, 1.5]. An adjacent
+    // either side, plus Beta(2,2) noise scaled to [-1.5, 1.5] unless narrowed
+    // with noiseScale. An adjacent
     // cloud or the board edge makes that side's run 0. One cell is then drawn
     // in proportion to its weight. If no cell qualifies, the board is returned
     // as it stands.
@@ -549,11 +584,13 @@ export class CrosshairsGame extends GameBase {
             edgePenalty = 1,
             adjacentPenalty = 1,
             lineScore = "rms3",
+            noiseScale = 3,
             k = 1,
         }: {
             edgePenalty?: number;
             adjacentPenalty?: number;
             lineScore?: "rms3" | "geomean6";
+            noiseScale?: number;
             k?: number;
         } = {},
     ): string[] {
@@ -598,7 +635,7 @@ export class CrosshairsGame extends GameBase {
                     }
                     s += Math.sqrt(sumOfSquares / 3);
                 }
-                s += (sampleBeta22() - 0.5) * 3;
+                s += (sampleBeta22() - 0.5) * noiseScale;
                 candidates.push(cell);
                 scores.push(s);
             }
