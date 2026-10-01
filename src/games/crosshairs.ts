@@ -167,6 +167,23 @@ export class CrosshairsGame extends GameBase {
                 experimental: true,
             },
             {
+                uid: "split-start",
+                group: "setup",
+                experimental: true,
+                requires: ["unbounded-cloud-banks"],
+            },
+            {
+                uid: "asymmetric-split-start",
+                group: "setup",
+                experimental: true,
+                requires: ["unbounded-cloud-banks"],
+            },
+            {
+                uid: "asymmetric-weighted-start",
+                group: "setup",
+                experimental: true,
+            },
+            {
                 uid: "unbounded-cloud-banks",
             },
             {
@@ -228,6 +245,12 @@ export class CrosshairsGame extends GameBase {
                 placedClouds = this.placeSpreadRandomClouds(false);
             } else if (this.variants.includes("spread-start")) {
                 placedClouds = this.placeSpreadRandomClouds(true);
+            } else if (this.variants.includes("asymmetric-split-start")) {
+                placedClouds = this.placeSplitClouds(false);
+            } else if (this.variants.includes("split-start")) {
+                placedClouds = this.placeSplitClouds(true);
+            } else if (this.variants.includes("asymmetric-weighted-start")) {
+                placedClouds = this.placeWeightedClouds();
             }
             if (placedClouds !== undefined) {
                 for (const cell of placedClouds) {
@@ -385,6 +408,133 @@ export class CrosshairsGame extends GameBase {
                     for (const c of placed) clouds.delete(c);
                 }
             }
+        }
+        return Array.from(clouds);
+    }
+
+    // The six rays from each cell, indexed like allDirections, so ray d and
+    // ray d + 3 lie on the same axis in opposite directions.
+    private getAllCellRays(): Map<string, string[][]> {
+        const rays = new Map<string, string[][]>();
+        for (const cell of this.graph.listCells() as string[]) {
+            const [x, y] = this.graph.algebraic2coords(cell);
+            rays.set(cell, allDirections.map(dir => this.getRay(x, y, dir)));
+        }
+        return rays;
+    }
+
+    // Number of cells along a ray before the first cloud or the board edge.
+    private openLength(ray: string[], clouds: Set<string>): number {
+        let count = 0;
+        for (const cell of ray) {
+            if (clouds.has(cell)) break;
+            count++;
+        }
+        return count;
+    }
+
+    // The designer's greedy line-splitting placement. Each round, every
+    // interior cell touching at most one cloud is scored by how evenly it
+    // splits its best axis, halved with integer division so that many cells
+    // tie, and a random tied cell is chosen. Mirrored mode also places the
+    // 180-degree rotation and counts two clouds even when the centre is its
+    // own mirror, so such boards end one short. There is no bank-size check,
+    // so the variants require Unbounded Cloud Banks. If no cell qualifies, the
+    // board is returned as it stands.
+    private placeSplitClouds(mirrored: boolean): string[] {
+        const rays = this.getAllCellRays();
+        const cells = this.graph.listCells() as string[];
+        const clouds = new Set<string>();
+        let remaining = this.getTargetCloudCount();
+
+        const score = (cell: string): number => {
+            if (clouds.has(cell)) return -1;
+            const cellRays = rays.get(cell)!;
+            if (cellRays.some(ray => ray.length === 0)) return -1;
+            const adjacent = cellRays.filter(ray => clouds.has(ray[0])).length;
+            if (adjacent > 1) return -1;
+            let bestSplit = 0;
+            for (let axis = 0; axis < 3; axis++) {
+                bestSplit = Math.max(bestSplit, Math.min(
+                    this.openLength(cellRays[axis], clouds),
+                    this.openLength(cellRays[axis + 3], clouds),
+                ));
+            }
+            return Math.trunc((bestSplit - adjacent + Math.floor(Math.random() * 2)) / 2);
+        };
+
+        while (remaining > 0) {
+            let topCells: string[] = [];
+            let topScore = 0;
+            for (const cell of cells) {
+                const s = score(cell);
+                if (s > topScore) {
+                    topCells = [];
+                    topScore = s;
+                }
+                if (s === topScore) topCells.push(cell);
+            }
+            if (topCells.length === 0) break;
+
+            const cell = topCells[Math.floor(Math.random() * topCells.length)];
+            clouds.add(cell);
+            remaining--;
+            if (mirrored) {
+                clouds.add(this.getSymmetricCell(cell));
+                remaining--;
+            }
+        }
+        return Array.from(clouds);
+    }
+
+    // Weighted random placement. Each round, every cell that respects the
+    // bank-size rule is scored: -1 on the edge, -1 per adjacent cloud, plus
+    // the root mean square over the three axes of the shorter open run to
+    // either side, plus Beta(2,2) noise scaled to [-1.5, 1.5]. Scores are
+    // exponentiated and shifted so the lowest is 1, then one cell is drawn in
+    // proportion. If no cell qualifies, the board is returned as it stands.
+    private placeWeightedClouds(): string[] {
+        const rays = this.getAllCellRays();
+        const cells = this.graph.listCells() as string[];
+        const clouds = new Set<string>();
+        const target = this.getTargetCloudCount();
+
+        // The median of three uniform samples is Beta(2,2)-distributed.
+        const sampleBeta22 = (): number =>
+            [Math.random(), Math.random(), Math.random()].sort((a, b) => a - b)[1];
+
+        while (clouds.size < target) {
+            const candidates: string[] = [];
+            const expScores: number[] = [];
+            for (const cell of cells) {
+                if (clouds.has(cell) || this.wouldCreateIllegallyLargeCloudBank(cell, clouds)) continue;
+                const cellRays = rays.get(cell)!;
+                let s = cellRays.some(ray => ray.length === 0) ? -1 : 0;
+                s -= cellRays.filter(ray => ray.length > 0 && clouds.has(ray[0])).length;
+                let sumOfSquares = 0;
+                for (let axis = 0; axis < 3; axis++) {
+                    const split = Math.min(
+                        this.openLength(cellRays[axis], clouds),
+                        this.openLength(cellRays[axis + 3], clouds),
+                    );
+                    sumOfSquares += split * split;
+                }
+                s += Math.sqrt(sumOfSquares / 3);
+                s += (sampleBeta22() - 0.5) * 3;
+                candidates.push(cell);
+                expScores.push(Math.exp(s));
+            }
+            if (candidates.length === 0) break;
+
+            const shift = 1 - Math.min(...expScores);
+            const weights = expScores.map(w => w + shift);
+            let pick = Math.random() * weights.reduce((a, b) => a + b, 0);
+            let idx = 0;
+            while (idx < weights.length - 1 && pick >= weights[idx]) {
+                pick -= weights[idx];
+                idx++;
+            }
+            clouds.add(candidates[idx]);
         }
         return Array.from(clouds);
     }

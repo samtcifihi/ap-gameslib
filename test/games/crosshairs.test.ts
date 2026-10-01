@@ -188,6 +188,9 @@ describe("Crosshairs", () => {
                 "asymmetric-random-start",
                 "spread-start",
                 "asymmetric-spread-start",
+                "split-start",
+                "asymmetric-split-start",
+                "asymmetric-weighted-start",
             ]);
             expect(setupVariants.find(variant => variant.uid === "random-start")!.name)
                 .to.equal("Symmetric random clouds");
@@ -285,6 +288,104 @@ describe("Crosshairs", () => {
 
             expect(g.clouds.size).to.equal(28);
             expect(g.turnNumber).to.equal(1);
+        });
+
+        const isEdgeCell = (g: CrosshairsGame, cell: string): boolean => {
+            const [x, y] = g.graph.algebraic2coords(cell);
+            const getRay = (g as unknown as { getRay: (x: number, y: number, d: string) => string[] }).getRay.bind(g);
+            return ["N", "NE", "SE", "S", "SW", "NW"].some(dir => getRay(x, y, dir).length === 0);
+        };
+
+        it("should keep prod setups unflagged and mark the five newer setups experimental", () => {
+            const setup = CrosshairsGame.gameinfo.variants!.filter(v => v.group === "setup");
+            const experimental = setup.filter(v => v.experimental).map(v => v.uid);
+
+            expect(setup.filter(v => !v.experimental).map(v => v.uid))
+                .to.deep.equal(["random-start", "asymmetric-random-start"]);
+            expect(experimental).to.deep.equal([
+                "spread-start", "asymmetric-spread-start", "split-start",
+                "asymmetric-split-start", "asymmetric-weighted-start",
+            ]);
+        });
+
+        it("should make the split setups require unbounded cloud banks", () => {
+            for (const uid of ["split-start", "asymmetric-split-start"]) {
+                const v = CrosshairsGame.gameinfo.variants!.find(variant => variant.uid === uid)!;
+                expect(v.requires).to.deep.equal(["unbounded-cloud-banks"]);
+            }
+        });
+
+        for (const [variant, target] of [[undefined, 16], ["clouds-22", 22], ["clouds-28", 28]] as const) {
+            const extra = variant ? [variant] : [];
+
+            it(`should place split clouds away from the edge without overshooting (${target})`, () => {
+                for (let run = 0; run < 10; run++) {
+                    const g = new CrosshairsGame(undefined, ["asymmetric-split-start", "unbounded-cloud-banks", ...extra]);
+
+                    expect(g.turnNumber).to.equal(1);
+                    expect(g.clouds.size).to.be.at.most(target);
+                    expect(g.clouds.size).to.be.greaterThan(0);
+                    for (const cloud of g.clouds) {
+                        expect(isEdgeCell(g, cloud), `edge cloud at ${cloud}`).to.be.false;
+                    }
+                }
+            });
+
+            it(`should mirror symmetric split clouds and only fall short as designed (${target})`, () => {
+                for (let run = 0; run < 10; run++) {
+                    const g = new CrosshairsGame(undefined, ["split-start", "unbounded-cloud-banks", ...extra]);
+
+                    expect(g.turnNumber).to.equal(1);
+                    expect(g.clouds.size).to.be.at.most(target);
+                    for (const cloud of g.clouds) {
+                        expect(g.clouds.has(g.graph.rot180(cloud))).to.be.true;
+                        expect(isEdgeCell(g, cloud)).to.be.false;
+                    }
+                }
+            });
+
+            it(`should place weighted clouds within the bank limit (${target})`, () => {
+                for (let run = 0; run < 10; run++) {
+                    const g = new CrosshairsGame(undefined, ["asymmetric-weighted-start", ...extra]);
+
+                    expect(g.turnNumber).to.equal(1);
+                    expect(g.clouds.size).to.be.at.most(target);
+                    expect(largestCloudBank(g)).to.be.at.most(2);
+                }
+            });
+        }
+
+        it("should end a symmetric split board one short when the centre is chosen", () => {
+            const centre = (new CrosshairsGame().graph.listCells() as string[])
+                .find(cell => new CrosshairsGame().graph.rot180(cell) === cell)!;
+            let sawCentre = false;
+            for (let run = 0; run < 40 && !sawCentre; run++) {
+                const g = new CrosshairsGame(undefined, ["split-start", "unbounded-cloud-banks"]);
+                if (g.clouds.has(centre)) {
+                    sawCentre = true;
+                    expect(g.clouds.size).to.equal(15);
+                } else {
+                    expect(g.clouds.size).to.equal(16);
+                }
+            }
+            // The centre splits every line evenly, so it is chosen on most boards.
+            expect(sawCentre).to.be.true;
+        });
+
+        it("should place the full 16 weighted clouds on the default board", () => {
+            for (let run = 0; run < 10; run++) {
+                expect(new CrosshairsGame(undefined, ["asymmetric-weighted-start"]).clouds.size).to.equal(16);
+            }
+        });
+
+        it("should return a partial split board instead of throwing when cells run out", () => {
+            // With the edge excluded and the one-neighbour rule, 28 clouds
+            // exhausts the qualifying cells on almost every run.
+            for (let run = 0; run < 10; run++) {
+                const g = new CrosshairsGame(undefined, ["asymmetric-split-start", "unbounded-cloud-banks", "clouds-28"]);
+                expect(g.turnNumber).to.equal(1);
+                expect(g.moves()[0]).to.match(/^enter:/);
+            }
         });
 
         for (const [setup, partialCount] of [

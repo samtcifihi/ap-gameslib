@@ -1310,6 +1310,18 @@
                 "name": "Nesimetriaj disvastigitaj nuboj",
                 "description": "Ne estas fazo por meti nubojn. La sistemo metas ilin sen postuli simetrion laŭ la algoritmo de la aŭtoro, kiu unue baras liberajn pafliniojn kaj poste plenigas la breĉojn."
             },
+      "split-start": {
+        "name": "Simetriaj dividaj nuboj",
+        "description": "Ne estas fazo por meti nubojn. La sistemo metas nubojn en paroj kun rotacia simetrio je 180 gradoj for de la rando de la tabulo, ĉiufoje elektante inter la ĉeloj, kiuj plej egale dividas liberan paflinion. Nubo en la centro kalkuliĝas kiel paro, do al la tabulo mankas unu nubo. Postulas Senlimajn nubarojn."
+      },
+      "asymmetric-split-start": {
+        "name": "Nesimetriaj dividaj nuboj",
+        "description": "Ne estas fazo por meti nubojn. La sistemo metas nubojn unu post alia for de la rando de la tabulo, ĉiufoje elektante inter la ĉeloj, kiuj plej egale dividas liberan paflinion. Postulas Senlimajn nubarojn."
+      },
+      "asymmetric-weighted-start": {
+        "name": "Nesimetriaj pezitaj nuboj",
+        "description": "Ne estas fazo por meti nubojn. La sistemo metas nubojn unu post alia sen postuli simetrion, hazarde sed forte preferante ĉelojn, kiuj rompas longajn liberajn pafliniojn, kaj evitante la randon de la tabulo kaj ekzistantajn nubojn."
+      },
             "unbounded-cloud-banks": {
                 "name": "Senlimaj nubaroj",
                 "description": "Nubaroj povas enhavi ajnan nombron da nuboj."

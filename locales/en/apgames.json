@@ -1792,6 +1792,18 @@
                 "name": "Asymmetric spread clouds",
                 "description": "There is no cloud placing phase. The system places the clouds without requiring symmetry using the designer's algorithm, which blocks open lines of fire first and then fills in the gaps."
             },
+            "split-start": {
+                "name": "Symmetric split clouds",
+                "description": "There is no cloud placing phase. The system places clouds in 180-degree rotationally symmetric pairs away from the board edge, each time choosing among the cells that split an open line of fire most evenly. A cloud in the centre counts as a pair, leaving the board one cloud short. Requires Unbounded cloud banks."
+            },
+            "asymmetric-split-start": {
+                "name": "Asymmetric split clouds",
+                "description": "There is no cloud placing phase. The system places clouds one at a time away from the board edge, each time choosing among the cells that split an open line of fire most evenly. Requires Unbounded cloud banks."
+            },
+            "asymmetric-weighted-start": {
+                "name": "Asymmetric weighted clouds",
+                "description": "There is no cloud placing phase. The system places clouds one at a time without requiring symmetry, randomly but strongly favouring cells that break up long open lines of fire and avoiding the board edge and existing clouds."
+            },
             "unbounded-cloud-banks": {
                 "name": "Unbounded cloud banks",
                 "description": "Cloud banks may contain any number of clouds."
