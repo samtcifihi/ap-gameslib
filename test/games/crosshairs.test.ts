@@ -192,6 +192,7 @@ describe("Crosshairs", () => {
                 "asymmetric-split-start",
                 "asymmetric-weighted-start",
                 "asymmetric-weighted-conjugate-start",
+                "asymmetric-weighted-exp-start",
             ]);
             expect(setupVariants.find(variant => variant.uid === "random-start")!.name)
                 .to.equal("Symmetric random clouds");
@@ -306,6 +307,7 @@ describe("Crosshairs", () => {
             expect(experimental).to.deep.equal([
                 "spread-start", "asymmetric-spread-start", "split-start",
                 "asymmetric-split-start", "asymmetric-weighted-start", "asymmetric-weighted-conjugate-start",
+                "asymmetric-weighted-exp-start",
             ]);
         });
 
@@ -345,7 +347,9 @@ describe("Crosshairs", () => {
                 }
             });
 
-            for (const weighted of ["asymmetric-weighted-start", "asymmetric-weighted-conjugate-start"]) {
+            for (const weighted of [
+                "asymmetric-weighted-start", "asymmetric-weighted-conjugate-start", "asymmetric-weighted-exp-start",
+            ]) {
                 it(`should place ${weighted} clouds within the bank limit (${target})`, () => {
                     for (let run = 0; run < 10; run++) {
                         const g = new CrosshairsGame(undefined, [weighted, ...extra]);
@@ -376,11 +380,25 @@ describe("Crosshairs", () => {
         });
 
         it("should place the full 16 weighted clouds on the default board", () => {
-            for (const weighted of ["asymmetric-weighted-start", "asymmetric-weighted-conjugate-start"]) {
+            for (const weighted of [
+                "asymmetric-weighted-start", "asymmetric-weighted-conjugate-start", "asymmetric-weighted-exp-start",
+            ]) {
                 for (let run = 0; run < 10; run++) {
                     expect(new CrosshairsGame(undefined, [weighted]).clouds.size).to.equal(16);
                 }
             }
+        });
+
+        it("should count an adjacent cloud or the board edge as an open run of 0", () => {
+            const g = new CrosshairsGame();
+            const openLength = (g as unknown as {
+                openLength: (ray: string[], clouds: Set<string>) => number;
+            }).openLength.bind(g);
+
+            expect(openLength(["f6", "f7", "f8"], new Set(["f6"]))).to.equal(0);
+            expect(openLength(["f6", "f7", "f8"], new Set(["f8"]))).to.equal(2);
+            expect(openLength(["f6", "f7", "f8"], new Set())).to.equal(3);
+            expect(openLength([], new Set())).to.equal(0);
         });
 
         it("should return a partial split board instead of throwing when cells run out", () => {

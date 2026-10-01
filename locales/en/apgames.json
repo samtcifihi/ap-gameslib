@@ -1808,6 +1808,10 @@
                 "name": "Asymmetric weighted clouds (conjugate)",
                 "description": "There is no cloud placing phase. The system places clouds one at a time without requiring symmetry, randomly favouring cells that break up long open lines of fire and avoiding the board edge and existing clouds. Compared with Asymmetric weighted clouds, it favours the best cells less sharply but avoids the worst cells more strongly."
             },
+            "asymmetric-weighted-exp-start": {
+                "name": "Asymmetric weighted clouds (exponential)",
+                "description": "There is no cloud placing phase. The system places clouds one at a time without requiring symmetry, randomly but most strongly of the weighted options favouring cells that break up long open lines of fire and avoiding the board edge and existing clouds. Each cell's chance is proportional to e raised to its score."
+            },
             "unbounded-cloud-banks": {
                 "name": "Unbounded cloud banks",
                 "description": "Cloud banks may contain any number of clouds."

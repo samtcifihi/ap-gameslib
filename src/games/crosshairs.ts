@@ -189,6 +189,11 @@ export class CrosshairsGame extends GameBase {
                 experimental: true,
             },
             {
+                uid: "asymmetric-weighted-exp-start",
+                group: "setup",
+                experimental: true,
+            },
+            {
                 uid: "unbounded-cloud-banks",
             },
             {
@@ -255,9 +260,11 @@ export class CrosshairsGame extends GameBase {
             } else if (this.variants.includes("split-start")) {
                 placedClouds = this.placeSplitClouds(true);
             } else if (this.variants.includes("asymmetric-weighted-start")) {
-                placedClouds = this.placeWeightedClouds(false);
+                placedClouds = this.placeWeightedClouds("piecewise-linear");
             } else if (this.variants.includes("asymmetric-weighted-conjugate-start")) {
-                placedClouds = this.placeWeightedClouds(true);
+                placedClouds = this.placeWeightedClouds("piecewise-conjugate");
+            } else if (this.variants.includes("asymmetric-weighted-exp-start")) {
+                placedClouds = this.placeWeightedClouds("exp");
             }
             if (placedClouds !== undefined) {
                 for (const cell of placedClouds) {
@@ -497,13 +504,16 @@ export class CrosshairsGame extends GameBase {
     // Weighted random placement. Each round, every cell that respects the
     // bank-size rule is scored: -1 on the edge, -1 per adjacent cloud, plus
     // the root mean square over the three axes of the shorter open run to
-    // either side, plus Beta(2,2) noise scaled to [-1.5, 1.5]. Non-negative
-    // scores become e^s. Negative ones become s + 1, or 2 - e^-s in conjugate
-    // mode; either way the two pieces meet with matching value and slope at 0,
-    // so a score crossing zero doesn't jump. All are then shifted so the
-    // lowest is 1, and one cell is drawn in proportion. If no cell qualifies,
-    // the board is returned as it stands.
-    private placeWeightedClouds(conjugate: boolean): string[] {
+    // either side, plus Beta(2,2) noise scaled to [-1.5, 1.5]. An adjacent
+    // cloud or the board edge makes that side's run 0. One cell is then drawn
+    // in proportion to its weight. If no cell qualifies, the board is returned
+    // as it stands.
+    //
+    // In "exp" mode the weight is e^s. The piecewise modes keep e^s for
+    // non-negative scores but map negative ones to s + 1 or 2 - e^-s (pieces
+    // meeting with matching value and slope at 0), then shift every weight so
+    // the lowest is 1, which flattens the preference.
+    private placeWeightedClouds(mode: "exp" | "piecewise-linear" | "piecewise-conjugate"): string[] {
         const rays = this.getAllCellRays();
         const cells = this.graph.listCells() as string[];
         const clouds = new Set<string>();
@@ -515,7 +525,7 @@ export class CrosshairsGame extends GameBase {
 
         while (clouds.size < target) {
             const candidates: string[] = [];
-            const transformed: number[] = [];
+            const scores: number[] = [];
             for (const cell of cells) {
                 if (clouds.has(cell) || this.wouldCreateIllegallyLargeCloudBank(cell, clouds)) continue;
                 const cellRays = rays.get(cell)!;
@@ -532,12 +542,23 @@ export class CrosshairsGame extends GameBase {
                 s += Math.sqrt(sumOfSquares / 3);
                 s += (sampleBeta22() - 0.5) * 3;
                 candidates.push(cell);
-                transformed.push(s >= 0 ? Math.exp(s) : conjugate ? 2 - Math.exp(-s) : s + 1);
+                scores.push(s);
             }
             if (candidates.length === 0) break;
 
-            const shift = 1 - Math.min(...transformed);
-            const weights = transformed.map(w => w + shift);
+            let weights: number[];
+            if (mode === "exp") {
+                // Subtracting the maximum keeps every weight at or below 1
+                // without changing the proportions between them.
+                const max = Math.max(...scores);
+                weights = scores.map(s => Math.exp(s - max));
+            } else {
+                const transformed = scores.map(s => s >= 0
+                    ? Math.exp(s)
+                    : mode === "piecewise-conjugate" ? 2 - Math.exp(-s) : s + 1);
+                const shift = 1 - Math.min(...transformed);
+                weights = transformed.map(w => w + shift);
+            }
             let pick = Math.random() * weights.reduce((a, b) => a + b, 0);
             let idx = 0;
             while (idx < weights.length - 1 && pick >= weights[idx]) {
