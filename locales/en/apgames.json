@@ -1832,6 +1832,22 @@
                 "name": "Asymmetric weighted clouds (geometric mean, narrow noise, k=13)",
                 "description": "Like Asymmetric weighted clouds (softmax, geometric mean), but with a third of the random noise and a selection sharpness of 13. Higher sharpness breaks up open lines of fire more reliably."
             },
+            "asymmetric-softmax-geomean-noadj-k3-start": {
+                "name": "Asymmetric weighted clouds (geometric mean, narrow noise, no adjacency penalty, k=3)",
+                "description": "Like Asymmetric weighted clouds (geometric mean, narrow noise, k=3), but with no extra penalty for touching an existing cloud, so clouds touch more often."
+            },
+            "asymmetric-softmax-geomean-noadj-k5-start": {
+                "name": "Asymmetric weighted clouds (geometric mean, narrow noise, no adjacency penalty, k=5)",
+                "description": "Like Asymmetric weighted clouds (geometric mean, narrow noise, k=5), but with no extra penalty for touching an existing cloud, so clouds touch more often."
+            },
+            "asymmetric-softmax-geomean-noadj-k8-start": {
+                "name": "Asymmetric weighted clouds (geometric mean, narrow noise, no adjacency penalty, k=8)",
+                "description": "Like Asymmetric weighted clouds (geometric mean, narrow noise, k=8), but with no extra penalty for touching an existing cloud, so clouds touch more often."
+            },
+            "asymmetric-softmax-geomean-noadj-k13-start": {
+                "name": "Asymmetric weighted clouds (geometric mean, narrow noise, no adjacency penalty, k=13)",
+                "description": "Like Asymmetric weighted clouds (geometric mean, narrow noise, k=13), but with no extra penalty for touching an existing cloud, so clouds touch more often."
+            },
             "unbounded-cloud-banks": {
                 "name": "Unbounded cloud banks",
                 "description": "Cloud banks may contain any number of clouds."

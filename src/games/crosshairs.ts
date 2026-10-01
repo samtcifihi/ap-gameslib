@@ -126,12 +126,16 @@ export class CrosshairsGame extends GameBase {
     // only spans [0, 1] against noise spanning [-1.5, 1.5], so k = 1 is close
     // to uniform; simulations suggest 4 to 8 for clearly line-breaking boards.
     private static readonly SOFTMAX_GEOMEAN_SETUP_K = 1;
-    // Softmax sharpness for each geometric-mean setup with narrowed noise
-    // (Beta(2,2) - 0.5, so [-0.5, 0.5]), keyed by variant uid.
-    private static readonly SOFTMAX_GEOMEAN_NARROW_KS: ReadonlyMap<string, number> = new Map([
-        ["asymmetric-softmax-geomean-k5-start", 5],
-        ["asymmetric-softmax-geomean-k8-start", 8],
-        ["asymmetric-softmax-geomean-k13-start", 13],
+    // Softmax sharpness and adjacency penalty for each geometric-mean setup
+    // with narrowed noise (Beta(2,2) - 0.5, so [-0.5, 0.5]), keyed by uid.
+    private static readonly SOFTMAX_GEOMEAN_NARROW_SETUPS: ReadonlyMap<string, { k: number; adjacentPenalty: number }> = new Map([
+        ["asymmetric-softmax-geomean-k5-start", { k: 5, adjacentPenalty: 1 / 6 }],
+        ["asymmetric-softmax-geomean-k8-start", { k: 8, adjacentPenalty: 1 / 6 }],
+        ["asymmetric-softmax-geomean-k13-start", { k: 13, adjacentPenalty: 1 / 6 }],
+        ["asymmetric-softmax-geomean-noadj-k3-start", { k: 3, adjacentPenalty: 0 }],
+        ["asymmetric-softmax-geomean-noadj-k5-start", { k: 5, adjacentPenalty: 0 }],
+        ["asymmetric-softmax-geomean-noadj-k8-start", { k: 8, adjacentPenalty: 0 }],
+        ["asymmetric-softmax-geomean-noadj-k13-start", { k: 13, adjacentPenalty: 0 }],
     ]);
 
     public static readonly gameinfo: APGamesInformation = {
@@ -233,6 +237,26 @@ export class CrosshairsGame extends GameBase {
                 experimental: true,
             },
             {
+                uid: "asymmetric-softmax-geomean-noadj-k3-start",
+                group: "setup",
+                experimental: true,
+            },
+            {
+                uid: "asymmetric-softmax-geomean-noadj-k5-start",
+                group: "setup",
+                experimental: true,
+            },
+            {
+                uid: "asymmetric-softmax-geomean-noadj-k8-start",
+                group: "setup",
+                experimental: true,
+            },
+            {
+                uid: "asymmetric-softmax-geomean-noadj-k13-start",
+                group: "setup",
+                experimental: true,
+            },
+            {
                 uid: "unbounded-cloud-banks",
             },
             {
@@ -317,15 +341,15 @@ export class CrosshairsGame extends GameBase {
                     k: CrosshairsGame.SOFTMAX_GEOMEAN_SETUP_K,
                 });
             } else {
-                const narrowK = [...CrosshairsGame.SOFTMAX_GEOMEAN_NARROW_KS]
+                const narrow = [...CrosshairsGame.SOFTMAX_GEOMEAN_NARROW_SETUPS]
                     .find(([uid]) => this.variants.includes(uid))?.[1];
-                if (narrowK !== undefined) {
+                if (narrow !== undefined) {
                     placedClouds = this.placeWeightedClouds("exp", {
                         edgePenalty: 0,
-                        adjacentPenalty: 1 / 6,
+                        adjacentPenalty: narrow.adjacentPenalty,
                         lineScore: "geomean6",
                         noiseScale: 1,
-                        k: narrowK,
+                        k: narrow.k,
                     });
                 }
             }

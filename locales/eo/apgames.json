@@ -1350,6 +1350,22 @@
         "name": "Nesimetriaj pezitaj nuboj (geometria meznombro, malvasta bruo, k=13)",
         "description": "Kiel Nesimetriaj pezitaj nuboj (softmax, geometria meznombro), sed kun triono de la hazarda bruo kaj elekta akreco 13. Pli alta akreco pli fidinde rompas liberajn pafliniojn."
       },
+      "asymmetric-softmax-geomean-noadj-k3-start": {
+        "name": "Nesimetriaj pezitaj nuboj (geometria meznombro, malvasta bruo, sen apudeca puno, k=3)",
+        "description": "Kiel Nesimetriaj pezitaj nuboj (geometria meznombro, malvasta bruo, k=3), sed sen aldona puno por tuŝi ekzistantan nubon, do nuboj pli ofte tuŝas unu la alian."
+      },
+      "asymmetric-softmax-geomean-noadj-k5-start": {
+        "name": "Nesimetriaj pezitaj nuboj (geometria meznombro, malvasta bruo, sen apudeca puno, k=5)",
+        "description": "Kiel Nesimetriaj pezitaj nuboj (geometria meznombro, malvasta bruo, k=5), sed sen aldona puno por tuŝi ekzistantan nubon, do nuboj pli ofte tuŝas unu la alian."
+      },
+      "asymmetric-softmax-geomean-noadj-k8-start": {
+        "name": "Nesimetriaj pezitaj nuboj (geometria meznombro, malvasta bruo, sen apudeca puno, k=8)",
+        "description": "Kiel Nesimetriaj pezitaj nuboj (geometria meznombro, malvasta bruo, k=8), sed sen aldona puno por tuŝi ekzistantan nubon, do nuboj pli ofte tuŝas unu la alian."
+      },
+      "asymmetric-softmax-geomean-noadj-k13-start": {
+        "name": "Nesimetriaj pezitaj nuboj (geometria meznombro, malvasta bruo, sen apudeca puno, k=13)",
+        "description": "Kiel Nesimetriaj pezitaj nuboj (geometria meznombro, malvasta bruo, k=13), sed sen aldona puno por tuŝi ekzistantan nubon, do nuboj pli ofte tuŝas unu la alian."
+      },
             "unbounded-cloud-banks": {
                 "name": "Senlimaj nubaroj",
                 "description": "Nubaroj povas enhavi ajnan nombron da nuboj."
