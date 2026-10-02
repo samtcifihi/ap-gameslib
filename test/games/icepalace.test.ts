@@ -2,8 +2,10 @@
 import "mocha";
 import { expect } from "chai";
 import { addResource } from "../../src";
+import { replacer, reviver } from "../../src/common";
 import { assertChatLogParity } from "../fixtures/chat/helpers";
 import {
+    IIcePalaceState,
     IcePalaceGame,
     PieceId,
     Structure,
@@ -81,10 +83,10 @@ describe("Ice Palace: playing a hand", () => {
     it("accepts typed moves, but founds an empty structure only at the origin", () => {
         const g = rig(new IcePalaceGame(3), [["1M"], ["2S"], ["3S"]], fatPool());
         // Case and spaces do not matter.
-        expect(g.validateMove(" 1m @ 0,0 ").valid).to.be.true;
+        expect(g.validateMove(" 1m @ 0.0 ").valid).to.be.true;
         // The lead cannot found the Yard anywhere else.
-        expect(g.validateMove("1M@5,7").valid).to.be.false;
-        expect(g.validateMove("1M@1,0").valid).to.be.false;
+        expect(g.validateMove("1M@5.7").valid).to.be.false;
+        expect(g.validateMove("1M@1.0").valid).to.be.false;
     });
 
     it("will not let the lead pass", () => {
@@ -95,51 +97,51 @@ describe("Ice Palace: playing a hand", () => {
 
     it("lets the lead place anything anywhere", () => {
         const g = rig(new IcePalaceGame(3), [["BS"], ["2L"], ["3L"]]);
-        g.move("BS@0,0");
-        expect(g.topOfCell("yard", "0,0")).to.equal("BS");
+        g.move("BS@0.0");
+        expect(g.topOfCell("yard", "0.0")).to.equal("BS");
         expect(g.currplayer).to.equal(2);
     });
 
     it("stacks bigger over smaller regardless of colour", () => {
         const g = rig(new IcePalaceGame(3), [["1S"], ["BM"], ["3S"]]);
-        g.move("1S@0,0");
+        g.move("1S@0.0");
         // Black stacks fine; only its colour matching is crippled.
-        g.move("BM@0,0");
-        expect(g.topOfCell("yard", "0,0")).to.equal("BM");
+        g.move("BM@0.0");
+        expect(g.topOfCell("yard", "0.0")).to.equal("BM");
         // Nothing may go under, and a small cannot cover a medium.
-        expect(g.validateMove("3S@0,0").valid).to.be.false;
+        expect(g.validateMove("3S@0.0").valid).to.be.false;
     });
 
     it("refuses to stack anything over a large", () => {
         const g = rig(new IcePalaceGame(3), [["1L"], ["2L"], ["3S"]]);
-        g.move("1L@0,0");
-        expect(g.validateMove("2L@0,0").valid).to.be.false;
+        g.move("1L@0.0");
+        expect(g.validateMove("2L@0.0").valid).to.be.false;
     });
 
     it("founds a new stack only next to a matching top", () => {
         const g = rig(new IcePalaceGame(3), [["1M"], ["1S", "2S"], ["3S"]]);
-        g.move("1M@0,0");
-        expect(g.validateMove("2S@1,0").valid).to.be.false;
-        expect(g.validateMove("1S@1,0").valid).to.be.true;
+        g.move("1M@0.0");
+        expect(g.validateMove("2S@1.0").valid).to.be.false;
+        expect(g.validateMove("1S@1.0").valid).to.be.true;
     });
 
     it("treats White as wild and Black as matching nothing", () => {
         const g = rig(new IcePalaceGame(3), [["1M"], ["WS", "BS"], ["3S"]]);
-        g.move("1M@0,0");
-        expect(g.validateMove("WS@1,0").valid).to.be.true;
-        expect(g.validateMove("BS@1,0").valid).to.be.false;
+        g.move("1M@0.0");
+        expect(g.validateMove("WS@1.0").valid).to.be.true;
+        expect(g.validateMove("BS@1.0").valid).to.be.false;
     });
 
     it("rejects diagonal placements", () => {
         const g = rig(new IcePalaceGame(3), [["1M"], ["1S"], ["3S"]]);
-        g.move("1M@0,0");
-        expect(g.validateMove("1S@1,1").valid).to.be.false;
-        expect(g.validateMove("1S@0,1").valid).to.be.true;
+        g.move("1M@0.0");
+        expect(g.validateMove("1S@1.1").valid).to.be.false;
+        expect(g.validateMove("1S@0.1").valid).to.be.true;
     });
 
     it("ends the hand only after every player has passed in a row", () => {
         const g = rig(new IcePalaceGame(3), [["1L", "1M"], ["2S"], ["3S"]], fatPool());
-        g.move("1M@0,0");
+        g.move("1M@0.0");
         g.move("pass");
         g.move("pass");
         expect(g.phase).to.equal("hand");
@@ -152,18 +154,18 @@ describe("Ice Palace: playing a hand", () => {
 
     it("lets the last placer keep extending instead of closing the hand", () => {
         const g = rig(new IcePalaceGame(3), [["1L", "1M"], ["2S"], ["3S"]], fatPool());
-        g.move("1M@0,0");
+        g.move("1M@0.0");
         g.move("pass");
         g.move("pass");
-        g.move("1L@0,0");
+        g.move("1L@0.0");
         expect(g.phase).to.equal("hand");
         expect(g.passes).to.equal(0);
     });
 
     it("hands the build to whoever placed last", () => {
         const g = rig(new IcePalaceGame(3), [["1M"], ["1S"], ["3S"]], fatPool());
-        g.move("1M@0,0");
-        g.move("1S@0,1");
+        g.move("1M@0.0");
+        g.move("1S@0.1");
         g.move("pass");
         g.move("pass");
         g.move("pass");
@@ -177,13 +179,13 @@ describe("Ice Palace: move lists and auto-passing", () => {
         // A small Black cannot be played at all: nothing is smaller for it to cover, and
         // Black matches no colour, so it can never found a stack either.
         const g = rig(new IcePalaceGame(3), [["1M"], ["BS"], ["3S"]], fatPool());
-        g.move("1M@0,0");
+        g.move("1M@0.0");
         expect(g.moves()).to.deep.equal(["pass"]);
     });
 
     it("keeps pass on offer for a player who could place instead", () => {
         const g = rig(new IcePalaceGame(3), [["1M"], ["1S"], ["3S"]], fatPool());
-        g.move("1M@0,0");
+        g.move("1M@0.0");
         const moves = g.moves();
         expect(moves).to.include("pass");
         expect(moves.length).to.be.greaterThan(1);
@@ -196,10 +198,10 @@ describe("Ice Palace: move lists and auto-passing", () => {
 
     it("does not enumerate builds, but still supplies one on request", () => {
         const g = rig(new IcePalaceGame(3), [["1L", "1M"], ["2L"], ["3L"]], fatPool());
-        g.move("1M@0,0");
+        g.move("1M@0.0");
         g.move("pass");
         g.move("pass");
-        g.move("1L@0,0");
+        g.move("1L@0.0");
         while (g.phase === "hand") {
             g.move("pass");
         }
@@ -233,54 +235,54 @@ describe("Ice Palace: building the Palace", () => {
     };
 
     it("discards Black and White on the way out of the Yard", () => {
-        const g = toBuild([["BL"], ["2L"], ["3L"]], "BL@0,0");
+        const g = toBuild([["BL"], ["2L"], ["3L"]], "BL@0.0");
         expect(g.phase).to.equal("build");
         expect(g.stock).to.be.empty;
         expect(g.buildMin).to.equal(0);
     });
 
     it("auto-resolves a build with nothing placeable", () => {
-        const g = toBuild([["BL"], ["2L"], ["3L"]], "BL@0,0");
+        const g = toBuild([["BL"], ["2L"], ["3L"]], "BL@0.0");
         expect(g.moves()).to.deep.equal(["pass"]);
         g.move("pass");
         expect(g.phase).to.equal("hand");
     });
 
     it("reports the maximum the builder must reach", () => {
-        const g = toBuild([["1L", "1M"], ["2L"], ["3L"]], "1M@0,0", ["pass", "pass", "1L@0,0"]);
+        const g = toBuild([["1L", "1M"], ["2L"], ["3L"]], "1M@0.0", ["pass", "pass", "1L@0.0"]);
         expect(g.stock.sort()).to.deep.equal(["1L", "1M"]);
         expect(g.buildMin).to.equal(2);
     });
 
     it("refuses a build that stops short of the maximum", () => {
-        const g = toBuild([["1L", "1M"], ["2L"], ["3L"]], "1M@0,0", ["pass", "pass", "1L@0,0"]);
-        const short = g.validateMove("1L@0,0");
+        const g = toBuild([["1L", "1M"], ["2L"], ["3L"]], "1M@0.0", ["pass", "pass", "1L@0.0"]);
+        const short = g.validateMove("1L@0.0");
         expect(short.valid).to.be.true;
         expect(short.complete).to.equal(-1);
     });
 
     it("never auto-commits a completed build", () => {
-        const g = toBuild([["1L", "1M"], ["2L"], ["3L"]], "1M@0,0", ["pass", "pass", "1L@0,0"]);
-        const full = g.validateMove("1L@0,0;1M@0,0");
+        const g = toBuild([["1L", "1M"], ["2L"], ["3L"]], "1M@0.0", ["pass", "pass", "1L@0.0"]);
+        const full = g.validateMove("1L@0.0;1M@0.0");
         expect(full.valid).to.be.true;
         expect(full.complete).to.equal(0);
     });
 
     it("applies a build and starts the next hand with the token moved on", () => {
-        const g = toBuild([["1L", "1M"], ["2L"], ["3L"]], "1M@0,0", ["pass", "pass", "1L@0,0"]);
-        g.move("1L@0,0;1M@0,0");
+        const g = toBuild([["1L", "1M"], ["2L"], ["3L"]], "1M@0.0", ["pass", "pass", "1L@0.0"]);
+        g.move("1L@0.0;1M@0.0");
         expect(g.phase).to.equal("hand");
         expect(g.lead).to.equal(2);
         expect(g.currplayer).to.equal(2);
-        expect(g.palace.get("0,0")).to.deep.equal(["1L", "1M"]);
+        expect(g.palace.get("0.0")).to.deep.equal(["1L", "1M"]);
     });
 
     it("renders a build as frames, one per placement, on the final layout", () => {
-        const g = toBuild([["1L", "1M"], ["2L"], ["3L"]], "1M@0,0", ["pass", "pass", "1L@0,0"]);
+        const g = toBuild([["1L", "1M"], ["2L"], ["3L"]], "1M@0.0", ["pass", "pass", "1L@0.0"]);
         type Rep = { pieces: string[][][]; areas?: { stash?: string[][]; label?: { textKey?: string } }[] };
         // Before the build there is nothing to step through.
         expect(Array.isArray(g.render())).to.be.false;
-        g.move("1L@0,0;1M@0,0");
+        g.move("1L@0.0;1M@0.0");
         const reps = g.render() as unknown as Rep[];
         expect(reps).to.have.length(3);
         // Before, after the first placement, and the game as it stands, all the same size.
@@ -296,7 +298,7 @@ describe("Ice Palace: building the Palace", () => {
         expect(reps[2].areas![0].label?.textKey).to.equal("apgames:icepalace.HAND");
         // Rendering leaves the game as it was, and the frames survive a round trip.
         expect(g.phase).to.equal("hand");
-        expect(g.palace.get("0,0")).to.deep.equal(["1L", "1M"]);
+        expect(g.palace.get("0.0")).to.deep.equal(["1L", "1M"]);
         expect((g.clone().render() as unknown as Rep[]).length).to.equal(3);
         // Frames belong to the build alone: the next move renders singly again.
         g.move(g.moves()[0]);
@@ -305,15 +307,15 @@ describe("Ice Palace: building the Palace", () => {
 
     it("outlines the cells the last move placed into", () => {
         type Rep = { pieces: string[][][]; annotations?: { type: string; targets: { row: number; col: number }[] }[] };
-        const g = toBuild([["1L", "1M"], ["2L"], ["3L"]], "1M@0,0", ["pass", "pass", "1L@0,0"]);
+        const g = toBuild([["1L", "1M"], ["2L"], ["3L"]], "1M@0.0", ["pass", "pass", "1L@0.0"]);
         // The pass that ended the hand placed nothing.
         expect((g.render() as unknown as Rep).annotations).to.be.undefined;
         // A build in progress outlines its pending placements in the Palace.
-        const pending = g.clone().move("1L@0,0", { partial: true }).render() as unknown as Rep;
+        const pending = g.clone().move("1L@0.0", { partial: true }).render() as unknown as Rep;
         expect(pending.annotations).to.have.length(1);
         expect(pending.annotations![0].targets.map(t => pending.pieces[t.row][t.col].join(","))).to.deep.equal(["a1L"]);
         // A finished build: each frame outlines its own placement, the last frame all of them.
-        g.move("1L@0,0;1M@0,0");
+        g.move("1L@0.0;1M@0.0");
         const reps = g.render() as unknown as Rep[];
         // (Once the next hand opens the Yard shows too, so the Palace sits further right.)
         const outlined = (rep: Rep) => rep.annotations![0].targets.map(t => rep.pieces[t.row][t.col].join(","));
@@ -329,18 +331,18 @@ describe("Ice Palace: building the Palace", () => {
     });
 
     it("keeps no frames for a partial build or a build of nothing", () => {
-        const g = toBuild([["1L", "1M"], ["2L"], ["3L"]], "1M@0,0", ["pass", "pass", "1L@0,0"]);
-        g.move("1L@0,0", { partial: true });
+        const g = toBuild([["1L", "1M"], ["2L"], ["3L"]], "1M@0.0", ["pass", "pass", "1L@0.0"]);
+        g.move("1L@0.0", { partial: true });
         expect(Array.isArray(g.render())).to.be.false;
-        const empty = toBuild([["BL"], ["2L"], ["3L"]], "BL@0,0");
+        const empty = toBuild([["BL"], ["2L"], ["3L"]], "BL@0.0");
         empty.move("pass");
         expect(Array.isArray(empty.render())).to.be.false;
     });
 
     it("refuses a build that breaks the Palace code", () => {
-        const g = toBuild([["1L", "1M"], ["2L"], ["3L"]], "1M@0,0", ["pass", "pass", "1L@0,0"]);
+        const g = toBuild([["1L", "1M"], ["2L"], ["3L"]], "1M@0.0", ["pass", "pass", "1L@0.0"]);
         // Small over large is fine, large over medium is not.
-        expect(g.validateMove("1M@0,0;1L@0,0").valid).to.be.false;
+        expect(g.validateMove("1M@0.0;1L@0.0").valid).to.be.false;
     });
 });
 
@@ -348,9 +350,9 @@ describe("Ice Palace: scoring and ending", () => {
     it("scores each stack for whoever is on top", () => {
         const g = new IcePalaceGame(3);
         g.palace = new Map([
-            ["0,0", ["1L", "2M", "3S"]],
-            ["1,0", ["2L", "1M"]],
-            ["2,0", ["3L"]],
+            ["0.0", ["1L", "2M", "3S"]],
+            ["1.0", ["2L", "1M"]],
+            ["2.0", ["3L"]],
         ]);
         expect(g.getPlayerScore(1)).to.equal(2);
         expect(g.getPlayerScore(2)).to.equal(0);
@@ -359,8 +361,8 @@ describe("Ice Palace: scoring and ending", () => {
 
     it("ends the game when the Pool cannot replenish every hand", () => {
         const g = rig(new IcePalaceGame(3), [["1M"], ["2L"], ["3L"]], []);
-        g.palace = new Map([["5,5", ["1L", "2M"]]]);
-        g.move("1M@0,0");
+        g.palace = new Map([["5.5", ["1L", "2M"]]]);
+        g.move("1M@0.0");
         while (g.phase === "hand") {
             g.move("pass");
         }
@@ -373,10 +375,10 @@ describe("Ice Palace: scoring and ending", () => {
         const g = rig(new IcePalaceGame(3), [["BL"], ["2L"], ["3L"]], []);
         // Two stacks of equal height topped by different players.
         g.palace = new Map([
-            ["5,5", ["2L", "1M"]],
-            ["6,5", ["2L", "3M"]],
+            ["5.5", ["2L", "1M"]],
+            ["6.5", ["2L", "3M"]],
         ]);
-        g.move("BL@0,0");
+        g.move("BL@0.0");
         while (g.phase === "hand") {
             g.move("pass");
         }
@@ -413,28 +415,28 @@ describe("Ice Palace: board interaction", () => {
 
     it("maps a click on a drawn stack back to its cell", () => {
         const g = rig(new IcePalaceGame(3), [["1M"], ["2L"], ["3S"]], fatPool());
-        g.move("1M@0,0");
+        g.move("1M@0.0");
         const [row, col] = drawnAt(g.render() as Rep, "1M");
         // stacking-3D reports a click on a stacked pyramid with its stack index.
         const click = g.handleClick("2L", row, col, "0");
         expect(click.valid, click.message).to.be.true;
-        expect(click.move).to.equal("2L@0,0");
+        expect(click.move).to.equal("2L@0.0");
     });
 
     it("offers frontier space to found new stacks into", () => {
         const g = rig(new IcePalaceGame(3), [["1M"], ["1S"], ["3S"]], fatPool());
-        g.move("1M@0,0");
+        g.move("1M@0.0");
         const [row, col] = drawnAt(g.render() as Rep, "1M");
         // The cell to the right is empty padding, and an empty-cell click carries "".
         const click = g.handleClick("1S", row, col + 1, "");
         expect(click.valid, click.message).to.be.true;
-        expect(click.move).to.equal("1S@1,0");
+        expect(click.move).to.equal("1S@1.0");
     });
 
     it("never places on the Palace during a hand; a click there drops the pick", () => {
         const g = rig(new IcePalaceGame(3), [["1M"], ["1S"], ["3S"]], fatPool());
-        g.palace = new Map([["0,0", ["2L"]]]);
-        g.move("1M@0,0");
+        g.palace = new Map([["0.0", ["2L"]]]);
+        g.move("1M@0.0");
         const [row, col] = drawnAt(g.render() as Rep, "2L");
         const click = g.handleClick("1S", row, col, "0");
         expect(click.move).to.equal("");
@@ -444,67 +446,67 @@ describe("Ice Palace: board interaction", () => {
 
     it("switches the pick when another pyramid is clicked", () => {
         const g = rig(new IcePalaceGame(3), [["1M"], ["1S", "2L"], ["3S"]], fatPool());
-        g.move("1M@0,0");
+        g.move("1M@0.0");
         const click = g.handleClick("1S", -1, -1, "p2L");
         expect(click.valid).to.be.true;
         expect(click.move).to.equal("2L");
         // During a build, only the unplaced pick is switched.
         const b = rig(new IcePalaceGame(3), [["1M", "1S"], ["2S"], ["3S"]], fatPool());
-        b.move("1M@0,0");
+        b.move("1M@0.0");
         b.move("pass");
         b.move("pass");
-        b.move("1S@1,0");
+        b.move("1S@1.0");
         b.move("pass");
         b.move("pass");
         b.move("pass");
         expect(b.phase).to.equal("build");
-        expect(b.handleClick("1M@0,0;1M", -1, -1, "p1S").move).to.equal("1M@0,0;1S");
+        expect(b.handleClick("1M@0.0;1M", -1, -1, "p1S").move).to.equal("1M@0.0;1S");
     });
 
     it("maps build clicks against the Palace as drawn, pending placements included", () => {
         const b = rig(new IcePalaceGame(3), [["1M", "1S"], ["2S"], ["3S"]], fatPool());
-        b.palace = new Map([["0,0", ["1L"]], ["1,0", ["1L"]], ["2,0", ["1L"]]]);
-        b.move("1M@0,0");
+        b.palace = new Map([["0.0", ["1L"]], ["1.0", ["1L"]], ["2.0", ["1L"]]]);
+        b.move("1M@0.0");
         b.move("pass");
         b.move("pass");
-        b.move("1S@1,0");
+        b.move("1S@1.0");
         b.move("pass");
         b.move("pass");
         b.move("pass");
         expect(b.phase).to.equal("build");
-        // Founding at 3,0 widens the Palace by a column, shifting the board as drawn.
+        // Founding at 3.0 widens the Palace by a column, shifting the board as drawn.
         const partial = b.clone();
-        partial.move("1M@3,0;1S", { partial: true });
+        partial.move("1M@3.0;1S", { partial: true });
         const rep = partial.render() as Rep;
         const [row, col] = drawnAt(rep, "1M");
-        const click = b.handleClick("1M@3,0;1S", row, col, "");
-        expect(click.move).to.equal("1M@3,0;1S@3,0");
+        const click = b.handleClick("1M@3.0;1S", row, col, "");
+        expect(click.move).to.equal("1M@3.0;1S@3.0");
     });
 
     it("drops the pick when clicking a cell it cannot go to, keeping earlier placements", () => {
         const g = rig(new IcePalaceGame(3), [["1M"], ["2S"], ["3S"]], fatPool());
-        g.move("1M@0,0");
+        g.move("1M@0.0");
         // A player-2 small cannot found beside a player-1 medium; the Yard origin is row 3, col 3.
         const click = g.handleClick("2S", 3, 4, "");
         expect(click.valid).to.be.true;
         expect(click.move).to.equal("");
         const b = rig(new IcePalaceGame(3), [["1M", "1S"], ["2S"], ["3S"]], fatPool());
-        b.move("1M@0,0");
+        b.move("1M@0.0");
         b.move("pass");
         b.move("pass");
-        b.move("1S@1,0");
+        b.move("1S@1.0");
         b.move("pass");
         b.move("pass");
         b.move("pass");
         // A far corner of the Palace touches nothing the small could found beside.
-        const cancel = b.handleClick("1M@0,0;1S", 0, 0, "");
-        expect(cancel.move).to.equal("1M@0,0");
+        const cancel = b.handleClick("1M@0.0;1S", 0, 0, "");
+        expect(cancel.move).to.equal("1M@0.0");
         expect(cancel.valid).to.be.true;
     });
 
     it("selects a pyramid when its entry in the pieces area is clicked", () => {
         const g = rig(new IcePalaceGame(3), [["1M"], ["2L", "2S"], ["3S"]], fatPool());
-        g.move("1M@0,0");
+        g.move("1M@0.0");
         // The pieces area passes the legend key, which carries a letter prefix.
         const click = g.handleClick("", -1, -1, "p2L");
         expect(click.valid, click.message).to.be.true;
@@ -513,7 +515,7 @@ describe("Ice Palace: board interaction", () => {
 
     it("offers the current hand while a hand is played, and the stock while building", () => {
         const g = rig(new IcePalaceGame(3), [["1L", "1M"], ["2L", "2S"], ["3L"]], fatPool());
-        g.move("1M@0,0");
+        g.move("1M@0.0");
         // The hand is a stash of one-pyramid stacks, labelled with the player's name.
         const hand = (persp(g) as Rep).areas![0].stash!;
         expect(hand.flat().filter(k => k !== "-")).to.deep.equal(["h2S", "h2L"]);
@@ -522,7 +524,7 @@ describe("Ice Palace: board interaction", () => {
         expect(hand).to.deep.equal([["h2S", "-", "-"], ["-", "-", "h2L", "-", "-"]]);
         g.move("pass");
         g.move("pass");
-        g.move("1L@0,0");
+        g.move("1L@0.0");
         while (g.phase === "hand") {
             g.move("pass");
         }
@@ -536,8 +538,8 @@ describe("Ice Palace: board interaction", () => {
         // and spends "-" placeholders only to keep a base from sinking below the ground.
         const g = rig(new IcePalaceGame(3), [["1M"], ["2S"], ["3S"]], fatPool());
         // The lone medium is a colour no other stack holds, so drawnAt finds only it.
-        g.palace = new Map([["0,0", ["1L", "2M", "3S"]], ["1,0", ["2L"]], ["2,0", ["3M"]]]);
-        g.yard = new Map([["0,0", ["1S", "2M", "3L"]]]);
+        g.palace = new Map([["0.0", ["1L", "2M", "3S"]], ["1.0", ["2L"]], ["2.0", ["3M"]]]);
+        g.yard = new Map([["0.0", ["1S", "2M", "3L"]]]);
         const rep = persp(g) as unknown as Rep & { board: { stackOffset?: number }; legend: Record<string, { nudge?: unknown }> };
         expect(rep.board.stackOffset).to.equal(0.15);
         expect(rep.legend.p1L.nudge).to.be.undefined;
@@ -562,10 +564,10 @@ describe("Ice Palace: board interaction", () => {
         expect(rep.pieces[0].length).to.equal(7);
         // The lead goes in the middle, wherever in the empty region it is clicked.
         const click = g.handleClick("1M", 0, 0, "");
-        expect(click.move).to.equal("1M@0,0");
-        g.move("1M@0,0");
+        expect(click.move).to.equal("1M@0.0");
+        g.move("1M@0.0");
         // With a Palace as well, both regions show, one empty column apart.
-        g.palace = new Map([["0,0", ["2L"]]]);
+        g.palace = new Map([["0.0", ["2L"]]]);
         rep = g.render() as Rep;
         expect(rep.pieces.length).to.equal(7);
         expect(rep.pieces[0].length).to.equal(7 + 1 + 7);
@@ -573,7 +575,7 @@ describe("Ice Palace: board interaction", () => {
         expect(drawnAt(rep, "1M")[1]).to.equal(3);
         expect(drawnAt(rep, "2L")[1]).to.equal(7 + 1 + 3);
         // Growing past the minimum extends the board only in that direction.
-        g.yard.set("4,0", ["1S"]);
+        g.yard.set("4.0", ["1S"]);
         rep = g.render() as Rep;
         expect(rep.pieces[0].length).to.equal(7 + 1 + 9);
     });
@@ -613,10 +615,10 @@ describe("Ice Palace: board interaction", () => {
 
     it("counts the pyramids placed so far against the number to build", () => {
         const g = rig(new IcePalaceGame(3), [["1M", "1S"], ["2S"], ["3S"]], fatPool());
-        g.move("1M@0,0");
+        g.move("1M@0.0");
         g.move("pass");
         g.move("pass");
-        g.move("1S@1,0");
+        g.move("1S@1.0");
         g.move("pass");
         g.move("pass");
         g.move("pass");
@@ -625,7 +627,7 @@ describe("Ice Palace: board interaction", () => {
             typeof st.key === "object" && st.key !== null && "textKey" in st.key && st.key.textKey === "apgames:status.icepalace.PLACED")!.value;
         expect(placed()).to.deep.equal(["0 / 2"]);
         const tmp = g.clone();
-        tmp.move("1M@0,0", { partial: true });
+        tmp.move("1M@0.0", { partial: true });
         expect(tmp.sidebarStatuses().find(st =>
             typeof st.key === "object" && st.key !== null && "textKey" in st.key && st.key.textKey === "apgames:status.icepalace.PLACED")!.value)
             .to.deep.equal(["1 / 2"]);
@@ -667,7 +669,7 @@ describe("Ice Palace: board interaction", () => {
         expect(dotted(persp(g) as Rep)).to.deep.equal([]);
         g.move("1M", { partial: true });
         expect(dotted(persp(g) as Rep)).to.deep.equal(["3,3"]);
-        g.move("1M@0,0");
+        g.move("1M@0.0");
         // A large of the wrong colour can only go on top of the medium at the origin, so
         // the dot rides on that stack rather than replacing it.
         g.move("2L", { partial: true });
@@ -678,7 +680,7 @@ describe("Ice Palace: board interaction", () => {
         g.move("1S", { partial: true });
         expect(dotted(persp(g) as Rep)).to.deep.equal(["2,3", "3,2", "3,4", "4,3"]);
         // Completing the placement clears the dots.
-        g.move("1S@1,0");
+        g.move("1S@1.0");
         expect(dotted(persp(g) as Rep)).to.deep.equal([]);
     });
 });
@@ -706,9 +708,9 @@ describe("Ice Palace: top-down display", () => {
 
     it("looks straight down at the same footprint, with translucent stacks and no placeholders", () => {
         const g = rig(new IcePalaceGame(3), [["1M", "1L"], ["1S"], ["3S"]], fatPool());
-        g.move("1M@0,0");
-        g.move("1S@1,0");
-        g.palace = new Map([["0,0", ["2L", "1M"]]]);
+        g.move("1M@0.0");
+        g.move("1S@1.0");
+        g.palace = new Map([["0.0", ["2L", "1M"]]]);
         const flat = expanding(g);
         const deep = g.render({ altDisplays: ["perspective"] }) as unknown as Rep;
         expect(flat.renderer).to.equal("stacking-expanding");
@@ -730,7 +732,7 @@ describe("Ice Palace: top-down display", () => {
 
     it("offers the hand, then the stock, as nests of one colour each below the board", () => {
         const g = rig(new IcePalaceGame(3), [["1M"], ["2S", "1L", "2L", "WS", "2S"], ["3S"]], fatPool());
-        g.move("1M@0,0");
+        g.move("1M@0.0");
         let rep = expanding(g);
         // The hand, then the Pool.
         expect(rep.areas).to.have.length(2);
@@ -761,7 +763,7 @@ describe("Ice Palace: top-down display", () => {
         let board = expanding(g).board as unknown as { width: number; height: number; blocked: { row: number; col: number }[] };
         expect(board.blocked).to.have.length(board.width * board.height - 1);
         expect(board.blocked).to.not.deep.include({ row: 3, col: 3 });
-        g.move("1M@0,0");
+        g.move("1M@0.0");
         board = expanding(g).board as unknown as typeof board;
         const open = [];
         for (let row = 0; row < board.height; row++) {
@@ -804,7 +806,7 @@ describe("Ice Palace: top-down display", () => {
 
     it("still dots the legal cells once a pyramid is picked", () => {
         const g = rig(new IcePalaceGame(3), [["1M"], ["1S"], ["3S"]], fatPool());
-        g.move("1M@0,0");
+        g.move("1M@0.0");
         g.move("1S", { partial: true });
         const rep = expanding(g);
         const dotted: string[] = [];
@@ -818,9 +820,9 @@ describe("Ice Palace: top-down display", () => {
 
     it("lays out the hovered stack beside the board, bottom first, from the side", () => {
         const g = rig(new IcePalaceGame(3), [["1M", "1L"], ["1S"], ["3S"]], fatPool());
-        g.move("1M@0,0");
-        g.move("1S@1,0");
-        g.palace = new Map([["0,0", ["2L", "1M"]]]);
+        g.move("1M@0.0");
+        g.move("1S@1.0");
+        g.palace = new Map([["0.0", ["2L", "1M"]]]);
         // The Yard's origin sits at the centre of the left region.
         let rep = g.renderColumn(3, 3) as unknown as Rep;
         expect(rep.renderer).to.equal("stacking-expanding");
@@ -895,7 +897,7 @@ describe("Ice Palace: event log", () => {
 
     it("announces the build with the count and one legal way to do it", () => {
         const g = rig(new IcePalaceGame(3), [["1M"], ["2S"], ["3S"]], fatPool());
-        g.move("1M@0,0");
+        g.move("1M@0.0");
         g.move("pass");
         g.move("pass");
         g.move("pass");
@@ -903,7 +905,7 @@ describe("Ice Palace: event log", () => {
         const lines = lastLines(g);
         const announce = lines.find(l => l.textKey === "apresults:ANNOUNCE.icepalace_build")!;
         expect(announce).to.not.be.undefined;
-        expect(announce.textParams).to.include({ count: 1, move: "1M@0,0" });
+        expect(announce.textParams).to.include({ count: 1, move: "1M@0.0" });
         // The suggested move is a complete, legal build as it stands.
         const check = g.validateMove(announce.textParams!.move as string);
         expect(check.valid).to.be.true;
@@ -911,14 +913,14 @@ describe("Ice Palace: event log", () => {
         // It is quoted for copying, and the line is attributed to the builder.
         const text = g.chatLog(names).flat().join("\n");
         expect(text).to.include("Alice won the hand");
-        expect(text).to.include("`1M@0,0`");
+        expect(text).to.include("`1M@0.0`");
         assertChatLogParity(g, names);
     });
 
     it("says so when nothing from the Yard can be built", () => {
         const g = rig(new IcePalaceGame(3), [["1M"], ["2S"], ["3S"]], fatPool());
-        g.palace = new Map([["0,0", ["2S"]]]);
-        g.move("1M@0,0");
+        g.palace = new Map([["0.0", ["2S"]]]);
+        g.move("1M@0.0");
         g.move("pass");
         g.move("pass");
         g.move("pass");
@@ -933,9 +935,9 @@ describe("Ice Palace: event log", () => {
 describe("Ice Palace: serialization", () => {
     it("survives a round trip through its own state", () => {
         const g = rig(new IcePalaceGame(3), [["1M", "1L"], ["WS"], ["3S"]], fatPool());
-        g.move("1M@0,0");
+        g.move("1M@0.0");
         // White is wild, so it may found beside the player-1 medium.
-        g.move("WS@0,1");
+        g.move("WS@0.1");
         const clone = g.clone();
         expect(clone.phase).to.equal(g.phase);
         expect(clone.currplayer).to.equal(g.currplayer);
@@ -946,17 +948,17 @@ describe("Ice Palace: serialization", () => {
 
     it("revives the whole stack, Maps included, from serialized JSON mid-build", () => {
         const g = rig(new IcePalaceGame(3), [["1M"], ["1S"], ["3S"]], fatPool());
-        g.palace = new Map([["0,0", ["2L"]]]);
+        g.palace = new Map([["0.0", ["2L"]]]);
         g.lead = 2;
         g.currplayer = 2;
-        g.move("1S@0,0");
+        g.move("1S@0.0");
         g.move("pass");
         g.move("pass");
         g.move("pass");
         expect(g.phase).to.equal("build");
         const stockBefore = [...g.stock];
         const palaceBefore = [...g.palace.entries()].map(([cell, stack]) => [cell, [...stack]]);
-        g.move("1S@0,0", { partial: true });
+        g.move("1S@0.0", { partial: true });
         const json = g.serialize();
         expect(json).to.be.a("string");
         const revived = new IcePalaceGame(json);
@@ -971,7 +973,71 @@ describe("Ice Palace: serialization", () => {
         expect(revived.stack.length).to.equal(g.stack.length);
         expect(revived.stack[revived.stack.length - 1]._results).to.deep.equal(g.stack[g.stack.length - 1]._results);
         // The partial placement was never committed, so it is not in the saved state.
-        expect(revived.palace.get("0,0")).to.deep.equal(["2L"]);
+        expect(revived.palace.get("0.0")).to.deep.equal(["2L"]);
+    });
+
+    /** A three-player hand won by player 1, who now builds two pyramids. */
+    const readyToBuild = (): IcePalaceGame => {
+        const g = rig(new IcePalaceGame(3), [["1L", "1M"], ["2L"], ["3L"]], fatPool());
+        for (const m of ["1M@0.0", "pass", "pass", "1L@0.0", "pass", "pass", "pass"]) {
+            g.move(m);
+        }
+        return g;
+    };
+
+    it("writes cells with a dot, so no move carries a comma", () => {
+        // The front end reads commas in a move as separating simultaneous moves, which
+        // made a two-pyramid build in a three-player game look like one move per seat.
+        const g = readyToBuild();
+        expect(g.phase).to.equal("build");
+        const announce = g.results.find(r => r.type === "announce") as { payload: unknown[] };
+        expect(announce.payload[2]).to.be.a("string").and.not.include(",");
+        g.move("1L@0.0;1M@0.0");
+        expect(g.moves().filter(m => m.includes(","))).to.be.empty;
+        g.move(g.moves()[0]);
+        expect(g.getPlies().filter(ply => ply.move.includes(","))).to.be.empty;
+    });
+
+    it("reads moves typed in the old comma notation", () => {
+        const g = rig(new IcePalaceGame(3), [["1M"], ["2S"], ["3S"]], fatPool());
+        expect(g.validateMove("1M@0,0").valid).to.be.true;
+        g.move("1M@0,0");
+        expect(g.lastmove).to.equal("1M@0.0");
+        expect(g.topOfCell("yard", "0.0")).to.equal("1M");
+    });
+
+    it("loads a game saved with comma cells as if it had been played with dots", () => {
+        const g = readyToBuild();
+        g.move("1L@0.0;1M@0.0");
+        // The same game as the engine saved it before cells used a dot.
+        const toComma = (text: string): string => text.replace(/(-?\d+)\.(-?\d+)/g, "$1,$2");
+        const commaKeys = (struct: Structure): Structure =>
+            new Map([...struct.entries()].map(([cell, stack]) => [toComma(cell), stack]));
+        const saved = JSON.parse(g.serialize(), reviver) as IIcePalaceState;
+        for (const entry of saved.stack) {
+            entry.yard = commaKeys(entry.yard);
+            entry.palace = commaKeys(entry.palace);
+            if (entry.frames !== undefined) {
+                entry.frames = entry.frames.map(frame => ({ ...frame, palace: commaKeys(frame.palace) }));
+            }
+            if (entry.lastmove !== undefined) {
+                entry.lastmove = toComma(entry.lastmove);
+            }
+            for (const result of entry._results as unknown as Record<string, unknown>[]) {
+                if (typeof result.where === "string") {
+                    result.where = toComma(result.where);
+                }
+                if (Array.isArray(result.payload)) {
+                    result.payload = result.payload.map(p => (typeof p === "string" ? toComma(p) : p));
+                }
+            }
+        }
+        const legacy = JSON.stringify(saved, replacer);
+        expect(legacy).to.include("\"1L@0,0;1M@0,0\"");
+
+        const loaded = new IcePalaceGame(legacy);
+        expect(loaded.serialize()).to.equal(g.serialize());
+        expect(loaded.validateMove(g.moves()[0]).valid).to.be.true;
     });
 });
 
@@ -980,13 +1046,13 @@ describe("Ice Palace: sequenced turn model and record export", () => {
         const g = rig(new IcePalaceGame(3), [["1L", "1M"], ["2L"], ["3L"]], fatPool());
         // Alice opens and Charlie is the last to place; then everyone passes, and Charlie
         // builds; then Bob leads the next hand.
-        for (const m of ["1M@0,0", "pass", "3L@0,0", "pass", "pass", "pass"]) {
+        for (const m of ["1M@0.0", "pass", "3L@0.0", "pass", "pass", "pass"]) {
             g.move(m);
         }
         expect(g.phase).to.equal("build");
         expect(g.currplayer).to.equal(3);
         expect(g.stock).to.deep.equal(["1M", "3L"]);
-        g.move("3L@0,0;1M@0,0");
+        g.move("3L@0.0;1M@0.0");
         expect(g.phase).to.equal("hand");
         g.move(g.moves()[0]);
         const plies = g.getPlies().map(p => [p.actor, p.round]);
@@ -1003,29 +1069,29 @@ describe("Ice Palace: sequenced turn model and record export", () => {
 
     const played = (): IcePalaceGame => {
         const g = rig(new IcePalaceGame(3), [["1M"], ["2S"], ["3S"]], fatPool());
-        g.move("1M@0,0");
+        g.move("1M@0.0");
         g.move("pass");
         g.move("pass");
         g.move("pass");
-        g.move("1M@0,0");
+        g.move("1M@0.0");
         return g;
     };
 
     it("refuses to commit an incomplete move", () => {
         const g = rig(new IcePalaceGame(3), [["1M", "1S"], ["2S"], ["3S"]], fatPool());
         expect(() => g.move("1M")).to.throw("FAILSAFE");
-        g.move("1M@0,0");
+        g.move("1M@0.0");
         g.move("pass");
         g.move("pass");
-        g.move("1S@1,0");
+        g.move("1S@1.0");
         g.move("pass");
         g.move("pass");
         g.move("pass");
         expect(g.phase).to.equal("build");
         expect(g.buildMin).to.equal(2);
-        expect(() => g.move("1M@0,0;1S")).to.throw("FAILSAFE");
-        expect(() => g.move("1M@0,0")).to.throw("FAILSAFE");
-        g.move("1M@0,0;1S@0,0");
+        expect(() => g.move("1M@0.0;1S")).to.throw("FAILSAFE");
+        expect(() => g.move("1M@0.0")).to.throw("FAILSAFE");
+        g.move("1M@0.0;1S@0.0");
         expect(g.phase).to.equal("hand");
     });
 
@@ -1093,7 +1159,7 @@ const check = (palace: Structure, pieces: PieceId[], expected: number): void => 
 
 describe("Ice Palace: maximum build", () => {
     it("places nothing when the Yard held only Black and White", () => {
-        check(palaceOf({ "0,0": ["1L"] }), [], 0);
+        check(palaceOf({ "0.0": ["1L"] }), [], 0);
     });
 
     it("stacks a whole large-medium-small tower into an empty Palace", () => {
@@ -1109,17 +1175,17 @@ describe("Ice Palace: maximum build", () => {
     it("finds the ordering that beats a greedy build", () => {
         // Covering the large with the small first strands the medium. The medium has to
         // go down first so the small has a medium to sit on.
-        check(palaceOf({ "0,0": ["1L"] }), ["2S", "3M"], 2);
+        check(palaceOf({ "0.0": ["1L"] }), ["2S", "3M"], 2);
     });
 
     it("spends the only large top on one colour and strands the other", () => {
-        check(palaceOf({ "0,0": ["1L"] }), ["2M", "3M"], 1);
+        check(palaceOf({ "0.0": ["1L"] }), ["2M", "3M"], 1);
     });
 
     it("regrows a large top by founding, enabling a second colour", () => {
         // Colour 2 is enabled off the existing large, then its own large is founded as a
         // fresh large top, which colour 3's medium can then use.
-        check(palaceOf({ "0,0": ["1L"] }), ["2M", "2L", "3M"], 3);
+        check(palaceOf({ "0.0": ["1L"] }), ["2M", "2L", "3M"], 3);
     });
 
     it("founds without limit once a colour is enabled", () => {
@@ -1127,19 +1193,19 @@ describe("Ice Palace: maximum build", () => {
         for (let i = 0; i < 12; i++) {
             pieces.push("1S");
         }
-        check(palaceOf({ "0,0": ["1L"] }), pieces, 12);
+        check(palaceOf({ "0.0": ["1L"] }), pieces, 12);
     });
 
     it("strands colours that are absent when every open top is small", () => {
-        check(palaceOf({ "0,0": ["1L", "1M", "1S"] }), ["2S", "2M", "3L"], 0);
+        check(palaceOf({ "0.0": ["1L", "1M", "1S"] }), ["2S", "2M", "3L"], 0);
     });
 
     it("places a large only when its own colour is already on an open top", () => {
-        check(palaceOf({ "0,0": ["1L", "1M", "1S"] }), ["1L", "1L"], 2);
+        check(palaceOf({ "0.0": ["1L", "1M", "1S"] }), ["1L", "1L"], 2);
     });
 
     it("chains large to medium to small across three new colours", () => {
-        check(palaceOf({ "0,0": ["1L"] }), ["2M", "3S"], 2);
+        check(palaceOf({ "0.0": ["1L"] }), ["2M", "3S"], 2);
     });
 
     it("opens an empty Palace with a medium when that beats leading with the large", () => {
@@ -1149,11 +1215,11 @@ describe("Ice Palace: maximum build", () => {
     });
 
     it("uses every pyramid when each colour has something small enough", () => {
-        check(palaceOf({ "0,0": ["1L"], "1,0": ["1L"] }), ["2M", "2S", "3M", "3S"], 4);
+        check(palaceOf({ "0.0": ["1L"], "1.0": ["1L"] }), ["2M", "2S", "3M", "3S"], 4);
     });
 
     it("keeps the Palace connected and never buries a small", () => {
-        const palace = palaceOf({ "0,0": ["1L"] });
+        const palace = palaceOf({ "0.0": ["1L"] });
         const pieces: PieceId[] = ["1M", "1S", "1L", "2M"];
         const plan = maximumBuild(palace, pieces);
         replay(palace, pieces, plan);
@@ -1161,7 +1227,7 @@ describe("Ice Palace: maximum build", () => {
     });
 
     it("does not mutate the Palace it was handed", () => {
-        const palace = palaceOf({ "0,0": ["1L"] });
+        const palace = palaceOf({ "0.0": ["1L"] });
         maximumBuild(palace, ["2M", "2S"]);
         expect(palace.size).to.equal(1);
         expect(palace.get(cellOf(0, 0))).to.deep.equal(["1L"]);
@@ -1224,11 +1290,11 @@ const bruteForce = (palace: Structure, pieces: PieceId[]): number => {
 
 describe("Ice Palace: maximum build matches exhaustive search", () => {
     const palaces: Record<string, Structure> = {
-        "a lone large": palaceOf({ "0,0": ["1L"] }),
-        "a lone small": palaceOf({ "0,0": ["1S"] }),
-        "a finished tower": palaceOf({ "0,0": ["1L", "2M", "3S"] }),
-        "two adjacent larges": palaceOf({ "0,0": ["1L"], "1,0": ["2L"] }),
-        "a large beside a covered medium": palaceOf({ "0,0": ["1L"], "0,1": ["2L", "3M"] }),
+        "a lone large": palaceOf({ "0.0": ["1L"] }),
+        "a lone small": palaceOf({ "0.0": ["1S"] }),
+        "a finished tower": palaceOf({ "0.0": ["1L", "2M", "3S"] }),
+        "two adjacent larges": palaceOf({ "0.0": ["1L"], "1.0": ["2L"] }),
+        "a large beside a covered medium": palaceOf({ "0.0": ["1L"], "0.1": ["2L", "3M"] }),
     };
 
     const yards: PieceId[][] = [

@@ -13,8 +13,10 @@ import i18next from "i18next";
  * Shared vocabulary and legality checks for Ice Palace.
  *
  * Both structures (the Yard and the Ice Palace) are built on imaginary grids that
- * stretch to infinity, so cells are stored as `"x,y"` keys rather than on a fixed
- * board. `y` is positive upwards, matching `UnboundedSquareBoard.abs2notation`.
+ * stretch to infinity, so cells are stored as `"x.y"` keys rather than on a fixed
+ * board. `y` is positive upwards, matching `UnboundedSquareBoard.abs2notation`, but the
+ * coordinates are joined with a dot, as in Thricewise, rather than a comma: the front
+ * end reads commas in a move as separating simultaneous moves.
  */
 
 /** 1 = small, 2 = medium, 3 = large. */
@@ -47,12 +49,18 @@ export const sizeOf = (piece: PieceId): Size => {
 
 export const makePiece = (colour: string, size: Size): PieceId => `${colour}${SIZE_CHARS[size - 1]}`;
 
-export const cellOf = (x: number, y: number): Cell => `${x},${y}`;
+export const cellOf = (x: number, y: number): Cell => `${x}.${y}`;
 
 export const coordsOf = (cell: Cell): [number, number] => {
-    const parts = cell.split(",");
+    const parts = cell.split(".");
     return [Number(parts[0]), Number(parts[1])];
 };
+
+/**
+ * Games saved before cells used a dot wrote them `"x,y"`. Rewrites any such cells in a
+ * cell, move or other string; text without them is returned unchanged.
+ */
+export const upgradeLegacyCells = (text: string): string => text.replace(/(-?\d+),(-?\d+)/g, "$1.$2");
 
 /** Adjacency is side-by-side only; the four diagonals are not adjacent. */
 export const neighbours = (cell: Cell): Cell[] => {
@@ -785,7 +793,7 @@ export class IcePalaceGame extends GameBaseSequenced {
             this.gameover = state.gameover;
             this.winner = [...state.winner];
             this.variants = state.variants;
-            this.stack = [...state.stack];
+            this.stack = state.stack.map(IcePalaceGame.upgradeEntry);
         }
         this.load();
     }
@@ -894,6 +902,41 @@ export class IcePalaceGame extends GameBaseSequenced {
         return { palace: cloneStructure(frame.palace), stock: [...frame.stock] };
     }
 
+    /**
+     * A stack entry with any cells saved in the old `x,y` form rewritten as `x.y`: the
+     * structures, the build frames, the move and the cells in its results. Saved games
+     * from before the change keep loading, and their moves read like new ones.
+     */
+    private static upgradeEntry(entry: IMoveState): IMoveState {
+        const upgradeStructure = (struct: Structure): Structure =>
+            new Map([...struct.entries()].map(([cell, stack]) => [upgradeLegacyCells(cell), stack]));
+        const upgraded: IMoveState = {
+            ...entry,
+            _results: entry._results.map(IcePalaceGame.upgradeResult),
+            yard: upgradeStructure(entry.yard),
+            palace: upgradeStructure(entry.palace),
+        };
+        if (entry.lastmove !== undefined) {
+            upgraded.lastmove = upgradeLegacyCells(entry.lastmove);
+        }
+        if (entry.frames !== undefined) {
+            upgraded.frames = entry.frames.map(frame => ({ palace: upgradeStructure(frame.palace), stock: frame.stock }));
+        }
+        return upgraded;
+    }
+
+    /** A result's cell, or the build suggested in an announcement, in the current notation. */
+    private static upgradeResult(result: APMoveResult): APMoveResult {
+        const upgraded = { ...result } as Record<string, unknown>;
+        if (typeof upgraded.where === "string") {
+            upgraded.where = upgradeLegacyCells(upgraded.where);
+        }
+        if (Array.isArray(upgraded.payload)) {
+            upgraded.payload = upgraded.payload.map(p => (typeof p === "string" ? upgradeLegacyCells(p) : p));
+        }
+        return upgraded as unknown as APMoveResult;
+    }
+
     public state(): IIcePalaceState {
         return {
             game: IcePalaceGame.gameinfo.uid,
@@ -971,12 +1014,13 @@ export class IcePalaceGame extends GameBaseSequenced {
         return super.randomMove();
     }
 
+    /** Moves from games saved before cells used a dot are read in the current notation. */
     private static normalise(m: string): string {
         const cleaned = m.replace(/\s+/g, "");
         if (cleaned.toLowerCase() === "pass") {
             return "pass";
         }
-        return cleaned.toUpperCase();
+        return upgradeLegacyCells(cleaned.toUpperCase());
     }
 
     /** Splits a placement into its pyramid and its cell. */
@@ -987,7 +1031,7 @@ export class IcePalaceGame extends GameBaseSequenced {
         }
         const piece = token.substring(0, at);
         const cell = token.substring(at + 1);
-        if (!/^[1-6BW][SML]$/.test(piece) || !/^-?\d+,-?\d+$/.test(cell)) {
+        if (!/^[1-6BW][SML]$/.test(piece) || !/^-?\d+\.-?\d+$/.test(cell)) {
             return undefined;
         }
         return { piece, cell };
