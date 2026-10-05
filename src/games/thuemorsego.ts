@@ -33,8 +33,6 @@ interface IMoveState extends IIndividualState {
     phase: Phase;
     /** Index of the next placement; its Thue-Morse digit names the colour to place. */
     placed: number;
-    /** Stones captured so far by each seat. */
-    captures: [number, number];
     /** Seats of the trailing run of moves that consisted only of voluntary passes. */
     passes: playerid[];
     /** Positions this move created other than the saved board (positional superko, repetition). */
@@ -77,8 +75,6 @@ interface ISim {
     base: Map<string, number>;
     /** Positions created so far in this move, in order. */
     created: string[];
-    /** Opponent stones captured so far in this move. */
-    captured: number;
     results: APMoveResult[];
     /** Placements in this move. */
     length: number;
@@ -277,7 +273,6 @@ export class ThueMorseGoGame extends GameBase {
     public board!: Board;
     public phase!: Phase;
     public placed = 0;
-    public captures: [number, number] = [0, 0];
     public passes: playerid[] = [];
     public interim: string[] = [];
     public novel = false;
@@ -312,7 +307,6 @@ export class ThueMorseGoGame extends GameBase {
                 board: new Map(),
                 phase,
                 placed: 0,
-                captures: [0, 0],
                 passes: [],
                 interim: [],
                 novel: false,
@@ -350,7 +344,6 @@ export class ThueMorseGoGame extends GameBase {
         this.lastmove = state.lastmove;
         this.phase = state.phase;
         this.placed = state.placed;
-        this.captures = [...state.captures] as [number, number];
         this.passes = [...state.passes];
         this.interim = [...state.interim];
         this.novel = state.novel;
@@ -561,7 +554,6 @@ export class ThueMorseGoGame extends GameBase {
             board: new Map(this.board),
             base: base ?? this.positionCounts(),
             created: [],
-            captured: 0,
             results: [],
             length,
             placed,
@@ -604,7 +596,6 @@ export class ThueMorseGoGame extends GameBase {
     private clear(sim: ISim, colour: Stone): void {
         for (const group of clearColour(sim.board, this.geo, otherColour(colour))) {
             sim.results.push({ type: "capture", where: group.join(","), count: group.length });
-            sim.captured += group.length;
         }
         for (const group of clearColour(sim.board, this.geo, colour)) {
             sim.results.push({ type: "capture", where: group.join(","), count: group.length, how: "suicide" });
@@ -1387,7 +1378,6 @@ export class ThueMorseGoGame extends GameBase {
         this.board = sim.board;
         this.results = sim.results;
         this.placed += sim.placed;
-        this.captures[seat - 1] += sim.captured;
         if (sim.buttonTaken) {
             this.button = seat;
         }
@@ -1591,7 +1581,7 @@ export class ThueMorseGoGame extends GameBase {
         return score;
     }
 
-    /** Tromp-Taylor area plus the button; captured stones are tallied but do not score. */
+    /** Tromp-Taylor area plus the button. */
     public getPlayerScore(player: playerid): number {
         const colour = this.colourOfSeat(player);
         if (colour === undefined) {
@@ -1604,16 +1594,10 @@ export class ThueMorseGoGame extends GameBase {
         if (this.killAll) {
             return [];
         }
-        return [
-            {
-                name: this.neutralAreaLabel("apgames:status.SCORES"),
-                scores: [this.getPlayerScore(1), this.getPlayerScore(2)],
-            },
-            {
-                name: this.neutralAreaLabel("apgames:status.thuemorsego.CAPTURES"),
-                scores: [this.captures[0], this.captures[1]],
-            },
-        ];
+        return [{
+            name: this.neutralAreaLabel("apgames:status.SCORES"),
+            scores: [this.getPlayerScore(1), this.getPlayerScore(2)],
+        }];
     }
 
     // -----------------------------------------------------------------------
@@ -1641,7 +1625,6 @@ export class ThueMorseGoGame extends GameBase {
             board: new Map(this.board),
             phase: this.phase,
             placed: this.placed,
-            captures: [...this.captures] as [number, number],
             passes: [...this.passes],
             interim: [...this.interim],
             novel: this.novel,

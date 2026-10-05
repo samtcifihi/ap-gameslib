@@ -166,17 +166,16 @@ describe("Thue-Morse Go: moves", () => {
         expect([g.getPlayerScore(1), g.getPlayerScore(2)]).to.deep.equal([1, 2]);
     });
 
-    it("captures and credits the stones", () => {
+    it("captures stones", () => {
         const g = small();
         setStones(g, ["a2"], ["a1"]);
         g.move("b1");
         expect(g.board.has("a1")).to.be.false;
-        expect(g.captures).to.deep.equal([1, 0]);
         expect(g.results.filter((r) => r.type === "capture").map((r) => r.count)).to.deep.equal([1]);
-        // Two stones, the point they enclose, and the rest of the empty board; the capture is only tallied.
+        // Two stones, the point they enclose, and the rest of the empty board; the capture itself does not score.
         expect(g.getPlayerScore(1)).to.equal(121);
         expect(g.getPlayerScore(2)).to.equal(0);
-        expect(g.sidebarScores().map((table) => table.scores)).to.deep.equal([[121, 0], [1, 0]]);
+        expect(g.sidebarScores().map((table) => table.scores)).to.deep.equal([[121, 0]]);
     });
 
     it("allows multi-stone suicide but not the single stone that repeats the position", () => {
@@ -189,7 +188,6 @@ describe("Thue-Morse Go: moves", () => {
         const suicide = g.results.find((r) => r.type === "capture")!;
         expect(suicide.how).to.equal("suicide");
         expect(suicide.count).to.equal(2);
-        expect(g.captures).to.deep.equal([0, 0]);
 
         const h = small();
         setStones(h, [], ["a2", "b1", "k11"]);
@@ -206,7 +204,7 @@ describe("Thue-Morse Go: moves", () => {
         expect(g.validateMove("b1,a1").complete).to.equal(1);
         g.move("b1,a1");
         expect(g.board.get("a1")).to.equal(2);
-        expect(g.captures).to.deep.equal([0, 1]);
+        expect(g.board.has("b1")).to.be.true;
     });
 
     it("lets a two-placement move fill both eyes under checked weak eyes", () => {
@@ -225,7 +223,7 @@ describe("Thue-Morse Go: moves", () => {
         expect(first.complete).to.equal(-1);
         expect(checked.validateMove("a1,c1").complete).to.equal(1);
         checked.move("a1,c1");
-        expect(checked.captures).to.deep.equal([6, 0]);
+        expect(checked.results.filter((r) => r.type === "capture").map((r) => r.count)).to.deep.equal([6]);
         for (const cell of own) {
             expect(checked.board.has(cell)).to.be.false;
         }
@@ -543,7 +541,7 @@ describe("Thue-Morse Go: tracker and sidebar", () => {
         setStones(g, neighbours.slice(0, -1), ["f6"]);
         g.move(neighbours[neighbours.length - 1]);
         expect(g.board.has("f6")).to.be.false;
-        expect(g.captures).to.deep.equal([1, 0]);
+        expect(g.results.some((r) => r.type === "capture" && r.count === 1)).to.be.true;
     });
 });
 
