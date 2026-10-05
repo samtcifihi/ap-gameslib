@@ -122,7 +122,11 @@ const TRACK_TINT = 0.2;
  */
 const MARKER_BORDER = "#000";
 const REPETITIONS_FOR_DRAW = 5;
+/** Kill-All offers this many handicap stones, in two rows; the other pickers one row of nine. */
 const PICKER_MAX = 18;
+const PICKER_WIDTH = 9;
+/** The reverse komi picker offers multiples of this many points, either way. */
+const KOMI_STEP = 14;
 /** The legend keys of the tracker's glyphs: the small stones s1/s2 and the digit markers m1d0 to m2df. */
 const TRACK_KEY_RE = /^(s[12]|m[12]d[0-9a-f])$/;
 /** A reverse komi token: a whole number, possibly negative. */
@@ -1068,23 +1072,45 @@ export class ThueMorseGoGame extends GameBase {
     // -----------------------------------------------------------------------
 
     /**
-     * The numbered stones offered while a handicap is set: the values 1 to 18 in two centred rows
-     * of nine, the odd values just above the centre point and the even values just below it, so
-     * each column holds a consecutive pair. Cells already holding a stone offer nothing; larger
-     * handicaps, and any value whose stone is covered, are entered manually.
+     * Numbered stones in a row across the board: `values` left to right from four columns left of
+     * the centre, `offset` rows below the centre point. A cell that already holds a stone shows
+     * that stone instead, but still answers to a click with its value, since clicking the
+     * opponent's stone means nothing else; larger values are entered manually.
      */
-    private pickerLayout(max: number): IPickerButton[] {
+    private pickerRow(values: number[], offset: number): IPickerButton[] {
         const centre = Math.floor(this.boardSize / 2);
-        const left = centre - 4;
-        const buttons: IPickerButton[] = [];
-        for (let value = 1; value <= Math.min(PICKER_MAX, max); value++) {
-            const row = value % 2 === 1 ? centre - 1 : centre + 1;
-            const cell = this.coords2algebraic(left + Math.floor((value - 1) / 2), row);
-            if (!this.board.has(cell)) {
-                buttons.push({ cell, value });
-            }
+        return values.map((value, i) => ({ cell: this.coords2algebraic(centre - 4 + i, centre + offset), value }));
+    }
+
+    /**
+     * Kill-All handicap: the values 1 to 18 in two rows of nine, the odd values just above the
+     * centre point and the even values just below it, so each column holds a consecutive pair.
+     */
+    private killAllPicker(): IPickerButton[] {
+        const odd: number[] = [];
+        const even: number[] = [];
+        for (let value = 1; value <= Math.min(PICKER_MAX, this.maxSetupStones()); value++) {
+            (value % 2 === 1 ? odd : even).push(value);
         }
-        return buttons;
+        return [...this.pickerRow(odd, -1), ...this.pickerRow(even, 1)];
+    }
+
+    /** Standard handicap: the values 1 to 9 across the centre row. */
+    private handicapPicker(): IPickerButton[] {
+        const values: number[] = [];
+        for (let value = 1; value <= PICKER_WIDTH; value++) {
+            values.push(value);
+        }
+        return this.pickerRow(values, 0);
+    }
+
+    /** Reverse komi: multiples of 14 within range, positive just above the centre and negative just below. */
+    private komiPicker(): IPickerButton[] {
+        const values: number[] = [];
+        for (let k = 1; k <= PICKER_WIDTH && k * KOMI_STEP <= this.maxKomi; k++) {
+            values.push(k * KOMI_STEP);
+        }
+        return [...this.pickerRow(values, -1), ...this.pickerRow(values.map((value) => -value), 1)];
     }
 
     /** The picker the current state shows, if any, and the value chosen so far. */
@@ -1093,11 +1119,15 @@ export class ThueMorseGoGame extends GameBase {
             return undefined;
         }
         if (this.phase === "hand-n") {
-            return { buttons: this.pickerLayout(this.maxSetupStones()), chosen: this.handicap };
+            return { buttons: this.killAllPicker(), chosen: this.handicap };
+        }
+        // The komi comes first; once chosen, the board (or the handicap picker) takes its place.
+        if (this.komiPending()) {
+            return { buttons: this.komiPicker() };
         }
         // A handicap of one pass leaves a placement to make, so the board is shown instead.
         if (this.phase === "play" && this.declaring() && this.handicap !== 1) {
-            return { buttons: this.pickerLayout(this.points), chosen: this.handicap };
+            return { buttons: this.handicapPicker(), chosen: this.handicap };
         }
         return undefined;
     }
@@ -1173,17 +1203,13 @@ export class ThueMorseGoGame extends GameBase {
                 result.move = result.valid ? newmove : move;
                 return result;
             }
-            if (this.komiPending() && !KOMI_RE.test(this.parseTokens(move)[0] ?? "")) {
-                return { move, valid: false, message: i18next.t("apgames:validation.thuemorsego.KOMI_FIRST") };
-            }
             const cell = this.coords2algebraic(col, row);
-            const newmove = this.clickCell(move.toLowerCase().replace(/\s+/g, ""), cell);
+            const normalized = move.toLowerCase().replace(/\s+/g, "");
+            const newmove = this.clickCell(normalized, cell);
             if (newmove === undefined) {
-                return {
-                    move,
-                    valid: false,
-                    message: i18next.t("apgames:validation.thuemorsego.NOT_A_NUMBERED_STONE", { where: cell }),
-                };
+                const komiFirst = this.komiPending() && !KOMI_RE.test(this.parseTokens(normalized)[0] ?? "");
+                const key = komiFirst ? "KOMI_FIRST" : "NOT_A_NUMBERED_STONE";
+                return { move, valid: false, message: i18next.t(`apgames:validation.thuemorsego.${key}`, { where: cell }) };
             }
             const result = this.validateMove(newmove) as IClickResult;
             result.move = result.valid ? newmove : move;
@@ -1203,7 +1229,7 @@ export class ThueMorseGoGame extends GameBase {
 
     /** Extend `move` with a click on `cell`, or undefined when the click means nothing now. */
     private clickCell(move: string, cell: string): string | undefined {
-        const pickerValue = (): string | undefined => this.picker()?.buttons.find((btn) => btn.cell === cell)?.value.toString();
+        const valueAt = (buttons: IPickerButton[]): string | undefined => buttons.find((btn) => btn.cell === cell)?.value.toString();
         const toggle = (list: string): string => {
             const cells = this.parseTokens(list);
             const next = cells.includes(cell) ? cells.filter((c) => c !== cell) : [...cells, cell];
@@ -1211,7 +1237,7 @@ export class ThueMorseGoGame extends GameBase {
         };
         switch (this.phase) {
             case "hand-n":
-                return pickerValue();
+                return valueAt(this.killAllPicker());
             case "alt-place":
                 if (move.startsWith("attacker")) {
                     return `attacker:${toggle(move.substring("attacker:".length))}`;
@@ -1221,11 +1247,15 @@ export class ThueMorseGoGame extends GameBase {
                 let tokens = this.parseTokens(move);
                 const prefix: string[] = [];
                 if (this.komiPending()) {
+                    if (tokens.length === 0 || !KOMI_RE.test(tokens[0])) {
+                        // The komi comes first: a numbered stone sets it.
+                        return valueAt(this.komiPicker());
+                    }
                     // The komi stays in front of whatever the click changes.
                     prefix.push(tokens[0]);
                     tokens = tokens.slice(1);
                 }
-                const rest = this.clickPlacements(tokens, cell, pickerValue);
+                const rest = this.clickPlacements(tokens, cell, () => valueAt(this.handicapPicker()));
                 if (rest === undefined) {
                     return undefined;
                 }
@@ -2082,7 +2112,11 @@ export class ThueMorseGoGame extends GameBase {
         }
         const fill = this.killAll ? this.paletteOfColour(2, swap) : UNDECIDED_COLOUR;
         for (const btn of picker.buttons) {
-            const key = `n${btn.value}`;
+            if (this.board.has(btn.cell)) {
+                // The stone shows; the point still answers to a click with this value.
+                continue;
+            }
+            const key = btn.value < 0 ? `neg${-btn.value}` : `n${btn.value}`;
             legend[key] = [{ name: "piece", paint: { fill } }, { text: btn.value.toString(), scale: 0.75, rotate: null }];
             overlay.set(btn.cell, key);
             if (btn.value === picker.chosen) {

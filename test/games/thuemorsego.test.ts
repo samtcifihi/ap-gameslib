@@ -437,18 +437,26 @@ describe("Thue-Morse Go: handicap", () => {
         expect(g.gameover).to.be.true;
     });
 
-    it("offers numbered stones that skip occupied cells", () => {
-        const g = play(small(["handicap"]), ["c7"]);
+    it("offers the values 1 to 9 across the centre row, covered cells still answering to clicks", () => {
+        const g = play(small(["handicap"]), ["c6"]);
         const pieces = g.render().pieces as string;
         expect(pieces).to.contain("n1");
-        expect(pieces).to.not.contain("n3,");
-        const [bx, by] = g.algebraic2coords("b7");
-        expect(g.handleClick("", by, bx).move).to.equal("1");
-        const [ex, ey] = g.algebraic2coords("e5");
-        expect(g.handleClick("1", ey, ex).move).to.equal("1,e5");
-        // e9 is on neither row of numbered stones.
-        const [fx, fy] = g.algebraic2coords("e9");
-        expect(g.handleClick("", fy, fx).valid).to.be.false;
+        expect(pieces).to.contain("n9");
+        expect(pieces).to.not.contain("n10");
+        // Player 1's stone at c6 covers the stone for 2, which shows as the stone but still means 2.
+        expect(pieces).to.not.contain("n2,");
+        const click = (move: string, cell: string): IClickResult => {
+            const [x, y] = g.algebraic2coords(cell);
+            return g.handleClick(move, y, x);
+        };
+        expect(click("", "b6").move).to.equal("1");
+        expect(click("", "c6").move).to.equal("2");
+        expect(click("", "j6").move).to.equal("9");
+        expect(click("1", "e5").move).to.equal("1,e5");
+        // e9 is not on the row of numbered stones.
+        expect(click("", "e9").valid).to.be.false;
+        // Kill-All keeps its two rows of nine.
+        expect(small(["kill-all", "handicap"]).render().pieces as string).to.contain("n18");
     });
 });
 
@@ -964,11 +972,26 @@ describe("Thue-Morse Go: reverse komi", () => {
         expect(g.validateMove("7,e5,g7,d4").valid).to.be.false;
         expect(g.moves()).to.include("0,e5,g7");
         expect(g.randomMove()).to.match(/^-?\d(,|$)/);
-        // Clicks need the komi typed first, and keep it in front of the placements.
-        const [x, y] = g.algebraic2coords("e5");
-        const early = g.handleClick("", y, x);
+        // Numbered stones offer multiples of 14 either way, just above and below the centre.
+        const click = (move: string, cell: string): IClickResult => {
+            const [cx, cy] = g.algebraic2coords(cell);
+            return g.handleClick(move, cy, cx);
+        };
+        let pieces = g.render().pieces as string;
+        expect(pieces).to.contain("n14,").and.to.contain("n112");
+        expect(pieces).to.contain("neg14,").and.to.contain("neg112");
+        expect(pieces).to.not.contain("n126");
+        expect(click("", "b7").move).to.equal("14");
+        expect(click("", "e5").move).to.equal("-56");
+        const early = click("", "e9");
         expect(early.valid).to.be.false;
         expect(early.message).to.contain("reverse komi");
+        // Once the komi is set the stones give way to the board, and clicks place.
+        pieces = g.clone().move("14", { partial: true }).render().pieces as string;
+        expect(pieces).to.not.contain("n14");
+        const sixteen = play(new ThueMorseGoGame(undefined, ["reverse-komi"]), ["h8"]);
+        expect(sixteen.render().pieces as string).to.contain("n126").and.to.contain("neg126");
+        const [x, y] = g.algebraic2coords("e5");
         expect(g.handleClick("7", y, x).move).to.equal("7,e5");
         expect(g.handleClick("7,e5", y, x).move).to.equal("7");
         expect(g.handleClick("7,e5", -1, -1, "_btn_pass").move).to.equal("7,pass,pass");
@@ -1019,10 +1042,18 @@ describe("Thue-Morse Go: reverse komi", () => {
         const komiOnly = g.validateMove("5");
         expect(komiOnly.complete).to.equal(-1);
         expect(komiOnly.message).to.contain("handicap");
-        // The numbered stones set the handicap once the komi is typed.
-        const [bx, by] = g.algebraic2coords("b7");
-        expect(g.handleClick("", by, bx).valid).to.be.false;
-        expect(g.handleClick("5", by, bx).move).to.equal("5,1");
+        // The komi stones come first; the handicap row appears once the komi is set.
+        const click = (move: string, cell: string): IClickResult => {
+            const [cx, cy] = g.algebraic2coords(cell);
+            return g.handleClick(move, cy, cx);
+        };
+        expect(click("", "b7").move).to.equal("14");
+        expect(click("", "b6").valid).to.be.false;
+        expect(click("5", "b6").move).to.equal("5,1");
+        // With the komi set and the handicap still to declare, a point off the handicap row means nothing.
+        expect(click("5", "b7").valid).to.be.false;
+        const partial = g.clone().move("5", { partial: true }).render().pieces as string;
+        expect(partial).to.contain("n1,").and.to.not.contain("n14");
         expect(g.validateMove("5,3").complete).to.equal(0);
         g.move("5,3");
         expect(g.komi).to.equal(5);
