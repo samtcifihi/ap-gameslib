@@ -124,6 +124,8 @@ const TRACK_TINT = 0.2;
 const MARKER_BORDER = "#000";
 const REPETITIONS_FOR_DRAW = 5;
 const PICKER_MAX = 18;
+/** The legend keys of the tracker's glyphs: the small stones s1/s2 and the digit markers m1d0 to m2df. */
+const TRACK_KEY_RE = /^(s[12]|m[12]d[0-9a-f])$/;
 /** Opacity of a stone marked dead. */
 const DEAD_OPACITY = 0.4;
 /** Diameter of a territory dot as a fraction of a cell, the size of the renderer's own dots. */
@@ -1144,6 +1146,11 @@ export class ThueMorseGoGame extends GameBase {
 
     public handleClick(move: string, row: number, col: number, piece?: string): IClickResult {
         try {
+            // Renderer builds before August 2026 pass clicks on the tracker's glyphs to the game
+            // with the tracker's own rows and columns. They change nothing.
+            if (piece !== undefined && TRACK_KEY_RE.test(piece)) {
+                return { ...this.validateMove(move), move };
+            }
             if (row < 0 || col < 0) {
                 // Button clicks replace whatever move is in progress.
                 if (piece === undefined || !piece.startsWith("_btn_")) {

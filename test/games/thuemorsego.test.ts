@@ -149,6 +149,19 @@ describe("Thue-Morse Go: moves", () => {
         expect(refused.move).to.equal("e5");
     });
 
+    it("ignores clicks on the tracker's glyphs", () => {
+        const g = play(small(), ["f6"]);
+        for (const [piece, move] of [["s1", ""], ["s2", "e5"], ["m2d1", "e5"], ["m1da", "pass,pass"]]) {
+            const result = g.handleClick(move, 3, 1, piece);
+            expect(result.valid).to.be.true;
+            expect(result.move).to.equal(move);
+            expect(result.complete).to.equal(g.validateMove(move).complete);
+        }
+        // A click on the board itself still places a stone there.
+        const [x, y] = g.algebraic2coords("b8");
+        expect(g.handleClick("", y, x, "").move).to.equal("b8");
+    });
+
     it("treats button clicks as whole-move passes or the button's move", () => {
         const g = play(small(["button"]), ["f6"]);
         // Passing replaces a placement already made in the move.
