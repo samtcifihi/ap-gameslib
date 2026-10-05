@@ -338,34 +338,38 @@ function pathIndexFromWireRow(
     return rowIdx;
 }
 
-function pathIndexFromStackIndexForSequencedCell(
-    game: GameBase,
-    displayRounds: IGameRound[],
-    rowIdx: number,
-    seatIdx: number,
-    pathLength: number,
-): number | null {
-    try {
-        if (rowIdx >= displayRounds.length) {
-            return null;
-        }
-        const row = displayRounds[rowIdx];
-        if (!Array.isArray(row) || row[seatIdx] == null) {
-            return null;
-        }
-        const moveText = roundSlotToMoveText(row[seatIdx]);
-        const plies = game.getPlies();
-        const ply = plies.find(
-            (p) => p.actor === seatIdx + 1 && String(p.move) === moveText,
-        );
-        if (ply?.stackIndex == null) {
-            return null;
-        }
-        const pathIdx = ply.stackIndex - 1;
-        return pathIdx < pathLength ? pathIdx : null;
-    } catch {
-        return null;
+/** Where a slot came in its row's play order: its `sequence`, or its seat when it played in seat order. */
+function slotPlayOrder(row: IGameRound, seatIdx: number): number {
+    const slot = row[seatIdx];
+    if (typeof slot === "object" && slot !== null && slot.sequence !== undefined) {
+        return slot.sequence;
     }
+    return seatIdx + 1;
+}
+
+/**
+ * Which ply, counting from the first, a cell of packed rows shows. The rows are in
+ * order, and within a row each slot's play order says where it came, so the count
+ * identifies the ply even when the row did not open with seat 1. Matching by move text
+ * would not: a repeated move, such as a second "pass", would find its first occurrence.
+ */
+function plyIndexForMoveTableCell(rounds: IGameRound[], rowIdx: number, seatIdx: number): number {
+    let plyIndex = 0;
+    for (let r = 0; r < rowIdx; r++) {
+        for (const slot of rounds[r]!) {
+            if (slot !== null) {
+                plyIndex++;
+            }
+        }
+    }
+    const row = rounds[rowIdx]!;
+    const order = slotPlayOrder(row, seatIdx);
+    for (let s = 0; s < row.length; s++) {
+        if (s !== seatIdx && row[s] !== null && slotPlayOrder(row, s) < order) {
+            plyIndex++;
+        }
+    }
+    return plyIndex;
 }
 
 /**
@@ -455,31 +459,17 @@ export function pathIndexForMoveTableCell(
         return rowIdx < pathLength ? rowIdx : null;
     }
 
-    const stackPathIdx = pathIndexFromStackIndexForSequencedCell(
-        game,
-        rounds,
-        rowIdx,
-        seatIdx,
-        pathLength,
-    );
-    if (stackPathIdx !== null) {
-        return stackPathIdx;
+    // The cell's ply is at its stack entry, which is the ply's own number when the plies
+    // carry no stack index.
+    const plyIndex = plyIndexForMoveTableCell(rounds, rowIdx, seatIdx);
+    let stackIndex: number | undefined;
+    try {
+        stackIndex = game.getPlies()[plyIndex]?.stackIndex;
+    } catch {
+        stackIndex = undefined;
     }
-
-    let plyIndex = 0;
-    for (let r = 0; r < rowIdx; r++) {
-        for (let s = 0; s < rounds[r]!.length; s++) {
-            if (rounds[r]![s] !== null) {
-                plyIndex++;
-            }
-        }
-    }
-    for (let s = 0; s < seatIdx; s++) {
-        if (row[s] !== null) {
-            plyIndex++;
-        }
-    }
-    return plyIndex < pathLength ? plyIndex : null;
+    const pathIdx = stackIndex != null ? stackIndex - 1 : plyIndex;
+    return pathIdx < pathLength ? pathIdx : null;
 }
 
 export function moveTableRowCountForEngine(

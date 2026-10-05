@@ -230,4 +230,93 @@ describe("turn move table presentation", () => {
         });
         expect(idx).to.equal(3);
     });
+
+    it("pathIndexForMoveTableCell maps a cell by its place in play order, not its move text", () => {
+        /** A 3-seat sequenced game whose rounds close every three plies, whoever opens them. */
+        class Plies extends GameBaseSequenced {
+            public static readonly gameinfo = {
+                name: "Plies",
+                uid: "pliesMoveTable",
+                playercounts: [3],
+                version: "1",
+                dateAdded: "2026-01-01",
+                description: "x",
+                categories: ["abstract"],
+            };
+            public stack: Array<{ currplayer: number; lastmove?: string; _results: []; _timestamp: Date; _version: string }> = [];
+            public numplayers = 3;
+            public gameover = false;
+            public winner: number[] = [];
+            public results = [];
+            public variants: string[] = [];
+            public currplayer = 1;
+            public constructor(plies: [number, string][]) {
+                super();
+                this.stack = [{ _version: "1", _results: [], _timestamp: new Date(), currplayer: plies[0]![0] }];
+                plies.forEach(([, move], i) => {
+                    this.currplayer = plies[i + 1]?.[0] ?? 1;
+                    this.stack.push({
+                        _version: "1",
+                        _results: [],
+                        _timestamp: new Date(),
+                        currplayer: this.currplayer,
+                        lastmove: move,
+                    });
+                });
+            }
+            protected shouldCloseRound(roundPlies: IGamePly[]): boolean {
+                return roundPlies.length >= 3;
+            }
+            public move(): this {
+                throw new Error("fixed");
+            }
+            public render() {
+                return { board: null, pieces: [] };
+            }
+            public state() {
+                return { game: "plies", numplayers: 3, variants: [], gameover: false, winner: [], stack: this.stack };
+            }
+            public load(): this {
+                return this;
+            }
+            public clone(): this {
+                return this;
+            }
+            protected moveState() {
+                return { _version: "1", _results: [], _timestamp: new Date(), currplayer: this.currplayer };
+            }
+        }
+        // Seat 1 opens the first round and seat 2 the second, in which seats 1 and 2 pass
+        // as they did in the first.
+        const g = new Plies([[1, "x"], [2, "pass"], [3, "pass"], [2, "pass"], [3, "y"], [1, "pass"]]);
+        const pathLength = 6;
+        const rounds = g.getMoveTableRounds({ density: "compact", pathLength });
+        expect(rounds).to.deep.equal([
+            ["x", "pass", "pass"],
+            [{ move: "pass", sequence: 3 }, { move: "pass", sequence: 1 }, { move: "y", sequence: 2 }],
+        ]);
+        const cell = (rowIdx: number, seatIdx: number) => pathIndexForMoveTableCell(g, {
+            density: "compact",
+            model: "sequenced",
+            useRoundGrid: true,
+            numcolumns: 3,
+            rowIdx,
+            seatIdx,
+            pathLength,
+        });
+        expect([cell(0, 0), cell(0, 1), cell(0, 2)]).to.deep.equal([0, 1, 2]);
+        // The second round's passes are the fourth and sixth moves, not the second and third
+        // again, and seat 3's "y" came between them.
+        expect([cell(1, 0), cell(1, 1), cell(1, 2)]).to.deep.equal([5, 3, 4]);
+        // Beyond the path there is nothing to jump to.
+        expect(pathIndexForMoveTableCell(g, {
+            density: "compact",
+            model: "sequenced",
+            useRoundGrid: true,
+            numcolumns: 3,
+            rowIdx: 1,
+            seatIdx: 0,
+            pathLength: 5,
+        })).to.equal(null);
+    });
 });
