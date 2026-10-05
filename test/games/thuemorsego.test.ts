@@ -227,7 +227,7 @@ describe("Thue-Morse Go: moves", () => {
     });
 
     it("allows multi-stone suicide but not the single stone that repeats the position", () => {
-        const g = small();
+        const g = small(["superko"]);
         setStones(g, ["a1"], ["a2", "b2", "c1", "k11"]);
         expect(g.validateMove("b1").valid).to.be.true;
         g.move("b1");
@@ -237,7 +237,7 @@ describe("Thue-Morse Go: moves", () => {
         expect(suicide.how).to.equal("suicide");
         expect(suicide.count).to.equal(2);
 
-        const h = small();
+        const h = small(["superko"]);
         setStones(h, [], ["a2", "b1", "k11"]);
         const result = h.validateMove("a1");
         expect(result.valid).to.be.false;
@@ -246,14 +246,14 @@ describe("Thue-Morse Go: moves", () => {
 
     it("judges a suicidal first placement at once, or at the end of the move under checked weak eyes", () => {
         // Player 2's two placements: a1 has no liberties and captures nothing.
-        const g = play(small(), ["k11"]);
+        const g = play(small(["superko"]), ["k11"]);
         setStones(g, ["a2", "b1", "k11"], []);
         const first = g.validateMove("a1");
         expect(first.valid).to.be.false;
         expect(first.message).to.contain("suicide");
         expect(g.validateMove("a1,k10").valid).to.be.false;
         // With checked weak eyes nothing is cleared until the move ends, so the second stone decides.
-        const h = play(small(["weak-eyes"]), ["k11"]);
+        const h = play(small(["superko", "weak-eyes"]), ["k11"]);
         setStones(h, ["a2", "b1", "k11"], []);
         const deferred = h.validateMove("a1");
         expect(deferred.valid).to.be.true;
@@ -279,14 +279,14 @@ describe("Thue-Morse Go: moves", () => {
 
     it("lets a two-placement move fill both eyes under checked weak eyes", () => {
         const { own, wall } = twoEyedCorner();
-        const plain = small();
+        const plain = small(["superko"]);
         setStones(plain, wall, own);
         plain.placed = 5; // Player 1's two-placement move
         // Each eye filled is suicide at once and recreates the position.
         expect(plain.validateMove("a1").valid).to.be.false;
         expect(plain.validateMove("a1,c1").valid).to.be.false;
 
-        const checked = small(["weak-eyes"]);
+        const checked = small(["superko", "weak-eyes"]);
         setStones(checked, wall, own);
         checked.placed = 5;
         const first = checked.validateMove("a1");
@@ -462,7 +462,7 @@ describe("Thue-Morse Go: handicap", () => {
 
 describe("Thue-Morse Go: ko", () => {
     it("forbids retaking a ko at once but allows it after a threat", () => {
-        const g = small();
+        const g = small(["superko"]);
         setStones(g, ["a2", "b1", "b3"], ["b2", "c1", "c3", "d2"]);
         g.move("c2");
         expect(g.board.has("b2")).to.be.false;
@@ -477,10 +477,10 @@ describe("Thue-Morse Go: ko", () => {
         expect(g.board.has("c2")).to.be.false;
     });
 
-    it("draws the game on the fifth repetition under the repetition variant", () => {
-        const g = small(["repetition-draw"]);
-        // The repetition draw is the preselected choice of its group; positional superko is the sentinel.
-        expect(g.allvariants()!.find((v) => v.uid === "repetition-draw")!.default).to.be.true;
+    it("draws the game on the fifth repetition by default", () => {
+        const g = small();
+        // The repetition draw is the group's sentinel, so a game with no variant named has it; superko is the variant.
+        expect(g.allvariants()!.find((v) => v.uid === "superko")!.group).to.equal("repetition");
         expect(g.allvariants()!.find((v) => v.uid === "#repetition")!.default).to.be.undefined;
         setStones(g, [], ["a2", "b1", "k11"]);
         expect(g.validateMove("a1").valid).to.be.true;

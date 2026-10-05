@@ -276,7 +276,7 @@ export class ThueMorseGoGame extends GameBase {
             { uid: "handicap", unrated: true, fans: true },
             { uid: "reverse-komi", unrated: true, fans: true, conflictsWith: ["kill-all"] },
             { uid: "#repetition", fans: true },
-            { uid: "repetition-draw", group: "repetition", fans: true, default: true },
+            { uid: "superko", group: "repetition", fans: true },
             { uid: "weak-eyes", fans: true },
             { uid: "#button", fans: true },
             { uid: "button", group: "button", fans: true },
@@ -443,8 +443,9 @@ export class ThueMorseGoGame extends GameBase {
         return this.variants.includes("weak-eyes");
     }
 
+    /** The default: no ko rule, and the fifth occurrence of a position draws; the variant is positional superko. */
     private get repetitionDraw(): boolean {
-        return this.variants.includes("repetition-draw");
+        return !this.variants.includes("superko");
     }
 
     private get buttonValue(): number {
