@@ -987,9 +987,13 @@ describe("Thue-Morse Go: reverse komi", () => {
         expect(empty.complete).to.equal(-1);
         expect(empty.message).to.contain("reverse komi");
         expect(g.validateMove("e5").valid).to.be.false;
-        expect(g.validateMove("7").valid).to.be.false;
+        expect(g.validateMove("0").valid).to.be.false;
         expect(g.validateMove("-14").valid).to.be.false;
-        expect(g.validateMove("56").valid).to.be.false;
+        expect(g.validateMove("43").valid).to.be.false;
+        // Any whole number up to the largest stone may be typed.
+        expect(g.validateMove("1").complete).to.equal(0);
+        expect(g.validateMove("7,e5").complete).to.equal(0);
+        expect(play(small(["reverse-komi"]), ["f6", "7,e5", "pass", "pass"]).getPlayerScore(1)).to.equal(1 + 7);
         const alone = g.validateMove("14");
         expect(alone.complete).to.equal(0);
         expect(alone.message).to.contain("14 points");
@@ -1017,7 +1021,7 @@ describe("Thue-Morse Go: reverse komi", () => {
         expect(g.handleClick("14,e5", -1, -1, "_btn_pass").move).to.equal("14,pass,pass");
         // Larger boards offer up to 14 times the handicap limit.
         expect(play(sixteen(["reverse-komi"]), ["h8"]).validateMove("84").valid).to.be.true;
-        expect(play(sixteen(["reverse-komi"]), ["h8"]).validateMove("98").valid).to.be.false;
+        expect(play(sixteen(["reverse-komi"]), ["h8"]).validateMove("85").valid).to.be.false;
         expect(play(new ThueMorseGoGame(undefined, ["size-23", "reverse-komi"]), ["l12"]).render().pieces as string).to.contain("n196");
         // Submitting the komi alone passes the move.
         const passed = g.clone().move("14");

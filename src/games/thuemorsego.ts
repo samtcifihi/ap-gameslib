@@ -444,7 +444,7 @@ export class ThueMorseGoGame extends GameBase {
         return this.killAll ? 2 * this.handicapLimit : this.handicapLimit;
     }
 
-    /** Reverse komi: multiples of 14 points given to Player 1, up to 14 times the handicap limit. */
+    /** Reverse komi: points given to Player 1, up to 14 times the handicap limit; the stones offer the multiples of 14. */
     private get maxKomi(): number {
         return KOMI_STEP * this.handicapLimit;
     }
@@ -457,8 +457,9 @@ export class ThueMorseGoGame extends GameBase {
         return values;
     }
 
+    /** Any whole number of points up to the largest stone may be typed. */
     private isKomi(n: number): boolean {
-        return n >= KOMI_STEP && n <= this.maxKomi && n % KOMI_STEP === 0;
+        return n >= 1 && n <= this.maxKomi;
     }
 
     /** Checked weak eyes: only the last placement of a move clears the board. */
