@@ -95,6 +95,12 @@ const MIN_TRACK_DIGITS = 3;
 /** sqrt(1/3): the small tracker glyphs have about a third of the area of the digit markers. */
 const SMALL_SCALE = 0.57735;
 const TRACK_TINT = 0.2;
+/**
+ * The marker glyphs name the border colour the `piece` glyph has anyway. That gives them their own
+ * paint, and so their own symbol, in renderer builds that share one symbol per glyph and paint and
+ * would otherwise draw the markers at the small glyphs' scale.
+ */
+const MARKER_BORDER = "#000";
 const REPETITIONS_FOR_DRAW = 5;
 const PICKER_MAX = 18;
 
@@ -228,8 +234,8 @@ export class ThueMorseGoGame extends GameBase {
                 ],
             },
             { uid: "handicap", unrated: true },
-            { uid: "#ko" },
-            { uid: "repetition", group: "ko" },
+            { uid: "#repetition" },
+            { uid: "repetition-draw", group: "repetition" },
             { uid: "weak-eyes" },
             { uid: "#button" },
             { uid: "half-button", group: "button" },
@@ -243,7 +249,7 @@ export class ThueMorseGoGame extends GameBase {
         ],
         categories: ["goal>area", "goal>cripple", "mechanic>place", "mechanic>capture", "mechanic>enclose", "board>shape>rect", "board>connect>rect", "board>connect>snub", "components>simple>1per"],
         flags: ["experimental", "scores", "custom-buttons", "no-moves", "custom-randomization"],
-        displays: [{ uid: "digits-down" }, { uid: "swap-colours" }],
+        displays: [{ uid: "rolling" }, { uid: "digits-down" }, { uid: "swap-colours" }],
         customizations: [
             {
                 num: 1,
@@ -381,7 +387,7 @@ export class ThueMorseGoGame extends GameBase {
     }
 
     private get repetitionDraw(): boolean {
-        return this.variants.includes("repetition");
+        return this.variants.includes("repetition-draw");
     }
 
     private get buttonValue(): number {
@@ -904,6 +910,17 @@ export class ThueMorseGoGame extends GameBase {
         return undefined;
     }
 
+    /** The move that passes every placement of the current move the player controls. */
+    private wholeMovePass(): string {
+        const free = Math.max(1, this.moveLength(this.placed) - this.forcedPasses());
+        return Array<string>(free).fill("pass").join(",");
+    }
+
+    /** The move a `_btn_` click stands for: `pass` passes the whole move, other values are moves. */
+    private buttonMove(value: string): string {
+        return value === "pass" && this.phase === "play" ? this.wholeMovePass() : value;
+    }
+
     public getButtons(): ICustomButton[] {
         if (this.gameover) {
             return [];
@@ -921,8 +938,7 @@ export class ThueMorseGoGame extends GameBase {
             return [];
         }
         // The Pass button passes the whole move; a single click on the board can still fill a placement.
-        const free = this.moveLength(this.placed) - this.forcedPasses();
-        const buttons: ICustomButton[] = [{ label: "apgames:buttons.pass", move: Array<string>(free).fill("pass").join(",") }];
+        const buttons: ICustomButton[] = [{ label: "apgames:buttons.pass", move: this.wholeMovePass() }];
         if (this.buttonValue > 0 && this.button === undefined) {
             buttons.push({ label: "apgames:buttons.takebutton", move: "button" });
         }
@@ -936,7 +952,14 @@ export class ThueMorseGoGame extends GameBase {
     public handleClick(move: string, row: number, col: number, piece?: string): IClickResult {
         try {
             if (row < 0 || col < 0) {
-                return { move, valid: false, message: i18next.t("apgames:validation._general.UNKNOWN_CLICK") };
+                // Button clicks replace whatever move is in progress.
+                if (piece === undefined || !piece.startsWith("_btn_")) {
+                    return { move, valid: false, message: i18next.t("apgames:validation._general.UNKNOWN_CLICK") };
+                }
+                const newmove = this.buttonMove(piece.substring("_btn_".length));
+                const result = this.validateMove(newmove) as IClickResult;
+                result.move = result.valid ? newmove : move;
+                return result;
             }
             const cell = this.coords2algebraic(col, row);
             const newmove = this.clickCell(move.toLowerCase().replace(/\s+/g, ""), cell);
@@ -1666,55 +1689,80 @@ export class ThueMorseGoGame extends GameBase {
     }
 
     /**
-     * The Thue-Morse tracker: one column per hexadecimal digit of the index of the next placement,
-     * least significant on the right, with the rows running 0 to f up (or down) each column and a
-     * marker on each digit's current value. A column shows, for each value of its digit, the
-     * colour of the placement with that value there, the current values above it and zeros below:
-     * the rightmost column is the colours of the placements still to come before the next carry,
-     * and every other column is the colour of the 0 row of the column to its right. The tint
-     * behind the columns is the colour of the next placement.
+     * The Thue-Morse tracker, a column of 16 cells per hexadecimal digit of the index of the next
+     * placement, least significant on the right, with the rows running 0 to f up (or down) each
+     * column and a marker on each digit's current value. A column shows, for each value of its
+     * digit, the colour of the placement with that value there, the current values above it and
+     * zeros below: the rightmost column is the colours of the placements still to come before the
+     * next carry, and every other column is the colour of the 0 row of the column to its right.
+     * The rolling display shows one column of the next 16 placements instead, marking those of the
+     * next move. The tint behind the columns is the colour of the next placement. Blank columns
+     * separate the columns and keep the last one clear of the board's row labels. A repeating
+     * protocol needs no tracker.
      */
-    private trackArea(legend: ILegend, swap: boolean, downward: boolean): AreaTrack {
+    private trackArea(legend: ILegend, swap: boolean, downward: boolean, rolling: boolean): AreaTrack | undefined {
+        if (this.period > 0) {
+            return undefined;
+        }
         const next = this.placed;
-        const digits = Math.max(MIN_TRACK_DIGITS, next.toString(16).length);
         const tint: Glyph = { name: "piece-square", paint: { fill: this.paletteOfColour(this.colourAt(next), swap) }, opacity: TRACK_TINT };
         const stone = (colour: Stone, marker: boolean): Glyph => {
-            const glyph: Glyph = { name: "piece", paint: { fill: this.paletteOfColour(colour, swap) } };
-            if (!marker) {
-                glyph.scale = SMALL_SCALE;
-            }
-            return glyph;
+            const fill = this.paletteOfColour(colour, swap);
+            return marker
+                ? { name: "piece", paint: { fill, border: MARKER_BORDER } }
+                : { name: "piece", paint: { fill }, scale: SMALL_SCALE };
         };
-        legend.e = [tint, stone(1, false)];
-        legend.o = [tint, stone(2, false)];
-        legend.E = [tint, stone(1, true)];
-        legend.O = [tint, stone(2, true)];
+        // Keys that differ only in case would be confused by a page in quirks mode, where id lookups
+        // ignore case, so the small glyphs are s1/s2 and the markers m1/m2.
+        legend.s1 = [tint, stone(1, false)];
+        legend.s2 = [tint, stone(2, false)];
+        legend.m1 = [tint, stone(1, true)];
+        legend.m2 = [tint, stone(2, true)];
+        const key = (colour: Stone, marker: boolean): string => `${marker ? "m" : "s"}${colour}`;
+
+        // Each column top to bottom.
+        const columns: Array<Array<{ colour: Stone; marker: boolean }>> = [];
+        if (rolling) {
+            const length = this.moveLength(next);
+            const column = [];
+            for (let row = 0; row < TRACK_ROWS; row++) {
+                const i = downward ? row : TRACK_ROWS - 1 - row;
+                column.push({ colour: this.colourAt(next + i), marker: i < length });
+            }
+            columns.push(column);
+        } else {
+            const digits = Math.max(MIN_TRACK_DIGITS, next.toString(16).length);
+            for (let d = 0; d < digits; d++) {
+                const unit = Math.pow(16, digits - 1 - d);
+                const above = Math.floor(next / (unit * 16));
+                const current = Math.floor(next / unit) % 16;
+                const column = [];
+                for (let row = 0; row < TRACK_ROWS; row++) {
+                    const digit = downward ? row : TRACK_ROWS - 1 - row;
+                    column.push({ colour: this.colourAt((above * 16 + digit) * unit), marker: digit === current });
+                }
+                columns.push(column);
+            }
+        }
 
         const blocked: RowCol[] = [];
         const rows: string[] = [];
         for (let row = 0; row < TRACK_ROWS; row++) {
-            const digit = downward ? row : TRACK_ROWS - 1 - row;
             const cells: string[] = [];
-            for (let d = 0; d < digits; d++) {
-                if (d > 0) {
-                    blocked.push({ row, col: 2 * d - 1 });
-                    cells.push("-");
-                }
-                const unit = Math.pow(16, digits - 1 - d);
-                const above = Math.floor(next / (unit * 16));
-                const current = Math.floor(next / unit) % 16;
-                const colour = this.colourAt((above * 16 + digit) * unit);
-                const marker = digit === current;
-                cells.push(colour === 1 ? (marker ? "E" : "e") : (marker ? "O" : "o"));
-            }
-            rows.push(cells.join(""));
+            columns.forEach((column, c) => {
+                cells.push(key(column[row].colour, column[row].marker));
+                cells.push("-");
+                blocked.push({ row, col: 2 * c + 1 });
+            });
+            // Multi-character keys need the comma-delimited form.
+            rows.push(cells.join(","));
         }
         return {
             type: "track",
             position: "left",
             board: {
                 style: "squares",
-                width: 2 * digits - 1,
+                width: 2 * columns.length,
                 height: TRACK_ROWS,
                 blocked: blocked as [RowCol, ...RowCol[]],
             },
@@ -1738,6 +1786,7 @@ export class ThueMorseGoGame extends GameBase {
     public render(opts?: IRenderOpts): APRenderRep {
         const swap = this.killAll && this.hasDisplay(opts, "swap-colours");
         const downward = this.hasDisplay(opts, "digits-down");
+        const rolling = this.hasDisplay(opts, "rolling");
         const legend: ILegend = {
             A: [{ name: "piece", paint: { fill: this.paletteOfColour(1, swap) } }],
             B: [{ name: "piece", paint: { fill: this.paletteOfColour(2, swap) } }],
@@ -1768,8 +1817,11 @@ export class ThueMorseGoGame extends GameBase {
             },
             legend,
             pieces: rows.join("\n"),
-            areas: [this.trackArea(legend, swap, downward)],
         };
+        const track = this.trackArea(legend, swap, downward, rolling);
+        if (track !== undefined) {
+            rep.areas = [track];
+        }
 
         const toRowCol = (cell: string): RowCol => {
             const [x, y] = this.algebraic2coords(cell);

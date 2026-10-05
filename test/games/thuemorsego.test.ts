@@ -44,11 +44,13 @@ const twoEyedCorner = (): { own: string[]; wall: string[] } => ({
     wall: ["a3", "b3", "c3", "d3", "e1", "e2", "e3"],
 });
 
-// The tracker of the mockup: placement 0x123 is next, digits running upward.
+// The tracker of the mockup: placement 0x123 is next, digits running upward. The mockup's keys
+// e/o (small) and E/O (markers) are s1/s2 and m1/m2 here; a blank column follows each digit
+// column, the last one keeping the tracker clear of the board's row labels.
 const TRACK_0X123 = [
     "e-o-e", "o-e-o", "o-e-o", "e-o-e", "o-e-o", "e-o-e", "e-o-e", "o-e-o",
     "o-e-o", "e-o-e", "e-o-e", "o-e-o", "e-o-E", "o-E-o", "O-e-o", "e-o-e",
-].join("\n");
+].map((row) => `${row}-`.split("").map((c) => ({ e: "s1", o: "s2", E: "m1", O: "m2" }[c] ?? c)).join(",")).join("\n");
 
 describe("Thue-Morse Go: the sequence", () => {
     it("names the colour of each placement by the parity of its 1 bits", () => {
@@ -132,6 +134,26 @@ describe("Thue-Morse Go: moves", () => {
         expect(g.handleClick("e5,g7", gy, gx).move).to.equal("e5");
         const [fx, fy] = g.algebraic2coords("f6");
         const refused = g.handleClick("e5", fy, fx);
+        expect(refused.valid).to.be.false;
+        expect(refused.move).to.equal("e5");
+    });
+
+    it("treats button clicks as whole-move passes or the button's move", () => {
+        const g = play(small(), ["f6"]);
+        // Passing replaces a placement already made in the move.
+        const pass = g.handleClick("e5", -1, -1, "_btn_pass");
+        expect(pass.move).to.equal("pass,pass");
+        expect(pass.complete).to.equal(1);
+        expect(small().handleClick("", -1, -1, "_btn_pass").move).to.equal("pass");
+        const button = g.handleClick("e5", -1, -1, "_btn_button");
+        expect(button.move).to.equal("button");
+        expect(button.complete).to.equal(0);
+        const unknown = g.handleClick("e5", -1, -1, "stash");
+        expect(unknown.valid).to.be.false;
+        expect(unknown.move).to.equal("e5");
+        // Kill-All games cannot pass, so the click is refused and the move kept.
+        const k = play(small(["kill-all"]), ["f6", "attacker"]);
+        const refused = k.handleClick("e5", -1, -1, "_btn_pass");
         expect(refused.valid).to.be.false;
         expect(refused.move).to.equal("e5");
     });
@@ -393,7 +415,7 @@ describe("Thue-Morse Go: ko", () => {
     });
 
     it("draws the game on the fifth repetition under the repetition variant", () => {
-        const g = small(["repetition"]);
+        const g = small(["repetition-draw"]);
         setStones(g, [], ["a2", "b1", "k11"]);
         expect(g.validateMove("a1").valid).to.be.true;
         play(g, ["a1", "pass,pass", "a1", "pass"]);
@@ -497,20 +519,21 @@ describe("Thue-Morse Go: tracker and sidebar", () => {
         const track = g.render().areas![0] as AreaTrack;
         expect(track.type).to.equal("track");
         expect(track.position).to.equal("left");
-        expect(track.board.width).to.equal(5);
+        expect(track.board.width).to.equal(6);
         expect(track.board.height).to.equal(16);
-        expect(track.board.blocked).to.have.lengthOf(32);
+        expect(track.board.blocked).to.have.lengthOf(48);
         expect(track.pieces).to.equal(TRACK_0X123);
-        const [tint, marker] = layers(g, "E");
+        const [tint, marker] = layers(g, "m1");
         expect(tint).to.deep.equal({ name: "piece-square", paint: { fill: 1 }, opacity: 0.2 });
-        expect(marker).to.deep.equal({ name: "piece", paint: { fill: 1 } });
-        const [, smallGlyph] = layers(g, "o");
+        // The marker spells out the glyph's default border so its paint, and so its symbol, differs from the small glyph's.
+        expect(marker).to.deep.equal({ name: "piece", paint: { fill: 1, border: "#000" } });
+        const [, smallGlyph] = layers(g, "s2");
         expect(smallGlyph).to.deep.equal({ name: "piece", paint: { fill: 2 }, scale: 0.57735 });
     });
 
     it("tints the tracker with the colour of the next placement", () => {
         const g = play(small(), ["f6"]);
-        expect(layers(g, "e")[0]).to.deep.equal({ name: "piece-square", paint: { fill: 2 }, opacity: 0.2 });
+        expect(layers(g, "s1")[0]).to.deep.equal({ name: "piece-square", paint: { fill: 2 }, opacity: 0.2 });
     });
 
     it("can run the digits downward and grows with the index", () => {
@@ -519,7 +542,37 @@ describe("Thue-Morse Go: tracker and sidebar", () => {
         const track = g.render({ altDisplays: ["digits-down"] }).areas![0] as AreaTrack;
         expect(track.pieces).to.equal(TRACK_0X123.split("\n").reverse().join("\n"));
         g.placed = 0x1000;
-        expect((g.render().areas![0] as AreaTrack).board.width).to.equal(7);
+        expect((g.render().areas![0] as AreaTrack).board.width).to.equal(8);
+    });
+
+    it("can roll a single column of the next 16 placements", () => {
+        const g = small();
+        const expected = (from: number, length: number, downward: boolean): string => {
+            const rows: string[] = [];
+            for (let row = 0; row < 16; row++) {
+                const i = downward ? row : 15 - row;
+                const colour = g.colourAt(from + i);
+                rows.push(`${i < length ? "m" : "s"}${colour},-`);
+            }
+            return rows.join("\n");
+        };
+        let track = g.render({ altDisplays: ["rolling"] }).areas![0] as AreaTrack;
+        expect(track.board.width).to.equal(2);
+        expect(track.board.blocked).to.have.lengthOf(16);
+        expect(track.pieces).to.equal(expected(0, 1, false));
+        g.move("f6");
+        // Player 2's move is two placements, both marked.
+        track = g.render({ altDisplays: ["rolling"] }).areas![0] as AreaTrack;
+        expect(track.pieces).to.equal(expected(1, 2, false));
+        expect(track.pieces.split("\n")[15]).to.equal("m2,-");
+        expect(track.pieces.split("\n")[14]).to.equal("m2,-");
+        track = g.render({ altDisplays: ["rolling", "digits-down"] }).areas![0] as AreaTrack;
+        expect(track.pieces).to.equal(expected(1, 2, true));
+    });
+
+    it("shows no tracker under Balanced Marseillais", () => {
+        expect(small(["marseillais"]).render().areas).to.be.undefined;
+        expect(small().render().areas).to.have.lengthOf(1);
     });
 
     it("reports the next placement and the colours to come", () => {

@@ -1234,3 +1234,13 @@ body[data-theme='dark'] #gameStatusPanel .stash-item-json pre {
     background-color: rgba(255,255,255,0.05);
     border-color: var(--border-dark);
 }
+
+/* Sidebar status/score glyphs: keep inline SVGs at text height (the front sizes its images the same way). */
+.status-glyph {
+    height: 1.25em;
+}
+.status-glyph svg {
+    height: 100%;
+    width: auto;
+    max-width: 1.25em;
+}
