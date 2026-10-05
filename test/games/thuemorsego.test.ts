@@ -2,10 +2,11 @@
 
 import "mocha";
 import { expect } from "chai";
-import type { AreaTrack, Glyph } from "@abstractplay/renderer/build/schemas/schema";
+import type { AreaTrack, BoardBasic, Glyph, MarkerDots } from "@abstractplay/renderer/build/schemas/schema";
 import { addResource } from "../../src";
 import { SnubSquareGraph } from "../../src/common";
 import { ThueMorseGoGame } from "../../src/games/thuemorsego";
+import type { IClickResult } from "../../src/games/_base";
 import { assertChatLogParity } from "../fixtures/chat/helpers";
 
 before(() => { addResource("en"); });
@@ -143,7 +144,8 @@ describe("Thue-Morse Go: moves", () => {
         // Passing replaces a placement already made in the move.
         const pass = g.handleClick("e5", -1, -1, "_btn_pass");
         expect(pass.move).to.equal("pass,pass");
-        expect(pass.complete).to.equal(1);
+        // A whole-move pass stays open so that strings can be marked dead.
+        expect(pass.complete).to.equal(0);
         expect(small().handleClick("", -1, -1, "_btn_pass").move).to.equal("pass");
         const button = g.handleClick("e5", -1, -1, "_btn_button");
         expect(button.move).to.equal("button");
@@ -163,7 +165,7 @@ describe("Thue-Morse Go: moves", () => {
         expect(g.getButtons().map((b) => b.move)).to.deep.equal(["pass", "button"]);
         g.move("button");
         expect(g.getButtons().map((b) => b.move)).to.deep.equal(["pass,pass"]);
-        expect(g.validateMove("pass,pass").complete).to.equal(1);
+        expect(g.validateMove("pass,pass").complete).to.equal(0);
         // There is no button by default.
         expect(small().getButtons().map((b) => b.move)).to.deep.equal(["pass"]);
         // With one placement served by the handicap, only the other is passed.
@@ -641,5 +643,218 @@ describe("Thue-Morse Go: chat log", () => {
         expect(log).to.contain("Bob set the handicap to 2 passes.");
         expect(log).to.contain("Bob served a handicap pass.");
         expect(log).to.contain("Alice took the button.");
+    });
+});
+
+describe("Thue-Morse Go: territory and dead strings", () => {
+    /** A wall giving Player 1 the corner a1-b1, a far stone of theirs, and two Player 2 stones giving them k11. */
+    const scene = (variants: string[] = []): ThueMorseGoGame => {
+        const g = small(variants);
+        setStones(g, ["a2", "b2", "c2", "c1", "f6"], ["j11", "k10"]);
+        return g;
+    };
+    const rc = (g: ThueMorseGoGame, cell: string): { row: number; col: number } => {
+        const [col, row] = g.algebraic2coords(cell);
+        return { row, col };
+    };
+    const dots = (g: ThueMorseGoGame, opts?: { altDisplays?: string[] }): MarkerDots[] =>
+        ((g.render(opts).board as BoardBasic).markers ?? []) as MarkerDots[];
+    const click = (g: ThueMorseGoGame, move: string, cell: string): IClickResult => {
+        const [x, y] = g.algebraic2coords(cell);
+        return g.handleClick(move, y, x);
+    };
+
+    it("dots the empty points that count as territory", () => {
+        const g = scene();
+        const markers = dots(g);
+        expect(markers).to.have.lengthOf(2);
+        expect(markers[0]).to.deep.equal({ type: "dots", colour: 1, size: 0.2, points: [rc(g, "a1"), rc(g, "b1")] });
+        expect(markers[1]).to.deep.equal({ type: "dots", colour: 2, size: 0.2, points: [rc(g, "k11")] });
+        expect(g.getPlayerScore(1)).to.equal(7);
+        expect(g.getPlayerScore(2)).to.equal(3);
+        // The display option hides them, Kill-All games never show them, and one colour alone is not territory.
+        expect(dots(g, { altDisplays: ["hide-territory"] })).to.have.lengthOf(0);
+        const k = play(small(["kill-all"]), ["f6", "attacker"]);
+        setStones(k, ["a2", "b2", "c2", "c1"], ["j11", "k10"]);
+        expect(dots(k)).to.have.lengthOf(0);
+        expect(dots(play(small(), ["f6"]))).to.have.lengthOf(0);
+    });
+
+    it("keeps a whole-move pass open for marking strings dead", () => {
+        const single = scene().validateMove("pass");
+        expect(single.complete).to.equal(0);
+        expect(single.canrender).to.be.true;
+        expect(single.message).to.contain("mark them dead");
+        const g = play(scene(), ["f7"]);
+        expect(g.validateMove("pass,pass").complete).to.equal(0);
+        // Passing one placement of two leaves the other to fill, as before.
+        expect(g.validateMove("pass").message).to.contain("Place another stone");
+        expect(g.validateMove("pass").complete).to.equal(0);
+    });
+
+    it("marks and unmarks strings by clicking them after passing", () => {
+        const g = scene();
+        expect(click(g, "pass", "b2").move).to.equal("pass,-a2");
+        expect(click(g, "pass,-a2", "c1").move).to.equal("pass");
+        // Marks are listed in board order, one token per string.
+        expect(click(g, "pass,-a2", "k10").move).to.equal("pass,-k10,-a2");
+        expect(g.validateMove("pass,-c1,-b2").valid).to.be.true;
+        // An empty point placed afterwards drops the marking; a stone clicked without passing is just occupied.
+        expect(click(g, "pass,-a2", "e5").move).to.equal("e5");
+        const occupied = click(g, "", "a2");
+        expect(occupied.valid).to.be.false;
+        expect(occupied.message).to.contain("pass the whole move");
+        expect(click(g, "e5", "a2").valid).to.be.false;
+        // A two-placement move: the Pass button then a click, or a typed single pass then a click.
+        const h = play(scene(), ["f7"]);
+        expect(click(h, h.handleClick("", -1, -1, "_btn_pass").move, "j11").move).to.equal("pass,pass,-j11");
+        expect(click(h, "pass", "j11").move).to.equal("pass,pass,-j11");
+    });
+
+    it("refuses marks that do not belong to a whole-move pass", () => {
+        const g = scene();
+        expect(g.validateMove("f7,-a2").valid).to.be.false;
+        expect(g.validateMove("-a2").valid).to.be.false;
+        expect(g.validateMove("pass,-a1").message).to.contain("no stone");
+        expect(g.validateMove("pass,-zz9").valid).to.be.false;
+        const k = play(small(["kill-all"]), ["f6", "attacker"]);
+        expect(k.validateMove("pass,-f6").valid).to.be.false;
+    });
+
+    it("shows marked strings faded, with the territory they would leave", () => {
+        const g = scene();
+        g.move("pass,-k10,-j11", { partial: true });
+        expect(g.marks).to.deep.equal(["j11", "k10"]);
+        const rep = g.render();
+        const legend = rep.legend as Record<string, Glyph[]>;
+        expect(legend.D2T1).to.deep.equal([
+            { name: "piece", paint: { fill: 2 }, opacity: 0.4 },
+            { name: "piece-borderless", paint: { fill: 1 }, scale: 0.2 },
+        ]);
+        expect((rep.pieces as string).split("\n")[0]).to.contain("D2T1");
+        // With Player 2 gone, every empty point is Player 1's, the corner under the dead stones included.
+        const markers = dots(g);
+        expect(markers).to.have.lengthOf(1);
+        expect(markers[0].colour).to.equal(1);
+        expect(markers[0].points).to.have.lengthOf(121 - 7);
+        expect(g.getPlayerScore(1)).to.equal(121);
+        expect(g.getPlayerScore(2)).to.equal(0);
+        // A dead wall opens the corner to both colours, so the stones are faded without a dot.
+        const h = scene();
+        h.move("pass,-a2", { partial: true });
+        expect((h.render().legend as Record<string, Glyph[]>).D1).to.deep.equal([{ name: "piece", paint: { fill: 1 }, opacity: 0.4 }]);
+        expect(dots(h).map((m) => m.colour)).to.deep.equal([2]);
+        expect(h.getPlayerScore(1)).to.equal(1);
+        // Hiding the territory keeps the marked stones faded, without dots.
+        expect(dots(g, { altDisplays: ["hide-territory"] })).to.have.lengthOf(0);
+        expect((g.render({ altDisplays: ["hide-territory"] }).legend as Record<string, Glyph[]>).D2).to.have.lengthOf(1);
+        // A typo in a mark names nothing when clicking, and is reported when validating.
+        expect(click(scene(), "pass,-zz9", "j11").move).to.equal("pass,-j11");
+    });
+
+    it("ends the game when the opponent passes keeping the marking, removing the marked strings", () => {
+        const g = play(scene(), ["pass,-j11,-k10"]);
+        expect(g.gameover).to.be.false;
+        expect(g.lastmove).to.equal("pass,-j11,-k10");
+        expect(g.marks).to.deep.equal(["j11", "k10"]);
+        expect(g.sidebarStatuses().some((s) => JSON.stringify(s.key).includes("MARKING"))).to.be.true;
+        // The opponent's pass starts from that marking.
+        expect(g.getButtons()[0].move).to.equal("pass,pass,-j11,-k10");
+        expect(g.moves()).to.include("pass,pass,-j11,-k10");
+        expect(g.moves()).to.not.include("pass,pass");
+        const accept = g.validateMove("pass,pass,-j11,-k10");
+        expect(accept.complete).to.equal(0);
+        expect(accept.message).to.contain("end the game");
+        g.move("pass,pass,-j11,-k10");
+        expect(g.gameover).to.be.true;
+        expect(g.winner).to.deep.equal([1]);
+        expect(g.board.has("k10")).to.be.false;
+        expect(g.board.has("j11")).to.be.false;
+        expect(g.results).to.deep.include({ type: "remove", where: "j11,k10", num: 2, how: "dead" });
+        expect(g.getPlayerScore(1)).to.equal(121);
+        expect(dots(g)[0].points).to.have.lengthOf(121 - 5);
+        // Reloading keeps the marking.
+        const again = new ThueMorseGoGame(play(scene(), ["pass,-j11,-k10"]).serialize());
+        expect(again.marks).to.deep.equal(["j11", "k10"]);
+        expect(again.render()).to.deep.equal(play(scene(), ["pass,-j11,-k10"]).render());
+    });
+
+    it("lets a changed marking resume the game, until both players have changed it in turn", () => {
+        const g = play(scene(), ["pass,-j11,-k10"]);
+        const change = g.validateMove("pass,pass");
+        expect(change.valid).to.be.true;
+        expect(change.message).to.contain("game goes on");
+        g.move("pass,pass");
+        expect(g.gameover).to.be.false;
+        expect(g.dispute).to.be.true;
+        expect(g.marks).to.deep.equal([]);
+        expect(g.locked).to.be.false;
+        // The first player may play on, which drops the marking, or pass: keeping it ends the game.
+        const resumed = g.clone().move("f7");
+        expect(resumed.marks).to.deep.equal([]);
+        expect(resumed.dispute).to.be.false;
+        expect(resumed.gameover).to.be.false;
+        expect(g.clone().move("pass").gameover).to.be.true;
+        // Changing it back is the second change in a row, after which the marking is locked.
+        const counter = g.validateMove("pass,-k10");
+        expect(counter.message).to.contain("neither player");
+        g.move("pass,-k10");
+        expect(g.locked).to.be.true;
+        expect(g.gameover).to.be.false;
+        expect(g.validateMove("pass,pass").valid).to.be.false;
+        expect(g.validateMove("pass,-j11").valid).to.be.false;
+        expect(click(g, "pass,-k10", "j11").valid).to.be.false;
+        const locked = g.validateMove("pass,-k10");
+        expect(locked.complete).to.equal(1);
+        expect(locked.message).to.contain("no longer be changed");
+        expect(g.getButtons()[0].move).to.equal("pass,-k10");
+        g.move("pass,-k10");
+        expect(g.gameover).to.be.true;
+        expect(g.board.has("k10")).to.be.false;
+        expect(g.board.has("j11")).to.be.true;
+        // Once locked, even after play resumes, passes carry no marking.
+        const h = play(scene(), ["pass,-j11,-k10", "pass,pass", "pass,-k10", "f7"]);
+        expect(h.locked).to.be.true;
+        expect(h.validateMove("pass,pass,-j11").valid).to.be.false;
+        expect(h.validateMove("pass,pass").complete).to.equal(1);
+        expect(click(h, "pass,pass", "j11").valid).to.be.false;
+        play(h, ["pass,pass", "pass"]);
+        expect(h.gameover).to.be.true;
+        expect(h.board.has("j11")).to.be.true;
+    });
+
+    it("only locks the marking when the changes follow each other", () => {
+        const g = play(scene(), ["pass,-j11,-k10", "pass,pass", "f7", "pass,-f6", "pass,pass"]);
+        expect(g.dispute).to.be.true;
+        expect(g.locked).to.be.false;
+        g.move("pass,-f6");
+        expect(g.locked).to.be.true;
+        expect(g.gameover).to.be.false;
+    });
+
+    it("carries the marking across served handicap passes, which never answer it", () => {
+        const g = play(small(["handicap"]), ["f6", "3", "pass,-f6"]);
+        expect(g.currplayer).to.equal(1);
+        expect(g.marks).to.deep.equal(["f6"]);
+        expect(g.getButtons()[0].move).to.equal("pass,pass,-f6");
+        g.move("pass,pass,-f6");
+        expect(g.gameover).to.be.false;
+        expect(g.dispute).to.be.false;
+        g.move("pass,-f6");
+        expect(g.gameover).to.be.true;
+        expect(g.board.size).to.equal(0);
+        expect(g.winner).to.deep.equal([1, 2]);
+    });
+
+    it("reports markings in the chat log", () => {
+        const g = scene();
+        play(g, ["pass,-j11,-k10", "pass,pass", "pass,-k10", "pass,-k10"]);
+        expect(g.gameover).to.be.true;
+        assertChatLogParity(g, ["Alice", "Bob"]);
+        const log = g.chatLog(["Alice", "Bob"]).flat().join("\n");
+        expect(log).to.contain("Alice marked 2 stones as dead.");
+        expect(log).to.contain("Bob cleared the marking: no stones are marked dead.");
+        expect(log).to.contain("Alice changed the marking: one stone is marked dead.");
+        expect(log).to.contain("The stone marked dead was removed from the board.");
     });
 });

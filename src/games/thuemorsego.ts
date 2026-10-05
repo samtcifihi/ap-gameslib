@@ -1,6 +1,6 @@
 import { GameBase, IAPGameState, IClickResult, ICustomButton, IIndividualState, IRenderOpts, IScores, IStatus, IValidationResult, type ChatLogCollectContext, type ChatLogLine } from "./_base.js";
 import type { APGamesInformation } from "../schemas/gameinfo.js";
-import type { APRenderRep, AreaTrack, Glyph, RowCol } from "@abstractplay/renderer/build/schemas/schema";
+import type { APRenderRep, AreaTrack, BoardBasic, Glyph, MarkerDots, RowCol } from "@abstractplay/renderer/build/schemas/schema";
 import type { APMoveResult } from "../schemas/moveresults.js";
 import { reviver, shuffle, SnubSquareGraph, UserFacingError } from "../common/index.js";
 import type { FlagContext, GameFlag } from "../common/flags.js";
@@ -39,6 +39,12 @@ interface IMoveState extends IIndividualState {
     interim: string[];
     /** Whether the saved board is a position this move created (false after a move without a stone). */
     novel: boolean;
+    /** Stones of the strings marked dead by the pending whole-move pass, in board order. */
+    marks: string[];
+    /** Whether this move was a whole-move pass that changed the marking it answered. */
+    dispute: boolean;
+    /** Whether both players have changed the marking in turn, after which passes carry none. */
+    locked: boolean;
     /** The seat holding the button. */
     button?: playerid;
     /** The declared handicap: passes in the standard game, extra Attacker stones in Kill-All. */
@@ -57,6 +63,12 @@ export interface IThueMorseGoState extends IAPGameState {
 
 interface ILegend {
     [key: string]: Glyph | [Glyph, ...Glyph[]];
+}
+
+/** An empty region of the board and the colour it scores for, when it reaches only one. */
+interface IRegion {
+    cells: string[];
+    owner?: Stone;
 }
 
 /** One numbered stone of the on-board handicap picker. */
@@ -109,6 +121,10 @@ const TRACK_TINT = 0.2;
 const MARKER_BORDER = "#000";
 const REPETITIONS_FOR_DRAW = 5;
 const PICKER_MAX = 18;
+/** Opacity of a stone marked dead. */
+const DEAD_OPACITY = 0.4;
+/** Diameter of a territory dot as a fraction of a cell, the size of the renderer's own dots. */
+const DOT_SIZE = 0.2;
 
 const popcount = (n: number): number => {
     let count = 0;
@@ -250,7 +266,7 @@ export class ThueMorseGoGame extends GameBase {
         ],
         categories: ["goal>area", "goal>cripple", "mechanic>place", "mechanic>capture", "mechanic>enclose", "board>shape>rect", "board>connect>rect", "board>connect>snub", "components>simple>1per"],
         flags: ["experimental", "scores", "custom-buttons", "no-moves", "custom-randomization"],
-        displays: [{ uid: "rolling" }, { uid: "digits-down" }, { uid: "swap-colours" }],
+        displays: [{ uid: "rolling" }, { uid: "digits-down" }, { uid: "swap-colours" }, { uid: "hide-territory" }],
         customizations: [
             {
                 num: 1,
@@ -283,6 +299,9 @@ export class ThueMorseGoGame extends GameBase {
     public passes: playerid[] = [];
     public interim: string[] = [];
     public novel = false;
+    public marks: string[] = [];
+    public dispute = false;
+    public locked = false;
     public button?: playerid;
     public handicap?: number;
     public passesOwed = 0;
@@ -317,6 +336,9 @@ export class ThueMorseGoGame extends GameBase {
                 passes: [],
                 interim: [],
                 novel: false,
+                marks: [],
+                dispute: false,
+                locked: false,
             };
             this.stack = [fresh];
         } else {
@@ -354,6 +376,9 @@ export class ThueMorseGoGame extends GameBase {
         this.passes = [...state.passes];
         this.interim = [...state.interim];
         this.novel = state.novel;
+        this.marks = [...state.marks];
+        this.dispute = state.dispute;
+        this.locked = state.locked;
         this.button = state.button;
         this.handicap = state.handicap;
         this.passesOwed = state.passesOwed ?? 0;
@@ -534,6 +559,95 @@ export class ThueMorseGoGame extends GameBase {
             return this.handicap ?? 0;
         }
         return 0;
+    }
+
+    // -----------------------------------------------------------------------
+    // Dead strings
+    // -----------------------------------------------------------------------
+
+    /** The stones of the string at `cell`, which must hold a stone. */
+    private stringOf(cell: string): string[] {
+        return stringAt(this.board, this.geo, cell).stones;
+    }
+
+    /**
+     * The marking that names the strings at `cells`: every stone of each, in board order. Cells
+     * without a stone name nothing; validation reports them.
+     */
+    private canonicalMarks(cells: Iterable<string>): string[] {
+        const marked = new Set<string>();
+        for (const cell of cells) {
+            if (this.board.has(cell) && !marked.has(cell)) {
+                for (const stone of this.stringOf(cell)) {
+                    marked.add(stone);
+                }
+            }
+        }
+        return this.geo.cells.filter((cell) => marked.has(cell));
+    }
+
+    /** The tokens that spell a marking: one per marked string, naming its first stone in board order. */
+    private markTokens(marks: string[]): string[] {
+        const named = new Set<string>();
+        const tokens: string[] = [];
+        for (const cell of marks) {
+            if (!named.has(cell)) {
+                tokens.push(`-${cell}`);
+                for (const stone of this.stringOf(cell)) {
+                    named.add(stone);
+                }
+            }
+        }
+        return tokens;
+    }
+
+    private sameMarks(a: string[], b: string[]): boolean {
+        return a.length === b.length && a.every((cell, i) => cell === b[i]);
+    }
+
+    /** A move's placement tokens and the cells its mark tokens (`-cell`) name. */
+    private splitMarks(tokens: string[]): { placements: string[]; marked: string[] } {
+        const placements: string[] = [];
+        const marked: string[] = [];
+        for (const token of tokens) {
+            if (token.startsWith("-")) {
+                marked.push(token.substring(1));
+            } else {
+                placements.push(token);
+            }
+        }
+        return { placements, marked };
+    }
+
+    /** Whether `placements` are the voluntary passes of a whole-move pass, which may carry a marking. */
+    private passesWholeMove(placements: string[]): boolean {
+        return !this.killAll && placements.length > 0 && placements.every((token) => token === "pass");
+    }
+
+    /**
+     * The marking a whole-move pass by the current player answers: the pending one when the
+     * opponent's last move was a whole-move pass, so that keeping it ends the game.
+     */
+    private inheritedMarks(): string[] | undefined {
+        const n = this.passes.length;
+        return n > 0 && this.passes[n - 1] !== this.currplayer ? this.marks : undefined;
+    }
+
+    /** The board with the marked strings removed. */
+    private effectiveBoard(): Board {
+        if (this.marks.length === 0) {
+            return this.board;
+        }
+        const board = new Map(this.board);
+        for (const cell of this.marks) {
+            board.delete(cell);
+        }
+        return board;
+    }
+
+    private clearMarks(): void {
+        this.marks = [];
+        this.dispute = false;
     }
 
     // -----------------------------------------------------------------------
@@ -729,7 +843,10 @@ export class ThueMorseGoGame extends GameBase {
             case "INVALIDCELL":
                 return i18next.t("apgames:validation._general.INVALIDCELL", { cell: token });
             case "OCCUPIED":
-                return i18next.t("apgames:validation._general.OCCUPIED", { where: token });
+                if (this.killAll || this.locked) {
+                    return i18next.t("apgames:validation._general.OCCUPIED", { where: token });
+                }
+                return i18next.t("apgames:validation.thuemorsego.OCCUPIED_MARK", { where: token });
             case "INCOMPLETE":
                 return i18next.t("apgames:validation._general.INCOMPLETE_MOVE");
             default:
@@ -876,7 +993,12 @@ export class ThueMorseGoGame extends GameBase {
             return [Array<string>(length).fill("pass").join(",")];
         }
         const sim = this.newSim(length, forced, base);
-        return this.completions(sim, colour).map((tokens) => tokens.join(","));
+        return this.completions(sim, colour).map((tokens) => this.withMarks(tokens).join(","));
+    }
+
+    /** A whole-move pass keeps the pending marking, which is the pass that can end the game. */
+    private withMarks(tokens: string[]): string[] {
+        return this.passesWholeMove(tokens) ? [...tokens, ...this.markTokens(this.marks)] : tokens;
     }
 
     public randomMove(): string {
@@ -897,7 +1019,7 @@ export class ThueMorseGoGame extends GameBase {
         }
         const sim = this.newSim(length, forced);
         const rest = this.randomCompletion(sim, colour) ?? [];
-        const tokens = [...prefix, ...rest];
+        const tokens = prefix.length > 0 ? [...prefix, ...rest] : this.withMarks(rest);
         return tokens.length > 0 ? tokens.join(",") : Array<string>(length).fill("pass").join(",");
     }
 
@@ -940,10 +1062,13 @@ export class ThueMorseGoGame extends GameBase {
         return undefined;
     }
 
-    /** The move that passes every placement of the current move the player controls. */
+    /**
+     * The move that passes every placement of the current move the player controls, keeping the
+     * pending marking so that clicks on strings change it rather than start it over.
+     */
     private wholeMovePass(): string {
         const free = Math.max(1, this.moveLength(this.placed) - this.forcedPasses());
-        return Array<string>(free).fill("pass").join(",");
+        return [...Array<string>(free).fill("pass"), ...this.markTokens(this.marks)].join(",");
     }
 
     /** The move a `_btn_` click stands for: `pass` passes the whole move, other values are moves. */
@@ -1046,13 +1171,28 @@ export class ThueMorseGoGame extends GameBase {
                     return pickerValue();
                 }
                 const free = length - this.forcedPasses();
-                if (tokens.length > 0 && tokens[tokens.length - 1] === cell) {
-                    return tokens.slice(0, -1).join(",");
+                const { placements, marked } = this.splitMarks(tokens);
+                if (this.board.has(cell) && this.passesWholeMove(placements)) {
+                    // A stone clicked while the move passes every placement: its string is marked
+                    // dead, or unmarked again.
+                    const marks = new Set(this.canonicalMarks(marked));
+                    const stones = this.stringOf(cell);
+                    if (stones.every((stone) => marks.has(stone))) {
+                        for (const stone of stones) { marks.delete(stone); }
+                    } else {
+                        for (const stone of stones) { marks.add(stone); }
+                    }
+                    const passes = Array<string>(free).fill("pass");
+                    return [...passes, ...this.markTokens(this.geo.cells.filter((c) => marks.has(c)))].join(",");
                 }
-                if (tokens.length < free) {
-                    return [...tokens, cell].join(",");
+                // A placement, which drops any marking; a click on a stone is left to fail as occupied.
+                if (placements.length > 0 && placements[placements.length - 1] === cell) {
+                    return placements.slice(0, -1).join(",");
                 }
-                return [...tokens.slice(0, -1), cell].join(",");
+                if (placements.length < free) {
+                    return [...placements, cell].join(",");
+                }
+                return [...placements.slice(0, -1), cell].join(",");
             }
         }
     }
@@ -1185,10 +1325,10 @@ export class ThueMorseGoGame extends GameBase {
         if (m.length === 0) {
             return this.ok(result, -1, this.instructions(length, free));
         }
-        const tokens = m.split(",");
+        const { placements: tokens, marked } = this.splitMarks(m.split(","));
         if (free === 0) {
             // The whole move is served automatically; accept the passes that spell it out.
-            if (tokens.length <= length && tokens.every((token) => token === "pass")) {
+            if (marked.length === 0 && tokens.length <= length && tokens.every((token) => token === "pass")) {
                 return this.ok(result, 1, i18next.t("apgames:validation._general.VALID_MOVE"));
             }
             return this.fail(result, i18next.t("apgames:validation.thuemorsego.FORCED_MOVE"));
@@ -1200,7 +1340,59 @@ export class ThueMorseGoGame extends GameBase {
         this.serveForced(sim, forced);
         const err = this.applyTokens(sim, tokens, colour, result);
         if (err !== undefined) { return err; }
+        if (marked.length > 0) {
+            const bad = this.checkMarks(tokens, marked);
+            if (bad !== undefined) { return this.fail(result, bad); }
+        }
+        // A whole-move pass stays open for marking strings dead. A pass that leaves placements to
+        // fill does too once a marking is pending, since submitting it answers that marking.
+        if (this.passesWholeMove(tokens) && (marked.length > 0 || tokens.length === free || this.marks.length > 0)) {
+            return this.passVerdict(marked, result);
+        }
         return this.completeness(sim, colour, result);
+    }
+
+    /** The validation message when the mark tokens of a move are not allowed, if they are not. */
+    private checkMarks(placements: string[], marked: string[]): string | undefined {
+        if (!this.passesWholeMove(placements)) {
+            return i18next.t("apgames:validation.thuemorsego.MARKS_NEED_PASS");
+        }
+        for (const cell of marked) {
+            if (!this.isValidCell(cell)) {
+                return i18next.t("apgames:validation._general.INVALIDCELL", { cell });
+            }
+            if (!this.board.has(cell)) {
+                return i18next.t("apgames:validation.thuemorsego.MARK_EMPTY", { where: cell });
+            }
+        }
+        return undefined;
+    }
+
+    /**
+     * The verdict on a whole-move pass: what submitting it does to the marking and to the game.
+     * The pass is left open (`complete` 0) while strings can still be clicked.
+     */
+    private passVerdict(marked: string[], result: IValidationResult): IValidationResult {
+        const marks = this.canonicalMarks(marked);
+        const count = marks.length;
+        const unchanged = this.sameMarks(marks, this.marks);
+        const inherited = this.inheritedMarks();
+        if (this.locked) {
+            if (!unchanged) {
+                return this.fail(result, i18next.t("apgames:validation.thuemorsego.MARKS_LOCKED"));
+            }
+            const key = inherited === undefined ? "PASS_LOCKED" : "PASS_LOCKED_ENDS";
+            return this.ok(result, 1, i18next.t(`apgames:validation.thuemorsego.${key}`, { count }), true);
+        }
+        let key: string;
+        if (inherited === undefined) {
+            key = "PASS_OPEN";
+        } else if (unchanged) {
+            key = "PASS_AGREE";
+        } else {
+            key = this.dispute ? "PASS_DISPUTE_LAST" : "PASS_DISPUTE";
+        }
+        return this.ok(result, 0, i18next.t(`apgames:validation.thuemorsego.${key}`, { count }), true);
     }
 
     private validateDeclaration(m: string, result: IValidationResult, colour: Stone, length: number): IValidationResult {
@@ -1368,7 +1560,9 @@ export class ThueMorseGoGame extends GameBase {
         const seat = this.currplayer;
         const colour = this.colourOfSeat(seat)!;
         const length = this.moveLength(this.placed);
-        let tokens = m.split(",");
+        const split = this.splitMarks(m.split(","));
+        const marked = split.marked;
+        let tokens = split.placements;
         let declared: number | undefined;
         let forced: number;
         if (this.declaring() && this.handicap === undefined) {
@@ -1398,6 +1592,12 @@ export class ThueMorseGoGame extends GameBase {
         }
         if (partial) {
             this.commitSim(sim, seat, declared, forced);
+            // Show the marking the move would leave: its own when it passes, none once it places.
+            if (declared === undefined && this.passesWholeMove(tokens)) {
+                this.marks = this.canonicalMarks(marked);
+            } else if (tokens.some((token) => token !== "pass")) {
+                this.marks = [];
+            }
             return false;
         }
         const err = this.finishMove(sim, colour);
@@ -1408,24 +1608,53 @@ export class ThueMorseGoGame extends GameBase {
         this.commitSim(sim, seat, declared, forced);
         this.interim = sim.created.slice(0, -1);
         this.novel = sim.created.length > 0;
+        let agreed = false;
         if (declared !== undefined) {
             this.lastmove = [declared.toString(), ...spelled].join(",");
             this.passes = [];
+            this.clearMarks();
         } else if (forced === length) {
-            // Automatic passes neither count towards ending the game nor interrupt a run of passes.
+            // Automatic passes neither count towards ending the game nor interrupt a run of
+            // passes, and leave the pending marking as it is.
             this.lastmove = Array<string>(length).fill("pass").join(",");
+        } else if (this.passesWholeMove(spelled)) {
+            agreed = this.recordPass(seat, spelled, marked);
         } else {
             this.lastmove = spelled.join(",");
-            this.passes = spelled.every((token) => token === "pass") ? [...this.passes, seat] : [];
+            this.passes = [];
+            this.clearMarks();
         }
         this.currplayer = this.otherSeat(seat);
 
         if (sim.over) {
             this.endGame([1, 2], "repetition");
-        } else if (!this.killAll) {
-            this.checkPasses();
+        } else if (agreed) {
+            this.endByAgreement();
         }
         return true;
+    }
+
+    /**
+     * Record a whole-move pass and the marking it carries. When the opponent's last move was a
+     * whole-move pass, this pass answers its marking: keeping it ends the game, which is what
+     * the result reports, and changing it is allowed until both players have done so in turn.
+     */
+    private recordPass(seat: playerid, spelled: string[], marked: string[]): boolean {
+        const marks = this.canonicalMarks(marked);
+        const inherited = this.inheritedMarks();
+        const changed = inherited !== undefined && !this.sameMarks(marks, inherited);
+        if (changed || (inherited === undefined && marks.length > 0)) {
+            const how = !changed ? "marked" : marks.length > 0 ? "changed" : "cleared";
+            this.results.push({ type: "select", what: "dead", how, ...(marks.length > 0 ? { where: marks.join(",") } : {}) });
+        }
+        if (changed && this.dispute) {
+            this.locked = true;
+        }
+        this.dispute = changed;
+        this.marks = marks;
+        this.passes = [...this.passes, seat];
+        this.lastmove = [...spelled, ...this.markTokens(marks)].join(",");
+        return inherited !== undefined && !changed;
     }
 
     /** Copy the outcome of a move in progress into the game. */
@@ -1480,11 +1709,17 @@ export class ThueMorseGoGame extends GameBase {
         );
     }
 
-    /** The standard game ends when both players pass their moves in turn. */
-    private checkPasses(): void {
-        const n = this.passes.length;
-        if (n < 2 || this.passes[n - 1] === this.passes[n - 2]) {
-            return;
+    /**
+     * The standard game ends when a player passes their whole move keeping the marking the
+     * opponent's whole-move pass left: the marked strings are removed and the board is scored.
+     */
+    private endByAgreement(): void {
+        if (this.marks.length > 0) {
+            for (const cell of this.marks) {
+                this.board.delete(cell);
+            }
+            this.results.push({ type: "remove", where: this.marks.join(","), num: this.marks.length, how: "dead" });
+            this.marks = [];
         }
         const scores = [this.getPlayerScore(1), this.getPlayerScore(2)];
         let winners: playerid[] = [1, 2];
@@ -1595,54 +1830,65 @@ export class ThueMorseGoGame extends GameBase {
     // -----------------------------------------------------------------------
 
     /** Tromp-Taylor area: stones of `colour` plus the empty points that reach only that colour. */
-    private area(colour: Stone): number {
-        let score = 0;
+    /** The empty regions of `board`, each with the colour it reaches when that is a single one. */
+    private regions(board: Board): IRegion[] {
+        const regions: IRegion[] = [];
         const seen = new Set<string>();
         for (const cell of this.geo.cells) {
-            const stone = this.board.get(cell);
-            if (stone === colour) {
-                score++;
+            if (board.has(cell) || seen.has(cell)) {
                 continue;
             }
-            if (stone !== undefined || seen.has(cell)) {
-                continue;
-            }
-            let size = 0;
-            let own = false;
-            let other = false;
+            const cells: string[] = [];
+            const reached = new Set<Stone>();
             const todo = [cell];
             seen.add(cell);
             while (todo.length > 0) {
                 const cur = todo.pop()!;
-                size++;
+                cells.push(cur);
                 for (const n of this.geo.neighbours.get(cur)!) {
-                    const occupant = this.board.get(n);
+                    const occupant = board.get(n);
                     if (occupant === undefined) {
                         if (!seen.has(n)) {
                             seen.add(n);
                             todo.push(n);
                         }
-                    } else if (occupant === colour) {
-                        own = true;
                     } else {
-                        other = true;
+                        reached.add(occupant);
                     }
                 }
             }
-            if (own && !other) {
-                score += size;
+            const region: IRegion = { cells };
+            if (reached.size === 1) {
+                region.owner = [...reached][0];
+            }
+            regions.push(region);
+        }
+        return regions;
+    }
+
+    /** Tromp-Taylor area on `board`: stones of `colour` plus the empty points reaching only them. */
+    private area(colour: Stone, board: Board): number {
+        let score = 0;
+        for (const stone of board.values()) {
+            if (stone === colour) {
+                score++;
+            }
+        }
+        for (const region of this.regions(board)) {
+            if (region.owner === colour) {
+                score += region.cells.length;
             }
         }
         return score;
     }
 
-    /** Tromp-Taylor area plus the button. */
+    /** Tromp-Taylor area, with the strings marked dead removed, plus the button. */
     public getPlayerScore(player: playerid): number {
         const colour = this.colourOfSeat(player);
         if (colour === undefined) {
             return 0;
         }
-        return this.area(colour) + (this.button === player ? this.buttonValue : 0);
+        return this.area(colour, this.effectiveBoard()) + (this.button === player ? this.buttonValue : 0);
     }
 
     public sidebarScores(): IScores[] {
@@ -1683,6 +1929,9 @@ export class ThueMorseGoGame extends GameBase {
             passes: [...this.passes],
             interim: [...this.interim],
             novel: this.novel,
+            marks: [...this.marks],
+            dispute: this.dispute,
+            locked: this.locked,
         };
         if (this.button !== undefined) { state.button = this.button; }
         if (this.handicap !== undefined) { state.handicap = this.handicap; }
@@ -1718,6 +1967,59 @@ export class ThueMorseGoGame extends GameBase {
             }
         }
         return { overlay, chosen };
+    }
+
+    /**
+     * The territory the board scores as it stands, with the strings marked dead removed: a dot on
+     * every empty point that reaches only one colour, and the marked stones faded, each with a dot
+     * of the colour the point under it counts for. Shown in the standard game once both colours
+     * are on the board, unless the display hides it; the marked stones are faded regardless.
+     * Returns the legend keys of the marked stones by cell and the dots for the empty points.
+     */
+    private territoryOverlay(legend: ILegend, hide: boolean): { dead: Map<string, string>; dots: MarkerDots[] } {
+        const dead = new Map<string, string>();
+        const dots: MarkerDots[] = [];
+        if (this.killAll) {
+            return { dead, dots };
+        }
+        const owner = new Map<string, Stone>();
+        if (!hide && (this.gameover || new Set(this.board.values()).size === 2)) {
+            for (const region of this.regions(this.effectiveBoard())) {
+                if (region.owner !== undefined) {
+                    for (const cell of region.cells) {
+                        owner.set(cell, region.owner);
+                    }
+                }
+            }
+        }
+        // Colours are seats in the standard game, so they name their palette slots directly.
+        for (const cell of this.marks) {
+            const stone = this.board.get(cell);
+            if (stone === undefined) {
+                continue;
+            }
+            const under = owner.get(cell);
+            const key = under === undefined ? `D${stone}` : `D${stone}T${under}`;
+            if (!(key in legend)) {
+                const faded: Glyph = { name: "piece", paint: { fill: stone }, opacity: DEAD_OPACITY };
+                legend[key] = under === undefined ? [faded] : [faded, { name: "piece-borderless", paint: { fill: under }, scale: DOT_SIZE }];
+            }
+            dead.set(cell, key);
+        }
+        const points: [RowCol[], RowCol[]] = [[], []];
+        for (const [cell, colour] of owner) {
+            if (!this.board.has(cell)) {
+                const [x, y] = this.algebraic2coords(cell);
+                points[colour - 1].push({ row: y, col: x });
+            }
+        }
+        for (const colour of [1, 2] as const) {
+            const pts = points[colour - 1];
+            if (pts.length > 0) {
+                dots.push({ type: "dots", colour, size: DOT_SIZE, points: pts as [RowCol, ...RowCol[]] });
+            }
+        }
+        return { dead, dots };
     }
 
     /**
@@ -1819,11 +2121,13 @@ export class ThueMorseGoGame extends GameBase {
         const swap = this.killAll && this.hasDisplay(opts, "swap-colours");
         const downward = this.hasDisplay(opts, "digits-down");
         const rolling = this.hasDisplay(opts, "rolling");
+        const hideDots = this.hasDisplay(opts, "hide-territory");
         const legend: ILegend = {
             A: [{ name: "piece", paint: { fill: this.paletteOfColour(1, swap) } }],
             B: [{ name: "piece", paint: { fill: this.paletteOfColour(2, swap) } }],
         };
         const { overlay, chosen } = this.pickerOverlay(legend, swap);
+        const { dead, dots } = this.territoryOverlay(legend, hideDots);
 
         const rows: string[] = [];
         for (let row = 0; row < this.boardSize; row++) {
@@ -1831,13 +2135,13 @@ export class ThueMorseGoGame extends GameBase {
             for (let col = 0; col < this.boardSize; col++) {
                 const cell = this.coords2algebraic(col, row);
                 const contents = this.board.get(cell);
-                cells.push(overlay.get(cell) ?? (contents === 1 ? "A" : contents === 2 ? "B" : "-"));
+                cells.push(overlay.get(cell) ?? dead.get(cell) ?? (contents === 1 ? "A" : contents === 2 ? "B" : "-"));
             }
             if (cells.every((c) => c === "-")) {
                 rows.push("_");
             } else {
                 // Multi-character keys need the comma-delimited form.
-                rows.push(overlay.size > 0 ? cells.join(",") : cells.join(""));
+                rows.push(overlay.size > 0 || dead.size > 0 ? cells.join(",") : cells.join(""));
             }
         }
 
@@ -1850,6 +2154,9 @@ export class ThueMorseGoGame extends GameBase {
             legend,
             pieces: rows.join("\n"),
         };
+        if (dots.length > 0) {
+            (rep.board as BoardBasic).markers = dots;
+        }
         const track = this.trackArea(legend, swap, downward, rolling);
         if (track !== undefined) {
             rep.areas = [track];
@@ -1863,7 +2170,7 @@ export class ThueMorseGoGame extends GameBase {
         for (const r of this.annotationResults()) {
             if (r.type === "place") {
                 annotations.push({ type: "enter", targets: [toRowCol(r.where!)] });
-            } else if (r.type === "capture") {
+            } else if (r.type === "capture" || r.type === "remove") {
                 const targets = r.where!.split(",").map(toRowCol);
                 annotations.push({ type: "exit", targets: targets as [RowCol, ...RowCol[]] });
             }
@@ -1925,6 +2232,16 @@ export class ThueMorseGoGame extends GameBase {
                 value: [this.button === undefined ? this.neutralAreaLabel("apgames:status.thuemorsego.BUTTON_AVAILABLE") : this.seatStatusValue(this.button)],
             });
         }
+        if (!this.gameover && (this.marks.length > 0 || this.locked)) {
+            const value = [];
+            if (this.marks.length > 0) {
+                value.push(this.neutralAreaLabel("apgames:status.thuemorsego.MARKING_COUNT", { count: this.marks.length }));
+            }
+            if (this.locked) {
+                value.push(this.neutralAreaLabel("apgames:status.thuemorsego.MARKING_LOCKED"));
+            }
+            statuses.push({ key: this.neutralAreaLabel("apgames:status.thuemorsego.MARKING"), value });
+        }
         if (this.handicapVariant && !this.gameover) {
             if (this.declaring() && this.handicap === undefined) {
                 statuses.push({
@@ -1974,6 +2291,19 @@ export class ThueMorseGoGame extends GameBase {
             case "claim":
                 if (r.how === "attacker") {
                     this.pushSeatChatLine(lines, ctx.defaultSeat, "apresults:CLAIM.thuemorsego_attacker");
+                    return true;
+                }
+                return super.collectChatLogLine(lines, r, ctx);
+            case "select":
+                if (r.what === "dead") {
+                    const count = r.where === undefined ? 0 : r.where.split(",").length;
+                    this.pushSeatChatLine(lines, ctx.defaultSeat, `apresults:SELECT.thuemorsego_${r.how!}`, { count });
+                    return true;
+                }
+                return super.collectChatLogLine(lines, r, ctx);
+            case "remove":
+                if (r.how === "dead") {
+                    this.pushNeutralChatLine(lines, "apresults:REMOVE.thuemorsego_dead", { count: r.num! });
                     return true;
                 }
                 return super.collectChatLogLine(lines, r, ctx);

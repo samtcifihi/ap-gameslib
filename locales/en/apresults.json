@@ -644,7 +644,9 @@
         "spook_drop_one": "{{player}} removed a ball at {{where}}, dropping 1 ball from {{how}}.",
         "spook_drop_other": "{{player}} removed a ball at {{where}}, dropping {{count}} balls from {{how}}.",
         "twixt": "{{player}} removed a link at {{where}}.",
-        "volo": "{{player}} chose to retain the region at {{how}}, removing {{num}} opponent's birds."
+        "volo": "{{player}} chose to retain the region at {{how}}, removing {{num}} opponent's birds.",
+        "thuemorsego_dead_one": "The stone marked dead was removed from the board.",
+        "thuemorsego_dead_other": "The {{count}} stones marked dead were removed from the board."
     },
     "REPAIR": {
         "simple": "{{player}} repairs."
@@ -681,7 +683,12 @@
         "slyde_mobile_opponent": "{{player}} changed the state of their opponent's piece at {{where}} from fixed to mobile.",
         "slyde_mobile_self": "{{player}} changed the state of their own piece at {{where}} from fixed to mobile.",
         "spree": "{{player}} handed a ball of colour {{who}} to the opponent.",
-        "thricewise": "{{player}} selected {{card}}."
+        "thricewise": "{{player}} selected {{card}}.",
+        "thuemorsego_marked_one": "{{player}} marked one stone as dead.",
+        "thuemorsego_marked_other": "{{player}} marked {{count}} stones as dead.",
+        "thuemorsego_changed_one": "{{player}} changed the marking: one stone is marked dead.",
+        "thuemorsego_changed_other": "{{player}} changed the marking: {{count}} stones are marked dead.",
+        "thuemorsego_cleared": "{{player}} cleared the marking: no stones are marked dead."
     },
     "SET": {
         "biscuit_biscuit_one": "{{player}} scored a biscuit.",
