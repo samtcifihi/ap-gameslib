@@ -942,37 +942,51 @@ describe("Thue-Morse Go: boards and star points", () => {
 });
 
 describe("Thue-Morse Go: reverse komi", () => {
-    it("has Player 2 set the komi before the first placement, within two points of the board", () => {
+    it("begins Player 2's first move, costing no placement, within two points of the board", () => {
         const g = small(["reverse-komi"]);
         expect(g.allvariants()!.find((v) => v.uid === "reverse-komi")).to.deep.include({ unrated: true, fans: true });
-        expect(g.phase).to.equal("komi");
-        expect(g.currplayer).to.equal(2);
-        expect(g.placed).to.equal(0);
+        expect(g.currplayer).to.equal(1);
+        expect(g.turnModel()).to.equal("sequential");
+        g.move("f6");
         expect(g.getButtons()).to.deep.equal([]);
-        expect(g.validateMove("").complete).to.equal(-1);
-        expect(g.validateMove("119").complete).to.equal(1);
-        expect(g.validateMove("-119").valid).to.be.true;
+        const empty = g.validateMove("");
+        expect(empty.complete).to.equal(-1);
+        expect(empty.message).to.contain("reverse komi");
+        expect(g.validateMove("e5").valid).to.be.false;
         expect(g.validateMove("120").valid).to.be.false;
         expect(g.validateMove("-120").valid).to.be.false;
         expect(g.validateMove("7.5").valid).to.be.false;
-        expect(g.validateMove("e5").valid).to.be.false;
-        expect(g.moves()).to.have.lengthOf(239);
+        const alone = g.validateMove("7");
+        expect(alone.complete).to.equal(0);
+        expect(alone.message).to.contain("7 points");
+        expect(g.validateMove("-119,e5").complete).to.equal(0);
+        expect(g.validateMove("119,e5,g7").complete).to.equal(1);
+        expect(g.validateMove("7,e5,g7,d4").valid).to.be.false;
+        expect(g.moves()).to.include("0,e5,g7");
+        expect(g.randomMove()).to.match(/^-?\d(,|$)/);
+        // Clicks need the komi typed first, and keep it in front of the placements.
         const [x, y] = g.algebraic2coords("e5");
-        expect(g.handleClick("", y, x).valid).to.be.false;
-        g.move("-7");
+        const early = g.handleClick("", y, x);
+        expect(early.valid).to.be.false;
+        expect(early.message).to.contain("reverse komi");
+        expect(g.handleClick("7", y, x).move).to.equal("7,e5");
+        expect(g.handleClick("7,e5", y, x).move).to.equal("7");
+        expect(g.handleClick("7,e5", -1, -1, "_btn_pass").move).to.equal("7,pass,pass");
+        // Submitting the komi alone passes the move.
+        const passed = g.clone().move("7");
+        expect(passed.lastmove).to.equal("7,pass,pass");
+        expect(passed.passes).to.deep.equal([2]);
+        expect(passed.komi).to.equal(7);
+        g.move("-7,e5,g7");
         expect(g.komi).to.equal(-7);
-        expect(g.phase).to.equal("play");
-        expect(g.currplayer).to.equal(1);
-        expect(g.placed).to.equal(0);
-        expect(g.lastmove).to.equal("-7");
-        expect(g.results).to.deep.equal([{ type: "komi", value: -7 }]);
-        expect(g.getPlayerScore(2)).to.equal(-7);
-        expect(g.getPlayerScore(1)).to.equal(0);
-        play(g, ["f6", "e5,g7"]);
         expect(g.placed).to.equal(3);
         expect(g.currplayer).to.equal(1);
+        expect(g.lastmove).to.equal("-7,e5,g7");
+        expect(g.results.slice(0, 2)).to.deep.equal([{ type: "komi", value: -7 }, { type: "place", where: "e5" }]);
         expect(g.getPlayerScore(2)).to.equal(2 - 7);
-        // Reloading keeps it, and the sidebar reports it.
+        expect(g.getButtons().map((b) => b.move)).to.deep.equal(["pass"]);
+        // The move table stays sequential, and reloading keeps the komi.
+        expect(g.getRounds()).to.deep.equal([[{ move: "f6", result: [{ type: "place", where: "f6" }] }, { move: "-7,e5,g7", result: g.results }]]);
         const again = new ThueMorseGoGame(g.serialize());
         expect(again.komi).to.equal(-7);
         expect(again.sidebarStatuses().some((s) => JSON.stringify(s).includes("\"-7\""))).to.be.true;
@@ -980,7 +994,7 @@ describe("Thue-Morse Go: reverse komi", () => {
     });
 
     it("counts the komi at the end of the game and in the chat log", () => {
-        const g = play(small(["reverse-komi"]), ["3", "f6", "pass,pass", "pass"]);
+        const g = play(small(["reverse-komi"]), ["f6", "3", "pass"]);
         expect(g.gameover).to.be.true;
         // Player 1 holds the whole board; the komi still has Player 2 on 3.
         expect(g.getPlayerScore(1)).to.equal(121);
@@ -989,45 +1003,35 @@ describe("Thue-Morse Go: reverse komi", () => {
         assertChatLogParity(g, ["Alice", "Bob"]);
         const log = g.chatLog(["Alice", "Bob"]).flat().join("\n");
         expect(log).to.contain("Bob set the reverse komi to 3 points.");
-        const h = play(small(["reverse-komi"]), ["1"]);
+        expect(log).to.contain("Bob passed.");
+        const h = play(small(["reverse-komi"]), ["f6", "1,e5"]);
         expect(h.chatLog(["Alice", "Bob"]).flat().join("\n")).to.contain("Bob set the reverse komi to 1 point.");
-        expect(play(small(["reverse-komi"]), ["-119", "f6", "pass,pass", "pass"]).getPlayerScore(2)).to.equal(-119);
-        expect(play(small(["reverse-komi"]), ["0", "f6", "pass,pass", "pass"]).winner).to.deep.equal([1]);
+        expect(play(small(["reverse-komi"]), ["f6", "-119", "pass"]).getPlayerScore(2)).to.equal(-119);
         // One stone each is level, so the komi decides.
-        expect(play(small(["reverse-komi"]), ["0", "f6", "e5", "pass", "pass"]).winner).to.deep.equal([1, 2]);
-        expect(play(small(["reverse-komi"]), ["1", "f6", "e5", "pass", "pass"]).winner).to.deep.equal([2]);
-        expect(play(small(["reverse-komi"]), ["-1", "f6", "e5", "pass", "pass"]).winner).to.deep.equal([1]);
-    });
-
-    it("lays the move table out by actor, with the komi in a row of its own", () => {
-        const g = play(small(["reverse-komi"]), ["7", "f7", "e5,g7", "d4"]);
-        expect(g.turnModel()).to.equal("sequenced");
-        expect(g.getPlies().map((p) => [p.actor, p.round])).to.deep.equal([[2, 0], [1, 1], [2, 1], [1, 2]]);
-        // Export rows are sparse, one per ply, each in its actor's column.
-        const rounds = g.getRounds();
-        expect(rounds).to.have.lengthOf(4);
-        expect(rounds[0][0]).to.be.null;
-        expect((rounds[0][1] as { move: string }).move).to.equal("7");
-        expect((rounds[1][0] as { move: string }).move).to.equal("f7");
-        // The compact table pairs the placements up from Player 1 after the komi row.
-        const compact = g.getMoveTableRounds({ density: "compact" });
-        expect(compact).to.have.lengthOf(3);
-        expect(compact[0][0]).to.be.null;
-        expect((compact[1][0] as { move: string }).move).to.equal("f7");
-        expect((compact[1][1] as { move: string }).move).to.equal("e5,g7");
-        expect(compact[2][1]).to.be.null;
-        // Without the variant the game stays on the plain sequential model.
-        expect(small().turnModel()).to.equal("sequential");
-        expect(play(small(), ["f7", "e5,g7"]).getRounds()).to.have.lengthOf(1);
+        expect(play(small(["reverse-komi"]), ["f6", "0,e5", "pass", "pass"]).winner).to.deep.equal([1, 2]);
+        expect(play(small(["reverse-komi"]), ["f6", "1,e5", "pass", "pass"]).winner).to.deep.equal([2]);
+        expect(play(small(["reverse-komi"]), ["f6", "-1,e5", "pass", "pass"]).winner).to.deep.equal([1]);
     });
 
     it("comes before the handicap declaration and cannot be combined with Kill-All", () => {
-        const g = play(small(["reverse-komi", "handicap"]), ["5", "f6", "3"]);
+        const g = play(small(["reverse-komi", "handicap"]), ["f6"]);
+        expect(g.validateMove("").message).to.contain("handicap");
+        const komiOnly = g.validateMove("5");
+        expect(komiOnly.complete).to.equal(-1);
+        expect(komiOnly.message).to.contain("handicap");
+        // The numbered stones set the handicap once the komi is typed.
+        const [bx, by] = g.algebraic2coords("b7");
+        expect(g.handleClick("", by, bx).valid).to.be.false;
+        expect(g.handleClick("5", by, bx).move).to.equal("5,1");
+        expect(g.validateMove("5,3").complete).to.equal(0);
+        g.move("5,3");
         expect(g.komi).to.equal(5);
         expect(g.handicap).to.equal(3);
         expect(g.passesOwed).to.equal(1);
         expect(g.placed).to.equal(3);
         expect(g.currplayer).to.equal(1);
+        // The declaration serves placement 1 and a forced pass placement 2, as in a plain handicap move.
+        expect(g.lastmove).to.equal("5,3");
         g.move("e5");
         // Player 2's single placement 4 is served by the handicap.
         expect(g.placed).to.equal(5);
@@ -1035,9 +1039,11 @@ describe("Thue-Morse Go: reverse komi", () => {
         expect(g.passesOwed).to.equal(0);
         expect(g.getPlayerScore(1)).to.equal(121);
         expect(g.getPlayerScore(2)).to.equal(5);
+        const one = play(small(["reverse-komi", "handicap"]), ["f6", "-2,1,e5"]);
+        expect(one.komi).to.equal(-2);
+        expect(one.board.get("e5")).to.equal(2);
         expect(new ThueMorseGoGame(undefined, ["kill-all", "reverse-komi"]).variants).to.deep.equal(["reverse-komi"]);
         expect(new ThueMorseGoGame(undefined, ["reverse-komi", "kill-all"]).variants).to.deep.equal(["kill-all"]);
         expect(g.randomMove()).to.match(/^[a-k]\d+/);
-        expect(small(["reverse-komi"]).randomMove()).to.match(/^-?\d$/);
     });
 });
