@@ -262,6 +262,7 @@
         "tanbo": "Create space to grow your roots by bounding the opponent's.",
         "tbt": "A simple dice game where you attempt to form stacks of equal height on your home row.",
         "tessella": "Pieces capture in pairs using a \"shooting\" mechanic. Be the first to capture four of your opponent's pieces.",
+        "thuemorsego": "Go in which the order of placements follows the Thue-Morse sequence (0110 1001 1001 0110 …), so every move is one or two stones and no komi is needed. Tromp-Taylor rules with suicide allowed, an optional button, and a Kill-All variant.",
         "tintas": "Players race to either collect all seven of one colour or to collect four of four different colours.",
         "terrace": "A royal capture/escape game played on a three-dimensional board with pieces of various sizes.",
         "toguz": "A traditional mancala-style sowing game from central Asia where you attempt to capture the majority of the pieces.",
@@ -560,6 +561,7 @@
         "terrace": "Terrace",
         "tessella": "Tessella",
         "thricewise": "Thricewise",
+        "thuemorsego": "Thue-Morse Go",
         "tintas": "Tintas",
         "toguz": "Toguz Kumalak",
         "trax": "Trax",
@@ -692,6 +694,7 @@
         "tanbo": "Tanbo (田んぼ, Japanese for rice paddy) is a game of roots. Or more precisely, root-like groups. The board starts out populated with loosely interspersed black and white stones. You place a stone orthogonally adjacent to exactly one of your on-board stones.  This prevents roots from merging and clumps from forming. When roots become bounded (that is, they have no room to grow) they are removed. If the current root (the one enlarged during your turn) is among the bounded roots, only it is removed, thereby unbounding any other bounded roots.  The goal is to be the last player with roots still on the board.\n\nTanbo was the second game ever invented by Mark Steere, and is still one of his best.",
         "tbt": "When it's your turn, you will see the die you have to work with, but once your move is complete, the die will reroll. Exploration is not helpful because the die roll is not finalized until after the move is submitted. As you scroll back through the game history, the die you see is for the *next* turn. The die used to make the move you're seeing is displayed below the board.",
         "terrace": "The Assassination variant is described in [this BGG thread](https://boardgamegeek.com/thread/551125/variant-for-more-aggressive-less-drawish-play), summarized below:\n\n- Up straight, you must be larger or a smallest-size piece can assassinate a largest-size piece.\n\n- Same level (orthogonally adjacent only), you must be at least the same size.\n\n- Down diagonal, you may be one rank smaller.",
+        "thuemorsego": "Placements follow the Thue-Morse sequence: placement n (counting from 0) belongs to Player 1 when n has an even number of 1 bits in binary and to Player 2 otherwise, giving the order 0110 1001 1001 0110 … A move is a maximal run of placements by one player, so every move is one or two placements. The tracker beside the board shows the index of the next placement in hexadecimal, one column per digit: the rightmost column gives the colours of the placements to come before the next carry, each other column the colour of the 0 row of the column to its right, and the tint behind the columns the colour of the next placement. The Balanced Marseillais protocol repeats the first four terms (ABBA) instead.\n\nStones are placed and captured under Tromp-Taylor rules: after a placement, opponent strings without liberties are removed, then your own, so multi-stone suicide is legal. Any placement may instead be a pass or, while nobody holds it, take the button, worth one point to its holder (half a point, or absent, by variant). A move lists its placements separated by commas; a move submitted with fewer placements than it allows passes the rest. The game ends when both players pass their whole moves in turn. A player's score is their area (stones plus the empty points reaching only their colour) plus the stones they captured plus the button; there is no komi.\n\nUnder positional superko no placement may recreate an earlier position of the board, including positions reached partway through a move. Under the repetition variant there is no ko rule, and the fifth occurrence of a position ends the game in a draw.\n\nWeak eyes: normally every placement clears the board, so two eyes live. With checked weak eyes only the last placement of a move clears it, so a two-placement move can fill both eyes of a group, three eyes are needed to live, and a placement that would be suicide can be rescued by the second placement of the move.\n\nHandicap: Player 2's first move begins by declaring a number of passes, the first served by the declaration itself. The rest are served automatically at the start of Player 2's following moves, do not count towards ending the game, and may run out partway through a two-placement move.\n\nKill-All: players take turns placing Attacker stones until one of them claims the Attacker side (pieboxing); the other plays the Defender and makes placement 0. The Defender wins by forming an unconditionally alive string (pass-alive by Benson's algorithm, with three vital regions instead of two under checked weak eyes), the Attacker by making that impossible. Passing is not allowed, and a player with no legal move loses. With a handicap, Player 1 first sets a number of extra Attacker stones that Player 2 places immediately on claiming the Attacker side. There is no button in Kill-All games.",
         "toguz": "Depicting state changes in sowing games is challenging. The initial chosen pit is marked, as is any capture. Small numbers appear to show the change in the number of stones in each pit. If you believe you have encountered a bug, please let us know in Discord.",
         "thricewise": "With 2 or 4 players the opening grid is 2×2; with 3 or 5 players it is 2×3. The tableau may grow in any direction until it is 6×6. Duplicate ranks in the simultaneous selection are deferred face-up beside your seat and played on a later turn (you may place deferred cards and your new card in any order in one submission). More information on the Decktet is on the [Decktet wiki](https://decktet.wikidot.com/).",
         "tricouleur": "Tricouleur is a 2005 game designed by Bill Taylor. Each player has a army of three types of pieces that are able to capture the next type, in a cyclic way: think Rock-Paper-Scissors (Circle-Square-Ex). The move sequence is 12* where a player must use different pieces (it is also possible to pass the entire turn). A piece may move to an empty neighboring cell (in which case it leaves an unmoved duplicate behind) or to an empty cell among the twelve 2nd-neighbours, regardless of what is in between. Any weaker opposing pieces that the moved piece becomes adjacent to are recolored as the moving piece. Any same-strength opposing pieces that the moved piece becomes adjacent to, are removed from the board.\n\nThe game ends when either (a) both players pass consecutively, (b) the board is full, (c) one army is destroyed, (d) a position is repeated three times.  Whoever has the most pieces of their own colours in total, wins.",
@@ -4071,6 +4074,65 @@
                 "description": "This variant expands the capturing options, leading to a more aggressive game."
             }
         },
+        "thuemorsego": {
+            "size-11": {
+                "name": "11x11 board"
+            },
+            "#board": {
+                "name": "16x16 board"
+            },
+            "size-23": {
+                "name": "23x23 board"
+            },
+            "#connect": {
+                "name": "Square",
+                "description": "Points connect orthogonally, as in Go."
+            },
+            "snub": {
+                "name": "Snub square",
+                "description": "Points connect as in the snub square tiling, so each point has five neighbours and the board contains triangles."
+            },
+            "#protocol": {
+                "name": "Thue-Morse",
+                "description": "Placements follow the full Thue-Morse sequence: 0110 1001 1001 0110 …"
+            },
+            "marseillais": {
+                "name": "Balanced Marseillais",
+                "description": "Placements repeat the first four terms of the Thue-Morse sequence, ABBA, also known as 12* or T(2)."
+            },
+            "handicap": {
+                "name": "Handicap",
+                "description": "Player 2 begins their first move by declaring a number of passes to serve before placing a stone. In Kill-All games, Player 1 instead sets a number of extra Attacker stones that Player 2 places immediately on claiming the Attacker side."
+            },
+            "#ko": {
+                "name": "Positional superko",
+                "description": "No placement may recreate an earlier position of the board."
+            },
+            "repetition": {
+                "name": "Repetition draw",
+                "description": "No ko rule; the fifth occurrence of a position ends the game in a draw."
+            },
+            "weak-eyes": {
+                "name": "Weak eyes",
+                "description": "When checked, only the last placement of a move clears the board, so a two-placement move can fill both eyes of a group and three eyes are needed to live. Unchecked, every placement clears the board and two eyes live."
+            },
+            "#button": {
+                "name": "1-point button",
+                "description": "Any placement may instead take the button, worth one point to whoever takes it first. Draws are possible on boards with an odd number of points."
+            },
+            "half-button": {
+                "name": "½-point button",
+                "description": "The button is worth half a point, so the game cannot be drawn on points."
+            },
+            "no-button": {
+                "name": "No button",
+                "description": "Draws are possible on boards with an even number of points."
+            },
+            "kill-all": {
+                "name": "Kill-All Thue-Morse Go",
+                "description": "Players take turns placing Attacker stones until one of them claims the Attacker side; the other plays the Defender, places first, and wins by forming an unconditionally alive string. Requires the No button option."
+            }
+        },
         "tintas": {
             "#board": {
                 "description": "A round-ish hex field of 49 spaces"
@@ -4940,6 +5002,16 @@
                 "name": "Flat view"
             }
         },
+        "thuemorsego": {
+            "digits-down": {
+                "name": "Tracker digits downward",
+                "description": "Run each tracker column from 0 at the top to f at the bottom instead of upward."
+            },
+            "swap-colours": {
+                "name": "Kill-All Go colours",
+                "description": "In Kill-All games, swap the two stone colours on the board and tracker so that the Attacker uses the first colour, as in Kill-All Go. Has no effect in other games."
+            }
+        },
         "toguz": {
             "pips": {
                 "description": "Display the stones as pips instead of as numerals.",
@@ -5198,6 +5270,20 @@
         "RESERVE": "Reserve",
         "SCORES": "Scores",
         "STACKSIZES": "Stack heights",
+        "thuemorsego": {
+            "NEXT_PLACEMENT": "Next placement",
+            "UPCOMING": "Coming placements",
+            "BUTTON": "Button",
+            "BUTTON_AVAILABLE": "Available",
+            "PASSES_OWED": "Handicap passes to serve",
+            "DEFENDER": "Defender",
+            "ATTACKER": "Attacker",
+            "UNDECIDED": "Not yet chosen",
+            "HANDICAP": "Handicap stones",
+            "PHASE_HAND_N": "{{player}} sets the number of handicap stones",
+            "PHASE_ALT_PLACE": "{{player}} places an Attacker stone or takes the Attacker side",
+            "PHASE_DECLARE": "{{player}} sets the number of handicap passes"
+        },
         "tintas": {
             "MAJORITIES": "Majorities won",
             "MONOCHROME": "Monochrome potential"
@@ -8149,6 +8235,58 @@
             "PARTIAL_cancap": "Select a destination. This piece can capture.",
             "PARTIAL_move": "Select a destination. This piece may only move."
         },
+        "thuemorsego": {
+            "INSTRUCTIONS_PLAY_one": "Place a stone, or pass; this move is a single placement.",
+            "INSTRUCTIONS_PLAY_other": "This move is {{count}} placements: place up to {{count}} stones, or submit early to pass the rest.",
+            "INSTRUCTIONS_PLAY_BUTTON_one": "Place a stone, pass, or take the button (worth {{points}}); this move is a single placement.",
+            "INSTRUCTIONS_PLAY_BUTTON_other": "This move is {{count}} placements: place up to {{count}} stones, take the button (worth {{points}}) in place of one, or submit early to pass the rest.",
+            "INSTRUCTIONS_PLAY_FORCED": "The first placement of this move is a handicap pass. Place a stone for the other, or pass.",
+            "INSTRUCTIONS_PLAY_FORCED_BUTTON": "The first placement of this move is a handicap pass. Place a stone for the other, take the button (worth {{points}}), or pass.",
+            "INSTRUCTIONS_PLAY_DEFENDER_one": "Place a stone. You win by forming one unconditionally alive string.",
+            "INSTRUCTIONS_PLAY_DEFENDER_other": "Place {{count}} stones. You win by forming one unconditionally alive string.",
+            "INSTRUCTIONS_PLAY_ATTACKER_one": "Place a stone. You win by preventing the Defender from forming an unconditionally alive string.",
+            "INSTRUCTIONS_PLAY_ATTACKER_other": "Place {{count}} stones. You win by preventing the Defender from forming an unconditionally alive string.",
+            "INSTRUCTIONS_DECLARE": "You are receiving the handicap. Click a numbered stone, or enter a number from 1 to {{max}} manually, to set how many placements you pass before placing your first stone; this declaration is the first of them.",
+            "DECLARE_INVALID": "The handicap must be a whole number of passes.",
+            "DECLARE_RANGE": "The handicap must be between 1 and {{max}} passes.",
+            "DECLARE_NO_PLACEMENT": "With a handicap of {{count}} passes, every placement of this move is a pass.",
+            "DECLARE_OK_one": "Handicap of one pass. Submit, or choose a different handicap.",
+            "DECLARE_OK_other": "Handicap of {{count}} passes. Submit, or choose a different handicap.",
+            "DECLARE_ONE": "Handicap of one pass, served by this declaration. Place a stone or take the button as the second placement of this move, or submit to pass it.",
+            "TOO_MANY_one": "This move has only one placement left to fill.",
+            "TOO_MANY_other": "This move has only {{count}} placements left to fill.",
+            "FORCED_MOVE": "Every placement of this move is a handicap pass, which is served automatically.",
+            "NO_PASS": "Passing is not allowed in Kill-All Thue-Morse Go.",
+            "NO_BUTTON": "There is no button in this game.",
+            "BUTTON_TAKEN": "The button has already been taken.",
+            "KO_PSK": "That placement would recreate an earlier position of the board (positional superko).",
+            "OVER_MID_MOVE": "The game ended at the previous placement.",
+            "PLACE_MORE_one": "Place one more stone.",
+            "PLACE_MORE_other": "Place {{count}} more stones.",
+            "DEAD_END": "No legal placement can follow that one; choose a different placement.",
+            "MUST_CONTINUE": "Ending the move here would recreate an earlier position of the board; place another stone, or choose a different placement.",
+            "MORE_OR_SUBMIT_one": "Place another stone, or submit to pass the remaining placement.",
+            "MORE_OR_SUBMIT_other": "Place another stone, or submit to pass the remaining {{count}} placements.",
+            "MORE_OR_SUBMIT_BUTTON_one": "Place another stone or take the button, or submit to pass the remaining placement.",
+            "MORE_OR_SUBMIT_BUTTON_other": "Place another stone or take the button, or submit to pass the remaining {{count}} placements.",
+            "INSTRUCTIONS_HANDICAP": "You are giving the handicap. Click a numbered stone, or enter a number from 1 to {{max}} manually, to set how many extra Attacker stones your opponent will place if they take the Attacker side.",
+            "HANDICAP_INVALID": "The handicap must be a whole number.",
+            "HANDICAP_RANGE": "The handicap must be between 1 and {{max}} stones.",
+            "HANDICAP_OK_one": "Handicap of one stone. Submit, or choose a different handicap.",
+            "HANDICAP_OK_other": "Handicap of {{count}} stones. Submit, or choose a different handicap.",
+            "NOT_A_NUMBERED_STONE": "{{where}} is not one of the numbered stones.",
+            "INSTRUCTIONS_ALT": "Place an Attacker stone to continue the opening, or choose to play as the Attacker. If you choose the Attacker, your opponent moves first as the Defender.",
+            "INSTRUCTIONS_ALT_HANDICAP_one": "Place an Attacker stone to continue the opening, or choose to play as the Attacker. If you choose the Attacker, place one extra stone; your opponent then moves first as the Defender.",
+            "INSTRUCTIONS_ALT_HANDICAP_other": "Place an Attacker stone to continue the opening, or choose to play as the Attacker. If you choose the Attacker, place {{count}} extra stones; your opponent then moves first as the Defender.",
+            "SETUP_FULL": "The board already holds the maximum number of setup stones this phase allows ({{max}}); take the Attacker side instead of placing another.",
+            "ATTACKER_NO_STONES": "Taking the Attacker side does not involve placing stones now.",
+            "STONES_LEFT_one": "Place one more Attacker stone.",
+            "STONES_LEFT_other": "Place {{count}} more Attacker stones.",
+            "BATCH_TOO_MANY_one": "You must place exactly one extra Attacker stone.",
+            "BATCH_TOO_MANY_other": "You must place exactly {{count}} extra Attacker stones.",
+            "DUPLICATE_CELL": "The cell {{where}} is listed twice.",
+            "INVALID_PASS": "You cannot pass now."
+        },
         "tintas": {
             "CAPTURED_LABEL": "{{player}}'s captured pieces",
             "INITIAL_INSTRUCTIONS_movepawn": "Select the cell where you want the pawn to move.",
@@ -8548,6 +8686,9 @@
             "noObjSwap": "No objective swap",
             "objSwap": "Swap objectives",
             "swap": "Swap on board"
+        },
+        "thuemorsego": {
+            "attacker": "Play as the Attacker"
         }
     },
     "categories": {

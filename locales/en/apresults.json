@@ -158,7 +158,9 @@
             "single_E": "{{player}} picked up an Earthstone at {{where}}.",
             "single_M": "{{player}} picked up a Moonstone at {{where}}.",
             "single_S": "{{player}} picked up a Sunstone at {{where}}."
-        }
+        },
+        "thuemorsego_suicide_one": "{{player}} removed their own stone by suicide.",
+        "thuemorsego_suicide_other": "{{player}} removed {{count}} of their own stones by suicide."
     },
     "CLAIM": {
         "buku_singletons_one": "{{player}} claimed the remaining 1 piece on their colour.",
@@ -187,7 +189,8 @@
         "scribe_mini": "{{player}} won the {{where}} mini grid with {{formation}}.",
         "scribe_mini_none": "{{player}} won the {{where}} mini grid on a tie-break (no formations scored).",
         "toguz": "Pit {{pit}} became a tuz.",
-        "veletas": "Shooter at {{where}} is trapped and is claimed by {{who}}."
+        "veletas": "Shooter at {{where}} is trapped and is claimed by {{who}}.",
+        "thuemorsego_attacker": "{{player}} chose to play as the Attacker."
     },
     "CONNECT": {
         "bridges": "{{player}} built a bridge between {{left}} and {{right}}.",
@@ -229,7 +232,11 @@
         "killallgo_handicap_one": "{{player}} set the handicap to one stone.",
         "killallgo_handicap_other": "{{player}} set the handicap to {{count}} stones.",
         "mchess": "{{player}} has \"called the clock.\" If no capture is made in the next seven turns, the game will end and be scored.",
-        "renju": "{{player}} has declared {{count}} tentative fifths."
+        "renju": "{{player}} has declared {{count}} tentative fifths.",
+        "thuemorsego_passes_one": "{{player}} set the handicap to one pass.",
+        "thuemorsego_passes_other": "{{player}} set the handicap to {{count}} passes.",
+        "thuemorsego_stones_one": "{{player}} set the handicap to one stone.",
+        "thuemorsego_stones_other": "{{player}} set the handicap to {{count}} stones."
     },
     "DELTA_SCORE_GAIN_one": "{{player}} gained {{delta}} point.",
     "DELTA_SCORE_GAIN_other": "{{player}} gained {{delta}} points.",
@@ -308,7 +315,11 @@
         "killallgo_double_pass": "The game has ended because both players passed consecutively without the Defender establishing unconditional life.",
         "killallgo_no_moves": "The game has ended because the player to move has no legal placement.",
         "killallgo_no_room": "The game has ended because the Attacker's unconditionally alive stones leave the Defender no room to form an unconditionally alive string.",
-        "killallgo_pass_alive": "The game has ended because the Defender formed an unconditionally alive string."
+        "killallgo_pass_alive": "The game has ended because the Defender formed an unconditionally alive string.",
+        "thuemorsego_repetition": "The game has ended in a draw because the same position occurred five times.",
+        "thuemorsego_pass_alive": "The game has ended because the Defender formed an unconditionally alive string.",
+        "thuemorsego_no_room": "The game has ended because the Attacker's unconditionally alive stones leave the Defender no room to form an unconditionally alive string.",
+        "thuemorsego_no_moves": "The game has ended because the player to move has no legal move."
     },
     "DRUID_HEX_EDGE": {
         "N": "north (N)",
@@ -454,7 +465,8 @@
         "simple": "{{player}} passed.",
         "tablero": "{{player}} bumped!",
         "tiebreaker": "{{player}} passed, winning the tiebreaker.",
-        "agofmars_noObjSwap": "{{player}} did not swap objectives."
+        "agofmars_noObjSwap": "{{player}} did not swap objectives.",
+        "thuemorsego_handicap": "{{player}} served a handicap pass."
     },
     "PIE": {
         "deckfish": "{{player}} moves second.",
@@ -589,7 +601,8 @@
         "streetcar_place_41": "A height-1 WHITE building was placed at {{where}}.",
         "streetcar_place_42": "A height-2 WHITE building was placed at {{where}}.",
         "streetcar_place_43": "A height-3 WHITE building was placed at {{where}}.",
-        "streetcar_place_default": "A building was placed at {{where}}."
+        "streetcar_place_default": "A building was placed at {{where}}.",
+        "thuemorsego_setup": "{{player}} placed an Attacker stone at {{where}}."
     },
     "PLAYSECOND": "{{player}} chose to play second.",
     "PROMOTE": {

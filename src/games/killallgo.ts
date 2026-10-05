@@ -157,6 +157,11 @@ export const signature = (board: Board, geo: Geometry): string => {
 export interface PassAliveOptions {
     /** Tromp-Taylor rules; selects the strict vital-region test. Defaults to true. */
     suicideAllowed?: boolean;
+    /**
+     * Vital regions every chain in the set needs. Defaults to 2, Benson's condition; a game in
+     * which the opponent can fill more than one liberty before any clearing needs more.
+     */
+    minVital?: number;
 }
 
 interface Region {
@@ -169,9 +174,9 @@ interface Region {
  * Every pass-alive chain of `colour`, each as its list of stones.
  *
  * A chain is pass-alive when it belongs to a set X of chains such that every chain in X has at
- * least two vital regions enclosed by X. A region is a maximal connected set of points not
- * holding the colour; it is vital to a chain when every point of the region that could ever
- * become empty is adjacent to the chain.
+ * least two vital regions enclosed by X (`minVital` raises that number). A region is a maximal
+ * connected set of points not holding the colour; it is vital to a chain when every point of the
+ * region that could ever become empty is adjacent to the chain.
  *
  * Under classic (no-suicide) rules only the empty points of a region need to touch the chain.
  * When multi-stone suicide is legal, the opponent can clear its own stones out of a region and
@@ -180,6 +185,7 @@ interface Region {
  */
 export const passAliveStrings = (board: Board, geo: Geometry, colour: Stone, opts: PassAliveOptions = {}): string[][] => {
     const suicideAllowed = opts.suicideAllowed ?? true;
+    const minVital = opts.minVital ?? 2;
 
     // Chains of `colour`.
     const chainOf = new Map<string, number>();
@@ -274,7 +280,7 @@ export const passAliveStrings = (board: Board, geo: Geometry, colour: Stone, opt
                     vital++;
                 }
             }
-            if (vital < 2) {
+            if (vital < minVital) {
                 X.delete(chain);
                 changed = true;
             }
