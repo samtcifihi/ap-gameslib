@@ -712,12 +712,17 @@ describe("Thue-Morse Go: territory and dead strings", () => {
         expect(markers[1]).to.deep.equal({ type: "dots", colour: 2, size: 0.2, points: [rc(g, "k11")] });
         expect(g.getPlayerScore(1)).to.equal(7);
         expect(g.getPlayerScore(2)).to.equal(3);
-        // The display option hides them, Kill-All games never show them, and one colour alone is not territory.
+        // The display option hides them, and Kill-All games never show them.
         expect(dots(g, { altDisplays: ["hide-territory"] })).to.have.lengthOf(0);
         const k = play(small(["kill-all"]), ["f6", "attacker"]);
         setStones(k, ["a2", "b2", "c2", "c1"], ["j11", "k10"]);
         expect(dots(k)).to.have.lengthOf(0);
-        expect(dots(play(small(), ["f6"]))).to.have.lengthOf(0);
+        // A lone first stone reaches every empty point, so the whole board is dotted, as in Go.
+        const first = dots(play(small(), ["f6"]));
+        expect(first).to.have.lengthOf(1);
+        expect(first[0].colour).to.equal(1);
+        expect(first[0].points).to.have.lengthOf(120);
+        expect(dots(small())).to.have.lengthOf(0);
     });
 
     it("keeps a whole-move pass open for marking strings dead", () => {
@@ -992,6 +997,28 @@ describe("Thue-Morse Go: reverse komi", () => {
         expect(play(small(["reverse-komi"]), ["0", "f6", "e5", "pass", "pass"]).winner).to.deep.equal([1, 2]);
         expect(play(small(["reverse-komi"]), ["1", "f6", "e5", "pass", "pass"]).winner).to.deep.equal([2]);
         expect(play(small(["reverse-komi"]), ["-1", "f6", "e5", "pass", "pass"]).winner).to.deep.equal([1]);
+    });
+
+    it("lays the move table out by actor, with the komi in a row of its own", () => {
+        const g = play(small(["reverse-komi"]), ["7", "f7", "e5,g7", "d4"]);
+        expect(g.turnModel()).to.equal("sequenced");
+        expect(g.getPlies().map((p) => [p.actor, p.round])).to.deep.equal([[2, 0], [1, 1], [2, 1], [1, 2]]);
+        // Export rows are sparse, one per ply, each in its actor's column.
+        const rounds = g.getRounds();
+        expect(rounds).to.have.lengthOf(4);
+        expect(rounds[0][0]).to.be.null;
+        expect((rounds[0][1] as { move: string }).move).to.equal("7");
+        expect((rounds[1][0] as { move: string }).move).to.equal("f7");
+        // The compact table pairs the placements up from Player 1 after the komi row.
+        const compact = g.getMoveTableRounds({ density: "compact" });
+        expect(compact).to.have.lengthOf(3);
+        expect(compact[0][0]).to.be.null;
+        expect((compact[1][0] as { move: string }).move).to.equal("f7");
+        expect((compact[1][1] as { move: string }).move).to.equal("e5,g7");
+        expect(compact[2][1]).to.be.null;
+        // Without the variant the game stays on the plain sequential model.
+        expect(small().turnModel()).to.equal("sequential");
+        expect(play(small(), ["f7", "e5,g7"]).getRounds()).to.have.lengthOf(1);
     });
 
     it("comes before the handicap declaration and cannot be combined with Kill-All", () => {

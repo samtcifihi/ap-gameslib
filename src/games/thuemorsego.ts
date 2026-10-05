@@ -4,6 +4,9 @@ import type { APRenderRep, AreaTrack, BoardBasic, Glyph, MarkerDots, MarkerLine,
 import type { APMoveResult } from "../schemas/moveresults.js";
 import { reviver, shuffle, SnubSquareGraph, UserFacingError } from "../common/index.js";
 import type { FlagContext, GameFlag } from "../common/flags.js";
+import type { IGamePly, IGameRound, TurnModel } from "./_turn-model.js";
+import { defaultShouldCloseRound } from "./_turn-plies.js";
+import { sequencedShouldCloseRound } from "./_turn-sequenced.js";
 import { makeGeometry, otherColour, passAliveStrings, signature, stringAt, type Board, type Geometry, type Stone } from "./killallgo.js";
 import i18next from "i18next";
 
@@ -492,6 +495,40 @@ export class ThueMorseGoGame extends GameBase {
             length++;
         }
         return length;
+    }
+
+    // -----------------------------------------------------------------------
+    // Turn model
+    // -----------------------------------------------------------------------
+
+    /**
+     * Reverse komi opens the game with a ply by Player 2, which the sequential move table would
+     * lay in Player 1's column. The sequenced model places plies by their actor; the komi takes
+     * a row of its own, and the placements then pair up from Player 1 as usual.
+     */
+    public turnModel(): TurnModel {
+        return this.reverseKomi ? "sequenced" : "sequential";
+    }
+
+    protected shouldCloseRound(roundPlies: IGamePly[], stackIndex: number): boolean {
+        if (!this.reverseKomi) {
+            return defaultShouldCloseRound(this, roundPlies);
+        }
+        if (this.stack[stackIndex - 1].phase === "komi") {
+            return true;
+        }
+        return sequencedShouldCloseRound(this, roundPlies, stackIndex);
+    }
+
+    public getRounds(): IGameRound[] {
+        if (!this.reverseKomi) {
+            return super.getRounds();
+        }
+        return this.getPlies().map((ply) => this.buildRoundRow([ply]));
+    }
+
+    protected compactExportRounds(rounds: IGameRound[]): IGameRound[] {
+        return this.reverseKomi ? rounds : super.compactExportRounds(rounds);
     }
 
     // -----------------------------------------------------------------------
@@ -2076,8 +2113,8 @@ export class ThueMorseGoGame extends GameBase {
     /**
      * The territory the board scores as it stands, with the strings marked dead removed: a dot on
      * every empty point that reaches only one colour, and the marked stones faded, each with a dot
-     * of the colour the point under it counts for. Shown in the standard game once both colours
-     * are on the board, unless the display hides it; the marked stones are faded regardless.
+     * of the colour the point under it counts for, so a lone first stone claims the whole board.
+     * Shown in the standard game unless the display hides it; the marked stones are faded regardless.
      * Returns the legend keys of the marked stones by cell and the dots for the empty points.
      */
     private territoryOverlay(legend: ILegend, hide: boolean): { dead: Map<string, string>; dots: MarkerDots[] } {
@@ -2087,7 +2124,7 @@ export class ThueMorseGoGame extends GameBase {
             return { dead, dots };
         }
         const owner = new Map<string, Stone>();
-        if (!hide && (this.gameover || new Set(this.board.values()).size === 2)) {
+        if (!hide) {
             for (const region of this.regions(this.effectiveBoard())) {
                 if (region.owner !== undefined) {
                     for (const cell of region.cells) {
