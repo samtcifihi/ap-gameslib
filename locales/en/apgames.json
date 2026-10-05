@@ -4136,7 +4136,7 @@
                 "description": "The button is worth half a point, so the game cannot be drawn on points."
             },
             "kill-all": {
-                "name": "Kill-All Thue-Morse Go",
+                "name": "Kill-All",
                 "description": "Players take turns placing Attacker stones until one of them claims the Attacker side; the other plays the Defender, places first, and wins by forming an unconditionally alive string. Requires the No button option."
             }
         },
@@ -8277,7 +8277,7 @@
             "TOO_MANY_one": "This move has only one placement left to fill.",
             "TOO_MANY_other": "This move has only {{count}} placements left to fill.",
             "FORCED_MOVE": "Every placement of this move is a handicap pass, which is served automatically.",
-            "NO_PASS": "Passing is not allowed in Kill-All Thue-Morse Go.",
+            "NO_PASS": "Passing is not allowed in Kill-All games.",
             "NO_BUTTON": "There is no button in this game.",
             "BUTTON_TAKEN": "The button has already been taken.",
             "KO_PSK": "That placement would recreate an earlier position of the board (positional superko).",
