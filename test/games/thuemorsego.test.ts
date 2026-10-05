@@ -219,19 +219,26 @@ describe("Thue-Morse Go: moves", () => {
         expect(result.message).to.contain("suicide");
     });
 
-    it("lets the second placement of a move make up for a suicidal first one", () => {
-        // Player 2's two placements: a1 would be removed at once, which the second stone makes legal.
+    it("judges a suicidal first placement at once, or at the end of the move under checked weak eyes", () => {
+        // Player 2's two placements: a1 has no liberties and captures nothing.
         const g = play(small(), ["k11"]);
         setStones(g, ["a2", "b1", "k11"], []);
         const first = g.validateMove("a1");
-        expect(first.valid).to.be.true;
-        expect(first.complete).to.equal(-1);
+        expect(first.valid).to.be.false;
         expect(first.message).to.contain("suicide");
-        expect(g.validateMove("a1,pass").valid).to.be.false;
-        expect(g.validateMove("a1,k10").complete).to.equal(1);
-        g.move("a1,k10");
-        expect(g.board.has("a1")).to.be.false;
-        expect(g.board.get("k10")).to.equal(2);
+        expect(g.validateMove("a1,k10").valid).to.be.false;
+        // With checked weak eyes nothing is cleared until the move ends, so the second stone decides.
+        const h = play(small(["weak-eyes"]), ["k11"]);
+        setStones(h, ["a2", "b1", "k11"], []);
+        const deferred = h.validateMove("a1");
+        expect(deferred.valid).to.be.true;
+        expect(deferred.complete).to.equal(-1);
+        expect(deferred.message).to.contain("suicide");
+        expect(h.validateMove("a1,pass").valid).to.be.false;
+        expect(h.validateMove("a1,k10").complete).to.equal(1);
+        h.move("a1,k10");
+        expect(h.board.has("a1")).to.be.false;
+        expect(h.board.get("k10")).to.equal(2);
     });
 
     it("can empty a cell and refill it within one move", () => {
@@ -250,8 +257,8 @@ describe("Thue-Morse Go: moves", () => {
         const plain = small();
         setStones(plain, wall, own);
         plain.placed = 5; // Player 1's two-placement move
-        // Each eye filled is suicide at once, so the move leaves the board unchanged.
-        expect(plain.validateMove("a1").complete).to.equal(-1);
+        // Each eye filled is suicide at once and recreates the position.
+        expect(plain.validateMove("a1").valid).to.be.false;
         expect(plain.validateMove("a1,c1").valid).to.be.false;
 
         const checked = small(["weak-eyes"]);
@@ -421,37 +428,28 @@ describe("Thue-Morse Go: handicap", () => {
 });
 
 describe("Thue-Morse Go: ko", () => {
-    it("judges a ko by the position the whole move leaves", () => {
+    it("forbids retaking a ko at once but allows it after a threat", () => {
         const g = small();
         setStones(g, ["a2", "b1", "b3"], ["b2", "c1", "c3", "d2"]);
         g.move("c2");
         expect(g.board.has("b2")).to.be.false;
-        // Retaking alone would recreate the position; with another stone anywhere in the move it is fine.
-        const alone = g.validateMove("b2");
-        expect(alone.valid).to.be.true;
-        expect(alone.complete).to.equal(-1);
-        expect(g.validateMove("b2,pass").valid).to.be.false;
-        expect(g.validateMove("b2,k11").complete).to.equal(1);
-        expect(g.validateMove("k11,b2").complete).to.equal(1);
-        g.move("b2,k11");
-        expect(g.board.has("c2")).to.be.false;
-
-        // In a one-placement move the retake is simply forbidden.
-        const h = small();
-        setStones(h, ["a2", "b1", "b3"], ["b2", "c1", "c3", "d2"]);
-        h.placed = 3; // Player 1's single placement, then Player 2's single placement
-        h.move("c2");
-        const retake = h.validateMove("b2");
+        // Every placement is judged as it is made, so the retake has to follow the threat.
+        const retake = g.validateMove("b2");
         expect(retake.valid).to.be.false;
         expect(retake.message).to.contain("earlier position");
+        expect(retake.message).to.not.contain("suicide");
+        expect(g.validateMove("b2,k11").valid).to.be.false;
+        expect(g.validateMove("k11,b2").complete).to.equal(1);
+        g.move("k11,b2");
+        expect(g.board.has("c2")).to.be.false;
     });
 
     it("draws the game on the fifth repetition under the repetition variant", () => {
         const g = small(["repetition-draw"]);
         setStones(g, [], ["a2", "b1", "k11"]);
         expect(g.validateMove("a1").valid).to.be.true;
-        // Each move that places a stone counts once, however many times the board repeats within it.
-        play(g, ["a1", "pass,pass", "a1", "pass", "a1,a1", "pass,pass"]);
+        // Every placement counts, so the second stone of one move can be the fifth occurrence.
+        play(g, ["a1", "pass,pass", "a1", "pass"]);
         expect(g.gameover).to.be.false;
         g.move("a1,a1");
         expect(g.gameover).to.be.true;
