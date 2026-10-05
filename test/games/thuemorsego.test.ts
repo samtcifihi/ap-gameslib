@@ -2,7 +2,7 @@
 
 import "mocha";
 import { expect } from "chai";
-import type { AreaTrack, BoardBasic, Glyph, MarkerDots } from "@abstractplay/renderer/build/schemas/schema";
+import type { AreaTrack, BoardBasic, Glyph, MarkerDots, MarkerLine } from "@abstractplay/renderer/build/schemas/schema";
 import { addResource } from "../../src";
 import { SnubSquareGraph } from "../../src/common";
 import { ThueMorseGoGame } from "../../src/games/thuemorsego";
@@ -33,9 +33,9 @@ const setStones = (g: ThueMorseGoGame, colour1: string[], colour2: string[]): vo
 /** The sheet-glyph colours of a sidebar status value. */
 const glyphColours = (value: unknown[]): unknown[] => value.map((v) => (v as { colour: unknown }).colour);
 
-/** The two layers of a tracker legend entry. */
-const layers = (g: ThueMorseGoGame, key: string, opts?: { altDisplays?: string[] }): [Glyph, Glyph] => {
-    const legend = g.render(opts).legend as Record<string, [Glyph, Glyph]>;
+/** The layers of a tracker legend entry. */
+const layers = (g: ThueMorseGoGame, key: string, opts?: { altDisplays?: string[] }): Glyph[] => {
+    const legend = g.render(opts).legend as Record<string, Glyph[]>;
     return legend[key];
 };
 
@@ -46,12 +46,22 @@ const twoEyedCorner = (): { own: string[]; wall: string[] } => ({
 });
 
 // The tracker of the mockup: placement 0x123 is next, digits running upward. The mockup's keys
-// e/o (small) and E/O (markers) are s1/s2 and m1/m2 here; a blank column follows each digit
-// column, the last one keeping the tracker clear of the board's row labels.
-const TRACK_0X123 = [
+// e/o (small) and E/O (markers) are s1/s2 and m1d*/m2d* here, the markers carrying their digit;
+// a blank column separates the digit columns and a blank frame surrounds them.
+const TRACK_ROWS_0X123 = [
     "e-o-e", "o-e-o", "o-e-o", "e-o-e", "o-e-o", "e-o-e", "e-o-e", "o-e-o",
     "o-e-o", "e-o-e", "e-o-e", "o-e-o", "e-o-E", "o-E-o", "O-e-o", "e-o-e",
-].map((row) => `${row}-`.split("").map((c) => ({ e: "s1", o: "s2", E: "m1", O: "m2" }[c] ?? c)).join(",")).join("\n");
+];
+const BLANK_TRACK_ROW = Array<string>(7).fill("-").join(",");
+const TRACK_0X123 = [
+    BLANK_TRACK_ROW,
+    ...TRACK_ROWS_0X123.map((row, r) => {
+        const digit = (15 - r).toString(16);
+        const keys = row.split("").map((c) => ({ e: "s1", o: "s2", E: `m1d${digit}`, O: `m2d${digit}` }[c] ?? c));
+        return ["-", ...keys, "-"].join(",");
+    }),
+    BLANK_TRACK_ROW,
+].join("\n");
 
 describe("Thue-Morse Go: the sequence", () => {
     it("names the colour of each placement by the parity of its 1 bits", () => {
@@ -552,16 +562,27 @@ describe("Thue-Morse Go: tracker and sidebar", () => {
         const track = g.render().areas![0] as AreaTrack;
         expect(track.type).to.equal("track");
         expect(track.position).to.equal("left");
-        expect(track.board.width).to.equal(6);
-        expect(track.board.height).to.equal(16);
-        expect(track.board.blocked).to.have.lengthOf(48);
+        expect(track.board.width).to.equal(7);
+        expect(track.board.height).to.equal(18);
+        expect(track.board.blocked).to.have.lengthOf(7 * 18 - 48);
         expect(track.pieces).to.equal(TRACK_0X123);
-        const [tint, marker] = layers(g, "m1");
+        const [tint, marker, digit] = layers(g, "m1d2");
         expect(tint).to.deep.equal({ name: "piece-square", paint: { fill: 1 }, opacity: 0.2 });
         // The marker spells out the glyph's default border so its paint, and so its symbol, differs from the small glyph's.
         expect(marker).to.deep.equal({ name: "piece", paint: { fill: 1, border: "#000" } });
+        expect(digit).to.deep.equal({ text: "2", scale: 0.75, rotate: null });
+        expect(layers(g, "m2d1")[2]).to.deep.equal({ text: "1", scale: 0.75, rotate: null });
         const [, smallGlyph] = layers(g, "s2");
         expect(smallGlyph).to.deep.equal({ name: "piece", paint: { fill: 2 }, scale: 0.57735 });
+        expect(layers(g, "s2")).to.have.lengthOf(2);
+        // A thick border in the colour of the next placement runs around the columns, inside the frame.
+        const border = track.board.markers as MarkerLine[];
+        expect(border).to.have.lengthOf(4);
+        expect(border[0]).to.deep.equal({ type: "line", points: [{ row: 1, col: 1 }, { row: 1, col: 6 }], colour: 1, width: 8 });
+        expect(border[2]).to.deep.equal({ type: "line", points: [{ row: 17, col: 6 }, { row: 17, col: 1 }], colour: 1, width: 8 });
+        g.placed = 0x124;
+        const next = (g.render().areas![0] as AreaTrack).board.markers as MarkerLine[];
+        expect(next.every((line) => line.colour === 2)).to.be.true;
     });
 
     it("tints the tracker with the colour of the next placement", () => {
@@ -575,30 +596,32 @@ describe("Thue-Morse Go: tracker and sidebar", () => {
         const track = g.render({ altDisplays: ["digits-down"] }).areas![0] as AreaTrack;
         expect(track.pieces).to.equal(TRACK_0X123.split("\n").reverse().join("\n"));
         g.placed = 0x1000;
-        expect((g.render().areas![0] as AreaTrack).board.width).to.equal(8);
+        expect((g.render().areas![0] as AreaTrack).board.width).to.equal(9);
     });
 
     it("can roll a single column of the next 16 placements", () => {
         const g = small();
         const expected = (from: number, length: number, downward: boolean): string => {
-            const rows: string[] = [];
+            const rows: string[] = ["-,-,-"];
             for (let row = 0; row < 16; row++) {
                 const i = downward ? row : 15 - row;
                 const colour = g.colourAt(from + i);
-                rows.push(`${i < length ? "m" : "s"}${colour},-`);
+                rows.push(`-,${i < length ? `m${colour}d${((from + i) % 16).toString(16)}` : `s${colour}`},-`);
             }
+            rows.push("-,-,-");
             return rows.join("\n");
         };
         let track = g.render({ altDisplays: ["rolling"] }).areas![0] as AreaTrack;
-        expect(track.board.width).to.equal(2);
-        expect(track.board.blocked).to.have.lengthOf(16);
+        expect(track.board.width).to.equal(3);
+        expect(track.board.height).to.equal(18);
+        expect(track.board.blocked).to.have.lengthOf(3 * 18 - 16);
         expect(track.pieces).to.equal(expected(0, 1, false));
         g.move("f6");
-        // Player 2's move is two placements, both marked.
+        // Player 2's move is two placements, both marked with their digits.
         track = g.render({ altDisplays: ["rolling"] }).areas![0] as AreaTrack;
         expect(track.pieces).to.equal(expected(1, 2, false));
-        expect(track.pieces.split("\n")[15]).to.equal("m2,-");
-        expect(track.pieces.split("\n")[14]).to.equal("m2,-");
+        expect(track.pieces.split("\n")[16]).to.equal("-,m2d1,-");
+        expect(track.pieces.split("\n")[15]).to.equal("-,m2d2,-");
         track = g.render({ altDisplays: ["rolling", "digits-down"] }).areas![0] as AreaTrack;
         expect(track.pieces).to.equal(expected(1, 2, true));
     });
@@ -657,8 +680,9 @@ describe("Thue-Morse Go: territory and dead strings", () => {
         const [col, row] = g.algebraic2coords(cell);
         return { row, col };
     };
+    /** The territory dots: the coloured dot markers, as opposed to the star points. */
     const dots = (g: ThueMorseGoGame, opts?: { altDisplays?: string[] }): MarkerDots[] =>
-        ((g.render(opts).board as BoardBasic).markers ?? []) as MarkerDots[];
+        (((g.render(opts).board as BoardBasic).markers ?? []) as MarkerDots[]).filter((m) => m.colour !== undefined);
     const click = (g: ThueMorseGoGame, move: string, cell: string): IClickResult => {
         const [x, y] = g.algebraic2coords(cell);
         return g.handleClick(move, y, x);
@@ -856,5 +880,121 @@ describe("Thue-Morse Go: territory and dead strings", () => {
         expect(log).to.contain("Bob cleared the marking: no stones are marked dead.");
         expect(log).to.contain("Alice changed the marking: one stone is marked dead.");
         expect(log).to.contain("The stone marked dead was removed from the board.");
+    });
+});
+
+describe("Thue-Morse Go: boards and star points", () => {
+    const stars = (g: ThueMorseGoGame): MarkerDots | undefined =>
+        (((g.render().board as BoardBasic).markers ?? []) as MarkerDots[]).find((m) => m.type === "dots" && m.colour === undefined);
+    const corners = (lo: number, hi: number) => [{ row: lo, col: lo }, { row: lo, col: hi }, { row: hi, col: hi }, { row: hi, col: lo }];
+
+    it("offers a 19x19 board", () => {
+        const g = new ThueMorseGoGame(undefined, ["size-19"]);
+        expect(g.render().board).to.deep.include({ width: 19, height: 19 });
+        expect(g.validateMove("s19").valid).to.be.true;
+        expect(g.validateMove("t19").valid).to.be.false;
+        expect(g.allvariants()!.find((v) => v.uid === "size-19")!.group).to.equal("board");
+    });
+
+    it("puts the 11x11 star points on the 4-4 points without a centre", () => {
+        const g = small();
+        expect(g.render().options).to.deep.equal(["hide-star-points"]);
+        expect(stars(g)).to.deep.equal({ type: "dots", size: 0.15, points: corners(3, 7) });
+        // Other square boards keep the renderer's own star points.
+        for (const size of ["size-19", "size-23", undefined]) {
+            const h = new ThueMorseGoGame(undefined, size === undefined ? [] : [size]);
+            expect(h.render().options).to.be.undefined;
+            expect(stars(h)).to.be.undefined;
+        }
+    });
+
+    it("draws star points on snub square boards where the square boards have them", () => {
+        expect(stars(small(["snub"]))!.points).to.deep.equal(corners(3, 7));
+        expect(stars(new ThueMorseGoGame(undefined, ["snub"]))!.points).to.deep.equal(corners(3, 12));
+        const nineteen = stars(new ThueMorseGoGame(undefined, ["snub", "size-19"]))!.points;
+        expect(nineteen).to.have.lengthOf(9);
+        expect(nineteen).to.deep.include({ row: 9, col: 9 });
+        expect(nineteen).to.deep.include({ row: 3, col: 9 });
+        expect(stars(new ThueMorseGoGame(undefined, ["snub", "size-23"]))!.points).to.have.lengthOf(9);
+        expect(small(["snub"]).render().options).to.be.undefined;
+    });
+});
+
+describe("Thue-Morse Go: reverse komi", () => {
+    it("has Player 2 set the komi before the first placement, within two points of the board", () => {
+        const g = small(["reverse-komi"]);
+        expect(g.allvariants()!.find((v) => v.uid === "reverse-komi")).to.deep.include({ unrated: true, fans: true });
+        expect(g.phase).to.equal("komi");
+        expect(g.currplayer).to.equal(2);
+        expect(g.placed).to.equal(0);
+        expect(g.getButtons()).to.deep.equal([]);
+        expect(g.validateMove("").complete).to.equal(-1);
+        expect(g.validateMove("119").complete).to.equal(1);
+        expect(g.validateMove("-119").valid).to.be.true;
+        expect(g.validateMove("120").valid).to.be.false;
+        expect(g.validateMove("-120").valid).to.be.false;
+        expect(g.validateMove("7.5").valid).to.be.false;
+        expect(g.validateMove("e5").valid).to.be.false;
+        expect(g.moves()).to.have.lengthOf(239);
+        const [x, y] = g.algebraic2coords("e5");
+        expect(g.handleClick("", y, x).valid).to.be.false;
+        g.move("-7");
+        expect(g.komi).to.equal(-7);
+        expect(g.phase).to.equal("play");
+        expect(g.currplayer).to.equal(1);
+        expect(g.placed).to.equal(0);
+        expect(g.lastmove).to.equal("-7");
+        expect(g.results).to.deep.equal([{ type: "komi", value: -7 }]);
+        expect(g.getPlayerScore(2)).to.equal(-7);
+        expect(g.getPlayerScore(1)).to.equal(0);
+        play(g, ["f6", "e5,g7"]);
+        expect(g.placed).to.equal(3);
+        expect(g.currplayer).to.equal(1);
+        expect(g.getPlayerScore(2)).to.equal(2 - 7);
+        // Reloading keeps it, and the sidebar reports it.
+        const again = new ThueMorseGoGame(g.serialize());
+        expect(again.komi).to.equal(-7);
+        expect(again.sidebarStatuses().some((s) => JSON.stringify(s).includes("\"-7\""))).to.be.true;
+        expect(again.validateMove("f7").valid).to.be.true;
+    });
+
+    it("counts the komi at the end of the game and in the chat log", () => {
+        const g = play(small(["reverse-komi"]), ["3", "f6", "pass,pass", "pass"]);
+        expect(g.gameover).to.be.true;
+        // Player 1 holds the whole board; the komi still has Player 2 on 3.
+        expect(g.getPlayerScore(1)).to.equal(121);
+        expect(g.getPlayerScore(2)).to.equal(3);
+        expect(g.winner).to.deep.equal([1]);
+        assertChatLogParity(g, ["Alice", "Bob"]);
+        const log = g.chatLog(["Alice", "Bob"]).flat().join("\n");
+        expect(log).to.contain("Bob set the reverse komi to 3 points.");
+        const h = play(small(["reverse-komi"]), ["1"]);
+        expect(h.chatLog(["Alice", "Bob"]).flat().join("\n")).to.contain("Bob set the reverse komi to 1 point.");
+        expect(play(small(["reverse-komi"]), ["-119", "f6", "pass,pass", "pass"]).getPlayerScore(2)).to.equal(-119);
+        expect(play(small(["reverse-komi"]), ["0", "f6", "pass,pass", "pass"]).winner).to.deep.equal([1]);
+        // One stone each is level, so the komi decides.
+        expect(play(small(["reverse-komi"]), ["0", "f6", "e5", "pass", "pass"]).winner).to.deep.equal([1, 2]);
+        expect(play(small(["reverse-komi"]), ["1", "f6", "e5", "pass", "pass"]).winner).to.deep.equal([2]);
+        expect(play(small(["reverse-komi"]), ["-1", "f6", "e5", "pass", "pass"]).winner).to.deep.equal([1]);
+    });
+
+    it("comes before the handicap declaration and cannot be combined with Kill-All", () => {
+        const g = play(small(["reverse-komi", "handicap"]), ["5", "f6", "3"]);
+        expect(g.komi).to.equal(5);
+        expect(g.handicap).to.equal(3);
+        expect(g.passesOwed).to.equal(1);
+        expect(g.placed).to.equal(3);
+        expect(g.currplayer).to.equal(1);
+        g.move("e5");
+        // Player 2's single placement 4 is served by the handicap.
+        expect(g.placed).to.equal(5);
+        expect(g.currplayer).to.equal(1);
+        expect(g.passesOwed).to.equal(0);
+        expect(g.getPlayerScore(1)).to.equal(121);
+        expect(g.getPlayerScore(2)).to.equal(5);
+        expect(new ThueMorseGoGame(undefined, ["kill-all", "reverse-komi"]).variants).to.deep.equal(["reverse-komi"]);
+        expect(new ThueMorseGoGame(undefined, ["reverse-komi", "kill-all"]).variants).to.deep.equal(["kill-all"]);
+        expect(g.randomMove()).to.match(/^[a-k]\d+/);
+        expect(small(["reverse-komi"]).randomMove()).to.match(/^-?\d$/);
     });
 });

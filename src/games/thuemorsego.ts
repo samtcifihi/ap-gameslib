@@ -1,6 +1,6 @@
 import { GameBase, IAPGameState, IClickResult, ICustomButton, IIndividualState, IRenderOpts, IScores, IStatus, IValidationResult, type ChatLogCollectContext, type ChatLogLine } from "./_base.js";
 import type { APGamesInformation } from "../schemas/gameinfo.js";
-import type { APRenderRep, AreaTrack, BoardBasic, Glyph, MarkerDots, RowCol } from "@abstractplay/renderer/build/schemas/schema";
+import type { APRenderRep, AreaTrack, BoardBasic, Glyph, MarkerDots, MarkerLine, RowCol } from "@abstractplay/renderer/build/schemas/schema";
 import type { APMoveResult } from "../schemas/moveresults.js";
 import { reviver, shuffle, SnubSquareGraph, UserFacingError } from "../common/index.js";
 import type { FlagContext, GameFlag } from "../common/flags.js";
@@ -24,6 +24,7 @@ type playerid = 1 | 2;
 type Phase =
     | "hand-n"      // Kill-All handicap: Player 1 types the number of extra Attacker stones
     | "alt-place"   // Kill-All pieboxing: alternating Attacker stones until someone takes them
+    | "komi"        // Reverse komi: Player 2 types the points added to their score
     | "play";       // Thue-Morse placements
 
 interface IMoveState extends IIndividualState {
@@ -51,6 +52,8 @@ interface IMoveState extends IIndividualState {
     handicap?: number;
     /** Standard handicap: passes Player 2 still has to serve. */
     passesOwed?: number;
+    /** Reverse komi: the points Player 2 chose to have added to their score. */
+    komi?: number;
     defenderSeat?: playerid;
     /** The stones that decided a Kill-All game. */
     alive?: string[];
@@ -125,6 +128,12 @@ const PICKER_MAX = 18;
 const DEAD_OPACITY = 0.4;
 /** Diameter of a territory dot as a fraction of a cell, the size of the renderer's own dots. */
 const DOT_SIZE = 0.2;
+/** Diameter of a star point as a fraction of a cell, the size the renderer draws its own. */
+const STAR_SIZE = 0.15;
+/** Scale of the digit written on a tracker marker. */
+const DIGIT_SCALE = 0.75;
+/** Stroke width of the border around the tracker's columns, in the track board's own units. */
+const TRACK_BORDER_WIDTH = 8;
 
 const popcount = (n: number): number => {
     let count = 0;
@@ -240,6 +249,7 @@ export class ThueMorseGoGame extends GameBase {
         variants: [
             { uid: "size-11", group: "board", fans: true },
             { uid: "#board", fans: true },
+            { uid: "size-19", group: "board", fans: true },
             { uid: "size-23", group: "board", fans: true },
             { uid: "#connect", fans: true },
             { uid: "snub", group: "connect", fans: true },
@@ -257,6 +267,7 @@ export class ThueMorseGoGame extends GameBase {
                 ],
             },
             { uid: "handicap", unrated: true, fans: true },
+            { uid: "reverse-komi", unrated: true, fans: true, conflictsWith: ["kill-all"] },
             { uid: "#repetition", fans: true },
             { uid: "repetition-draw", group: "repetition", fans: true },
             { uid: "weak-eyes", fans: true },
@@ -306,6 +317,7 @@ export class ThueMorseGoGame extends GameBase {
     public button?: playerid;
     public handicap?: number;
     public passesOwed = 0;
+    public komi?: number;
     public defenderSeat?: playerid;
     public alive?: string[];
     public gameover = false;
@@ -323,14 +335,19 @@ export class ThueMorseGoGame extends GameBase {
                 this.variants = this.applyVariantConstraints(variants);
             }
             let phase: Phase = "play";
+            let currplayer: playerid = 1;
             if (this.variants.includes("kill-all")) {
                 phase = this.variants.includes("handicap") ? "hand-n" : "alt-place";
+            } else if (this.variants.includes("reverse-komi")) {
+                // Player 2 sets the reverse komi before the first placement.
+                phase = "komi";
+                currplayer = 2;
             }
             const fresh: IMoveState = {
                 _version: ThueMorseGoGame.gameinfo.version,
                 _results: [],
                 _timestamp: new Date(),
-                currplayer: 1,
+                currplayer,
                 board: new Map(),
                 phase,
                 placed: 0,
@@ -383,6 +400,7 @@ export class ThueMorseGoGame extends GameBase {
         this.button = state.button;
         this.handicap = state.handicap;
         this.passesOwed = state.passesOwed ?? 0;
+        this.komi = state.komi;
         this.defenderSeat = state.defenderSeat;
         this.alive = state.alive === undefined ? undefined : [...state.alive];
         this.boardSize = ThueMorseGoGame.sizeFromVariants(this.variants);
@@ -392,6 +410,7 @@ export class ThueMorseGoGame extends GameBase {
 
     private static sizeFromVariants(variants: string[]): number {
         if (variants.includes("size-11")) { return 11; }
+        if (variants.includes("size-19")) { return 19; }
         if (variants.includes("size-23")) { return 23; }
         return 16;
     }
@@ -406,6 +425,15 @@ export class ThueMorseGoGame extends GameBase {
 
     private get handicapVariant(): boolean {
         return this.variants.includes("handicap");
+    }
+
+    private get reverseKomi(): boolean {
+        return this.variants.includes("reverse-komi");
+    }
+
+    /** Reverse komi: the most points Player 2 may give either way, two short of the board. */
+    private get maxKomi(): number {
+        return this.points - 2;
     }
 
     /** Checked weak eyes: only the last placement of a move clears the board. */
@@ -543,7 +571,7 @@ export class ThueMorseGoGame extends GameBase {
 
     /** Standard handicap: whether this is Player 2's first move, in which the handicap is set. */
     private declaring(): boolean {
-        return this.handicapVariant && !this.killAll && this.phase === "play" && this.stack.length === 2 && this.currplayer === 2;
+        return this.handicapVariant && !this.killAll && this.phase === "play" && this.placed === 1 && this.currplayer === 2;
     }
 
     /** Standard handicap: the passes served at the start of the current move. */
@@ -963,6 +991,11 @@ export class ThueMorseGoGame extends GameBase {
                     moves.push("attacker");
                 }
                 break;
+            case "komi":
+                for (let n = -this.maxKomi; n <= this.maxKomi; n++) {
+                    moves.push(n.toString());
+                }
+                break;
             case "play":
                 moves.push(...this.playMoves());
                 break;
@@ -1003,6 +1036,10 @@ export class ThueMorseGoGame extends GameBase {
     }
 
     public randomMove(): string {
+        if (this.phase === "komi") {
+            // A modest komi either way, rather than one from the whole range.
+            return (Math.floor(Math.random() * 19) - 9).toString();
+        }
         if (this.phase !== "play") {
             const moves = this.moves();
             return moves[Math.floor(Math.random() * moves.length)];
@@ -1117,6 +1154,9 @@ export class ThueMorseGoGame extends GameBase {
                 result.move = result.valid ? newmove : move;
                 return result;
             }
+            if (this.phase === "komi") {
+                return { move, valid: false, message: i18next.t("apgames:validation.thuemorsego.KOMI_CLICK") };
+            }
             const cell = this.coords2algebraic(col, row);
             const newmove = this.clickCell(move.toLowerCase().replace(/\s+/g, ""), cell);
             if (newmove === undefined) {
@@ -1153,6 +1193,8 @@ export class ThueMorseGoGame extends GameBase {
         switch (this.phase) {
             case "hand-n":
                 return pickerValue();
+            case "komi":
+                return undefined;
             case "alt-place":
                 if (move.startsWith("attacker")) {
                     return `attacker:${toggle(move.substring("attacker:".length))}`;
@@ -1214,9 +1256,26 @@ export class ThueMorseGoGame extends GameBase {
                 return this.validateHandicapStones(m, result);
             case "alt-place":
                 return this.validateAltPlace(m, result);
+            case "komi":
+                return this.validateKomi(m, result);
             case "play":
                 return this.validatePlay(m, result);
         }
+    }
+
+    private validateKomi(m: string, result: IValidationResult): IValidationResult {
+        const max = this.maxKomi;
+        if (m.length === 0) {
+            return this.ok(result, -1, i18next.t("apgames:validation.thuemorsego.INSTRUCTIONS_KOMI", { max }));
+        }
+        if (!/^-?\d+$/.test(m)) {
+            return this.fail(result, i18next.t("apgames:validation.thuemorsego.KOMI_INVALID"));
+        }
+        const n = parseInt(m, 10) || 0;
+        if (n < -max || n > max) {
+            return this.fail(result, i18next.t("apgames:validation.thuemorsego.KOMI_RANGE", { max }));
+        }
+        return this.ok(result, 1, i18next.t("apgames:validation.thuemorsego.KOMI_OK", { count: n }), true);
     }
 
     private ok(result: IValidationResult, complete: -1 | 0 | 1, message: string, canrender = false): IValidationResult {
@@ -1498,6 +1557,9 @@ export class ThueMorseGoGame extends GameBase {
             case "alt-place":
                 committed = this.moveAltPlace(m, partial);
                 break;
+            case "komi":
+                committed = this.moveKomi(m, partial);
+                break;
             case "play":
                 committed = this.movePlay(m, partial);
                 break;
@@ -1524,6 +1586,18 @@ export class ThueMorseGoGame extends GameBase {
         this.phase = "alt-place";
         this.currplayer = 2;
         this.lastmove = m;
+        return true;
+    }
+
+    /** Reverse komi: Player 2 sets the points added to their score, and Player 1 makes placement 0. */
+    private moveKomi(m: string, partial: boolean): boolean {
+        const n = parseInt(m, 10) || 0;
+        this.komi = n;
+        this.results.push({ type: "komi", value: n });
+        if (partial) { return false; }
+        this.phase = "play";
+        this.currplayer = 1;
+        this.lastmove = n.toString();
         return true;
     }
 
@@ -1889,7 +1963,8 @@ export class ThueMorseGoGame extends GameBase {
         if (colour === undefined) {
             return 0;
         }
-        return this.area(colour, this.effectiveBoard()) + (this.button === player ? this.buttonValue : 0);
+        const komi = player === 2 ? this.komi ?? 0 : 0;
+        return this.area(colour, this.effectiveBoard()) + (this.button === player ? this.buttonValue : 0) + komi;
     }
 
     public sidebarScores(): IScores[] {
@@ -1937,6 +2012,7 @@ export class ThueMorseGoGame extends GameBase {
         if (this.button !== undefined) { state.button = this.button; }
         if (this.handicap !== undefined) { state.handicap = this.handicap; }
         if (this.passesOwed > 0) { state.passesOwed = this.passesOwed; }
+        if (this.komi !== undefined) { state.komi = this.komi; }
         if (this.defenderSeat !== undefined) { state.defenderSeat = this.defenderSeat; }
         if (this.alive !== undefined) { state.alive = [...this.alive]; }
         return state;
@@ -1968,6 +2044,26 @@ export class ThueMorseGoGame extends GameBase {
             }
         }
         return { overlay, chosen };
+    }
+
+    /**
+     * The star points of the board: those the renderer draws on a square board of this size, except
+     * that the 11x11 board takes the 4-4 points and no centre.
+     */
+    private starPoints(): RowCol[] {
+        const size = this.boardSize;
+        const d = size === 11 || size > 12 ? 4 : 3;
+        const lo = d - 1;
+        const hi = size - d;
+        const points: RowCol[] = [{ row: lo, col: lo }, { row: lo, col: hi }, { row: hi, col: hi }, { row: hi, col: lo }];
+        if (size % 2 === 1 && size !== 11) {
+            const mid = Math.floor(size / 2);
+            points.push({ row: mid, col: mid });
+            if (size >= 15) {
+                points.push({ row: lo, col: mid }, { row: mid, col: hi }, { row: hi, col: mid }, { row: mid, col: lo });
+            }
+        }
+        return points;
     }
 
     /**
@@ -2040,29 +2136,38 @@ export class ThueMorseGoGame extends GameBase {
             return undefined;
         }
         const next = this.placed;
-        const tint: Glyph = { name: "piece-square", paint: { fill: this.paletteOfColour(this.colourAt(next), swap) }, opacity: TRACK_TINT };
-        const stone = (colour: Stone, marker: boolean): Glyph => {
-            const fill = this.paletteOfColour(colour, swap);
-            return marker
-                ? { name: "piece", paint: { fill, border: MARKER_BORDER } }
-                : { name: "piece", paint: { fill }, scale: SMALL_SCALE };
-        };
+        const nextFill = this.paletteOfColour(this.colourAt(next), swap);
+        const tint: Glyph = { name: "piece-square", paint: { fill: nextFill }, opacity: TRACK_TINT };
         // Keys that differ only in case would be confused by a page in quirks mode, where id lookups
-        // ignore case, so the small glyphs are s1/s2 and the markers m1/m2.
-        legend.s1 = [tint, stone(1, false)];
-        legend.s2 = [tint, stone(2, false)];
-        legend.m1 = [tint, stone(1, true)];
-        legend.m2 = [tint, stone(2, true)];
-        const key = (colour: Stone, marker: boolean): string => `${marker ? "m" : "s"}${colour}`;
+        // ignore case, so the small glyphs are s1/s2 and the markers m1d0 to m2df, by their digit.
+        const small = (colour: Stone): string => {
+            const key = `s${colour}`;
+            if (!(key in legend)) {
+                legend[key] = [tint, { name: "piece", paint: { fill: this.paletteOfColour(colour, swap) }, scale: SMALL_SCALE }];
+            }
+            return key;
+        };
+        const marker = (colour: Stone, digit: number): string => {
+            const key = `m${colour}d${digit.toString(16)}`;
+            if (!(key in legend)) {
+                legend[key] = [
+                    tint,
+                    { name: "piece", paint: { fill: this.paletteOfColour(colour, swap), border: MARKER_BORDER } },
+                    { text: digit.toString(16), scale: DIGIT_SCALE, rotate: null },
+                ];
+            }
+            return key;
+        };
 
-        // Each column top to bottom.
-        const columns: Array<Array<{ colour: Stone; marker: boolean }>> = [];
+        // Each column top to bottom, as legend keys.
+        const columns: string[][] = [];
         if (rolling) {
             const length = this.moveLength(next);
-            const column = [];
+            const column: string[] = [];
             for (let row = 0; row < TRACK_ROWS; row++) {
                 const i = downward ? row : TRACK_ROWS - 1 - row;
-                column.push({ colour: this.colourAt(next + i), marker: i < length });
+                const colour = this.colourAt(next + i);
+                column.push(i < length ? marker(colour, (next + i) % TRACK_ROWS) : small(colour));
             }
             columns.push(column);
         } else {
@@ -2071,35 +2176,58 @@ export class ThueMorseGoGame extends GameBase {
                 const unit = Math.pow(16, digits - 1 - d);
                 const above = Math.floor(next / (unit * 16));
                 const current = Math.floor(next / unit) % 16;
-                const column = [];
+                const column: string[] = [];
                 for (let row = 0; row < TRACK_ROWS; row++) {
                     const digit = downward ? row : TRACK_ROWS - 1 - row;
-                    column.push({ colour: this.colourAt((above * 16 + digit) * unit), marker: digit === current });
+                    const colour = this.colourAt((above * 16 + digit) * unit);
+                    column.push(digit === current ? marker(colour, digit) : small(colour));
                 }
                 columns.push(column);
             }
         }
 
+        // A blank frame surrounds the columns, with a blank column between digits. The frame makes
+        // room for the border and keeps the tracker clear of the board's row labels.
+        const width = 2 * columns.length + 1;
+        const height = TRACK_ROWS + 2;
         const blocked: RowCol[] = [];
         const rows: string[] = [];
-        for (let row = 0; row < TRACK_ROWS; row++) {
+        for (let row = 0; row < height; row++) {
             const cells: string[] = [];
-            columns.forEach((column, c) => {
-                cells.push(key(column[row].colour, column[row].marker));
-                cells.push("-");
-                blocked.push({ row, col: 2 * c + 1 });
-            });
+            for (let col = 0; col < width; col++) {
+                if (row >= 1 && row <= TRACK_ROWS && col % 2 === 1) {
+                    cells.push(columns[(col - 1) / 2][row - 1]);
+                } else {
+                    cells.push("-");
+                    blocked.push({ row, col });
+                }
+            }
             // Multi-character keys need the comma-delimited form.
             rows.push(cells.join(","));
         }
+        // A thick border around the columns in the colour of the next placement; the line points
+        // of a squares board are cell corners.
+        const corners: RowCol[] = [
+            { row: 1, col: 1 },
+            { row: 1, col: width - 1 },
+            { row: height - 1, col: width - 1 },
+            { row: height - 1, col: 1 },
+        ];
+        const border: MarkerLine[] = corners.map((from, i) => ({
+            type: "line",
+            points: [from, corners[(i + 1) % corners.length]],
+            colour: nextFill,
+            width: TRACK_BORDER_WIDTH,
+        }));
         return {
             type: "track",
             position: "left",
             board: {
                 style: "squares",
-                width: 2 * columns.length,
-                height: TRACK_ROWS,
+                width,
+                height,
                 blocked: blocked as [RowCol, ...RowCol[]],
+                markers: border,
             },
             pieces: rows.join("\n"),
         };
@@ -2155,8 +2283,19 @@ export class ThueMorseGoGame extends GameBase {
             legend,
             pieces: rows.join("\n"),
         };
-        if (dots.length > 0) {
-            (rep.board as BoardBasic).markers = dots;
+        // The renderer's own star points serve every square board but the 11x11, which takes the
+        // 4-4 points without a centre; snub square boards get those of the square board of their size.
+        const snub = this.variants.includes("snub");
+        const markers: MarkerDots[] = [];
+        if (snub || this.boardSize === 11) {
+            markers.push({ type: "dots", size: STAR_SIZE, points: this.starPoints() as [RowCol, ...RowCol[]] });
+        }
+        markers.push(...dots);
+        if (markers.length > 0) {
+            (rep.board as BoardBasic).markers = markers;
+        }
+        if (!snub && this.boardSize === 11) {
+            rep.options = ["hide-star-points"];
         }
         const track = this.trackArea(legend, swap, downward, rolling);
         if (track !== undefined) {
@@ -2231,6 +2370,18 @@ export class ThueMorseGoGame extends GameBase {
             statuses.push({
                 key: this.neutralAreaLabel("apgames:status.thuemorsego.BUTTON"),
                 value: [this.button === undefined ? this.neutralAreaLabel("apgames:status.thuemorsego.BUTTON_AVAILABLE") : this.seatStatusValue(this.button)],
+            });
+        }
+        if (this.reverseKomi) {
+            statuses.push({
+                key: this.neutralAreaLabel("apgames:status.thuemorsego.KOMI"),
+                value: [this.komi === undefined ? this.neutralAreaLabel("apgames:status.thuemorsego.UNDECIDED") : this.komi.toString()],
+            });
+        }
+        if (this.phase === "komi" && !this.gameover) {
+            statuses.push({
+                key: this.neutralAreaLabel("apgames:status.PHASE"),
+                value: [this.seatAreaLabel(this.currplayer, "apgames:status.thuemorsego.PHASE_KOMI")],
             });
         }
         if (!this.gameover && (this.marks.length > 0 || this.locked)) {
@@ -2308,6 +2459,9 @@ export class ThueMorseGoGame extends GameBase {
                     return true;
                 }
                 return super.collectChatLogLine(lines, r, ctx);
+            case "komi":
+                this.pushSeatChatLine(lines, ctx.defaultSeat, "apresults:DECLARE.thuemorsego_komi", { count: r.value });
+                return true;
             case "eog":
                 switch (r.reason) {
                     case "consecutive-passes":

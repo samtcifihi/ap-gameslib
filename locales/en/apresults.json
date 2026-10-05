@@ -236,7 +236,9 @@
         "thuemorsego_passes_one": "{{player}} set the handicap to one pass.",
         "thuemorsego_passes_other": "{{player}} set the handicap to {{count}} passes.",
         "thuemorsego_stones_one": "{{player}} set the handicap to one stone.",
-        "thuemorsego_stones_other": "{{player}} set the handicap to {{count}} stones."
+        "thuemorsego_stones_other": "{{player}} set the handicap to {{count}} stones.",
+        "thuemorsego_komi_one": "{{player}} set the reverse komi to {{count}} point.",
+        "thuemorsego_komi_other": "{{player}} set the reverse komi to {{count}} points."
     },
     "DELTA_SCORE_GAIN_one": "{{player}} gained {{delta}} point.",
     "DELTA_SCORE_GAIN_other": "{{player}} gained {{delta}} points.",
