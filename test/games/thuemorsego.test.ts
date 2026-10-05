@@ -471,6 +471,9 @@ describe("Thue-Morse Go: ko", () => {
 
     it("draws the game on the fifth repetition under the repetition variant", () => {
         const g = small(["repetition-draw"]);
+        // The repetition draw is the preselected choice of its group; positional superko is the sentinel.
+        expect(g.allvariants()!.find((v) => v.uid === "repetition-draw")!.default).to.be.true;
+        expect(g.allvariants()!.find((v) => v.uid === "#repetition")!.default).to.be.undefined;
         setStones(g, [], ["a2", "b1", "k11"]);
         expect(g.validateMove("a1").valid).to.be.true;
         // Every placement counts, so the second stone of one move can be the fifth occurrence.
