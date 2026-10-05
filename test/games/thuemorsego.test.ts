@@ -139,7 +139,7 @@ describe("Thue-Morse Go: moves", () => {
     });
 
     it("treats button clicks as whole-move passes or the button's move", () => {
-        const g = play(small(), ["f6"]);
+        const g = play(small(["button"]), ["f6"]);
         // Passing replaces a placement already made in the move.
         const pass = g.handleClick("e5", -1, -1, "_btn_pass");
         expect(pass.move).to.equal("pass,pass");
@@ -159,19 +159,20 @@ describe("Thue-Morse Go: moves", () => {
     });
 
     it("offers a button that passes the whole move, and one that takes the button while it lasts", () => {
-        const g = small();
+        const g = small(["button"]);
         expect(g.getButtons().map((b) => b.move)).to.deep.equal(["pass", "button"]);
         g.move("button");
         expect(g.getButtons().map((b) => b.move)).to.deep.equal(["pass,pass"]);
         expect(g.validateMove("pass,pass").complete).to.equal(1);
-        expect(small(["no-button"]).getButtons().map((b) => b.move)).to.deep.equal(["pass"]);
+        // There is no button by default.
+        expect(small().getButtons().map((b) => b.move)).to.deep.equal(["pass"]);
         // With one placement served by the handicap, only the other is passed.
-        const h = play(small(["handicap"]), ["f6", "4", "e5", "d4,d5"]);
+        const h = play(small(["handicap", "button"]), ["f6", "4", "e5", "d4,d5"]);
         expect(h.getButtons().map((b) => b.move)).to.deep.equal(["pass", "button"]);
     });
 
     it("takes the button and then places a stone by clicking", () => {
-        const g = play(small(), ["f6"]);
+        const g = play(small(["button"]), ["f6"]);
         expect(g.validateMove("button").complete).to.equal(0);
         const [x, y] = g.algebraic2coords("e5");
         const click = g.handleClick("button", y, x);
@@ -215,7 +216,22 @@ describe("Thue-Morse Go: moves", () => {
         setStones(h, [], ["a2", "b1", "k11"]);
         const result = h.validateMove("a1");
         expect(result.valid).to.be.false;
-        expect(result.message).to.contain("earlier position");
+        expect(result.message).to.contain("suicide");
+    });
+
+    it("lets the second placement of a move make up for a suicidal first one", () => {
+        // Player 2's two placements: a1 would be removed at once, which the second stone makes legal.
+        const g = play(small(), ["k11"]);
+        setStones(g, ["a2", "b1", "k11"], []);
+        const first = g.validateMove("a1");
+        expect(first.valid).to.be.true;
+        expect(first.complete).to.equal(-1);
+        expect(first.message).to.contain("suicide");
+        expect(g.validateMove("a1,pass").valid).to.be.false;
+        expect(g.validateMove("a1,k10").complete).to.equal(1);
+        g.move("a1,k10");
+        expect(g.board.has("a1")).to.be.false;
+        expect(g.board.get("k10")).to.equal(2);
     });
 
     it("can empty a cell and refill it within one move", () => {
@@ -234,7 +250,8 @@ describe("Thue-Morse Go: moves", () => {
         const plain = small();
         setStones(plain, wall, own);
         plain.placed = 5; // Player 1's two-placement move
-        expect(plain.validateMove("a1").valid).to.be.false;
+        // Each eye filled is suicide at once, so the move leaves the board unchanged.
+        expect(plain.validateMove("a1").complete).to.equal(-1);
         expect(plain.validateMove("a1,c1").valid).to.be.false;
 
         const checked = small(["weak-eyes"]);
@@ -254,7 +271,7 @@ describe("Thue-Morse Go: moves", () => {
     });
 
     it("hands out the button once", () => {
-        const g = small();
+        const g = small(["button"]);
         g.move("button");
         expect(g.button).to.equal(1);
         expect(g.placed).to.equal(1);
@@ -263,7 +280,7 @@ describe("Thue-Morse Go: moves", () => {
         expect(g.validateMove("e5,button").valid).to.be.false;
         expect(g.validateMove("e5,pass").complete).to.equal(1);
         expect(small(["half-button"]).move("button").getPlayerScore(1)).to.equal(0.5);
-        expect(small(["no-button"]).validateMove("button").valid).to.be.false;
+        expect(small().validateMove("button").valid).to.be.false;
     });
 
     it("ends when both players pass their whole moves in turn", () => {
@@ -277,7 +294,7 @@ describe("Thue-Morse Go: moves", () => {
         partial.move("pass");
         expect(partial.gameover).to.be.true;
 
-        const h = play(small(), ["button", "pass,pass"]);
+        const h = play(small(["button"]), ["button", "pass,pass"]);
         expect(h.gameover).to.be.false;
         h.move("pass");
         expect(h.gameover).to.be.true;
@@ -285,8 +302,9 @@ describe("Thue-Morse Go: moves", () => {
     });
 
     it("lists complete legal moves and plays random ones", () => {
-        const g = small();
+        const g = small(["button"]);
         expect(g.moves()).to.have.lengthOf(123);
+        expect(small().moves()).to.have.lengthOf(122);
         g.move("f6");
         const moves = g.moves();
         expect(moves).to.include("e5,g7");
@@ -310,7 +328,7 @@ describe("Thue-Morse Go: moves", () => {
     });
 
     it("survives a round trip through serialization", () => {
-        const g = play(small(), ["f6", "e5,g7", "button"]);
+        const g = play(small(["button"]), ["f6", "e5,g7", "button"]);
         const h = new ThueMorseGoGame(g.serialize());
         expect(h.placed).to.equal(4);
         expect(h.button).to.equal(1);
@@ -403,22 +421,37 @@ describe("Thue-Morse Go: handicap", () => {
 });
 
 describe("Thue-Morse Go: ko", () => {
-    it("forbids retaking a ko at once but allows it after a threat", () => {
+    it("judges a ko by the position the whole move leaves", () => {
         const g = small();
         setStones(g, ["a2", "b1", "b3"], ["b2", "c1", "c3", "d2"]);
         g.move("c2");
         expect(g.board.has("b2")).to.be.false;
-        expect(g.validateMove("b2").valid).to.be.false;
+        // Retaking alone would recreate the position; with another stone anywhere in the move it is fine.
+        const alone = g.validateMove("b2");
+        expect(alone.valid).to.be.true;
+        expect(alone.complete).to.equal(-1);
+        expect(g.validateMove("b2,pass").valid).to.be.false;
+        expect(g.validateMove("b2,k11").complete).to.equal(1);
         expect(g.validateMove("k11,b2").complete).to.equal(1);
-        g.move("k11,b2");
+        g.move("b2,k11");
         expect(g.board.has("c2")).to.be.false;
+
+        // In a one-placement move the retake is simply forbidden.
+        const h = small();
+        setStones(h, ["a2", "b1", "b3"], ["b2", "c1", "c3", "d2"]);
+        h.placed = 3; // Player 1's single placement, then Player 2's single placement
+        h.move("c2");
+        const retake = h.validateMove("b2");
+        expect(retake.valid).to.be.false;
+        expect(retake.message).to.contain("earlier position");
     });
 
     it("draws the game on the fifth repetition under the repetition variant", () => {
         const g = small(["repetition-draw"]);
         setStones(g, [], ["a2", "b1", "k11"]);
         expect(g.validateMove("a1").valid).to.be.true;
-        play(g, ["a1", "pass,pass", "a1", "pass"]);
+        // Each move that places a stone counts once, however many times the board repeats within it.
+        play(g, ["a1", "pass,pass", "a1", "pass", "a1,a1", "pass,pass"]);
         expect(g.gameover).to.be.false;
         g.move("a1,a1");
         expect(g.gameover).to.be.true;
@@ -430,12 +463,12 @@ describe("Thue-Morse Go: ko", () => {
 describe("Thue-Morse Go: Kill-All", () => {
     it("requires no button and swaps the flags", () => {
         const g = new ThueMorseGoGame(undefined, ["size-11", "kill-all"]);
-        expect(g.variants).to.include("kill-all");
-        expect(g.variants).to.include("no-button");
-        // An explicit other button choice is overridden by the one Kill-All implies.
-        const h = play(new ThueMorseGoGame(undefined, ["size-11", "kill-all", "half-button"]), ["f6", "attacker"]);
-        expect(h.variants).to.include("no-button");
-        expect(h.validateMove("button").valid).to.be.false;
+        expect(g.variants).to.deep.equal(["size-11", "kill-all"]);
+        play(g, ["f6", "attacker"]);
+        expect(g.validateMove("button").valid).to.be.false;
+        // Kill-All needs the default button choice, so it is dropped when another is chosen with it.
+        const h = new ThueMorseGoGame(undefined, ["size-11", "kill-all", "half-button"]);
+        expect(h.variants).to.deep.equal(["size-11", "half-button"]);
         expect(g.getFlags()).to.include("custom-colours");
         expect(g.getFlags()).to.not.include("scores");
         expect(small().getFlags()).to.include("scores");
@@ -600,7 +633,7 @@ describe("Thue-Morse Go: tracker and sidebar", () => {
 
 describe("Thue-Morse Go: chat log", () => {
     it("matches the legacy chat log", () => {
-        const g = small(["handicap"]);
+        const g = small(["handicap", "button"]);
         setStones(g, ["a2"], ["a1"]);
         play(g, ["b1", "2", "button", "pass", "pass,pass"]);
         expect(g.gameover).to.be.true;

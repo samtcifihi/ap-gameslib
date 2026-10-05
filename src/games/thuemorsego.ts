@@ -35,9 +35,7 @@ interface IMoveState extends IIndividualState {
     placed: number;
     /** Seats of the trailing run of moves that consisted only of voluntary passes. */
     passes: playerid[];
-    /** Positions this move created other than the saved board (positional superko, repetition). */
-    interim: string[];
-    /** Whether the saved board is a position this move created (false after a move without a stone). */
+    /** Whether this move placed a stone, so that the saved board counts as a position it created. */
     novel: boolean;
     /** The seat holding the button. */
     button?: playerid;
@@ -73,9 +71,11 @@ interface ISim {
     board: Board;
     /** Occurrence counts of every position reached before this move (shared, never mutated). */
     base: Map<string, number>;
-    /** Positions created so far in this move, in order. */
-    created: string[];
     results: APMoveResult[];
+    /** Opponent stones captured so far in this move. */
+    captured: number;
+    /** Own stones removed by suicide so far in this move. */
+    suicided: number;
     /** Placements in this move. */
     length: number;
     /** Placements consumed so far, the handicap passes served at its start included. */
@@ -84,7 +84,7 @@ interface ISim {
     placedStone: boolean;
     /** Checked weak eyes: whether the move's deferred clearing has happened. */
     cleared: boolean;
-    /** Whether the game ended during this move (repetition draw). */
+    /** Whether the move ends the game (repetition draw). */
     over: boolean;
 }
 
@@ -238,14 +238,9 @@ export class ThueMorseGoGame extends GameBase {
             { uid: "repetition-draw", group: "repetition" },
             { uid: "weak-eyes" },
             { uid: "#button" },
+            { uid: "button", group: "button" },
             { uid: "half-button", group: "button" },
-            { uid: "no-button", group: "button" },
-            {
-                uid: "kill-all",
-                enabledWhen: { button: ["no-button"] },
-                implies: ["no-button"],
-                impliesLock: true,
-            },
+            { uid: "kill-all", enabledWhen: { button: ["#button"] } },
         ],
         categories: ["goal>area", "goal>cripple", "mechanic>place", "mechanic>capture", "mechanic>enclose", "board>shape>rect", "board>connect>rect", "board>connect>snub", "components>simple>1per"],
         flags: ["experimental", "scores", "custom-buttons", "no-moves", "custom-randomization"],
@@ -280,7 +275,6 @@ export class ThueMorseGoGame extends GameBase {
     public phase!: Phase;
     public placed = 0;
     public passes: playerid[] = [];
-    public interim: string[] = [];
     public novel = false;
     public button?: playerid;
     public handicap?: number;
@@ -314,7 +308,6 @@ export class ThueMorseGoGame extends GameBase {
                 phase,
                 placed: 0,
                 passes: [],
-                interim: [],
                 novel: false,
             };
             this.stack = [fresh];
@@ -351,7 +344,6 @@ export class ThueMorseGoGame extends GameBase {
         this.phase = state.phase;
         this.placed = state.placed;
         this.passes = [...state.passes];
-        this.interim = [...state.interim];
         this.novel = state.novel;
         this.button = state.button;
         this.handicap = state.handicap;
@@ -391,10 +383,13 @@ export class ThueMorseGoGame extends GameBase {
     }
 
     private get buttonValue(): number {
-        if (this.killAll || this.variants.includes("no-button")) {
+        if (this.killAll) {
             return 0;
         }
-        return this.variants.includes("half-button") ? 0.5 : 1;
+        if (this.variants.includes("button")) {
+            return 1;
+        }
+        return this.variants.includes("half-button") ? 0.5 : 0;
     }
 
     /** The period of a repeating protocol (Balanced Marseillais: ABBA), or 0 for the full sequence. */
@@ -536,7 +531,11 @@ export class ThueMorseGoGame extends GameBase {
     // Positions and placements
     // -----------------------------------------------------------------------
 
-    /** How often each position has arisen from a placement so far, the initial board included. */
+    /**
+     * How often each position has arisen so far: the initial board, and the board at the end of
+     * every move that placed a stone. Positions partway through a move are not positions for the
+     * purposes of superko and repetition; only what a move leaves on the board is.
+     */
     private positionCounts(): Map<string, number> {
         const counts = new Map<string, number>();
         const add = (sig: string): void => {
@@ -544,12 +543,8 @@ export class ThueMorseGoGame extends GameBase {
         };
         add(signature(this.stack[0].board, this.geo));
         for (let i = 1; i < this.stack.length; i++) {
-            const state = this.stack[i];
-            for (const sig of state.interim) {
-                add(sig);
-            }
-            if (state.novel) {
-                add(signature(state.board, this.geo));
+            if (this.stack[i].novel) {
+                add(signature(this.stack[i].board, this.geo));
             }
         }
         return counts;
@@ -559,8 +554,9 @@ export class ThueMorseGoGame extends GameBase {
         return {
             board: new Map(this.board),
             base: base ?? this.positionCounts(),
-            created: [],
             results: [],
+            captured: 0,
+            suicided: 0,
             length,
             placed,
             buttonTaken: false,
@@ -571,51 +567,47 @@ export class ThueMorseGoGame extends GameBase {
     }
 
     private copySim(sim: ISim): ISim {
-        return { ...sim, board: new Map(sim.board), created: [...sim.created], results: [...sim.results] };
+        return { ...sim, board: new Map(sim.board), results: [...sim.results] };
     }
 
-    private occurrences(sim: ISim, sig: string): number {
-        let count = sim.base.get(sig) ?? 0;
-        for (const created of sim.created) {
-            if (created === sig) {
-                count++;
-            }
+    /**
+     * Judge the position a completed move leaves: the key of the validation message when
+     * positional superko forbids it (naming suicide when that is why the board is unchanged),
+     * otherwise undefined, with `over` set when the repetition variant's fifth occurrence draws.
+     */
+    private endPosition(sim: ISim): string | undefined {
+        if (!sim.placedStone) {
+            return undefined;
         }
-        return count;
-    }
-
-    /** Record the position the board now holds; false when positional superko forbids it. */
-    private recordPosition(sim: ISim): boolean {
-        const sig = signature(sim.board, this.geo);
-        const seen = this.occurrences(sim, sig);
+        const seen = sim.base.get(signature(sim.board, this.geo)) ?? 0;
         if (!this.repetitionDraw && seen > 0) {
-            return false;
+            return sim.captured === 0 && sim.suicided > 0 ? "SUICIDE_REPEAT" : "KO_PSK";
         }
-        sim.created.push(sig);
         if (this.repetitionDraw && seen + 1 >= REPETITIONS_FOR_DRAW) {
             sim.over = true;
         }
-        return true;
+        return undefined;
     }
 
     /** Tromp-Taylor clearing after `colour` placed: opponent strings without liberties, then its own. */
     private clear(sim: ISim, colour: Stone): void {
         for (const group of clearColour(sim.board, this.geo, otherColour(colour))) {
             sim.results.push({ type: "capture", where: group.join(","), count: group.length });
+            sim.captured += group.length;
         }
         for (const group of clearColour(sim.board, this.geo, colour)) {
             sim.results.push({ type: "capture", where: group.join(","), count: group.length, how: "suicide" });
+            sim.suicided += group.length;
         }
     }
 
     /** Checked weak eyes: the clearing deferred to the end of the move, done once. */
-    private clearAtEnd(sim: ISim, colour: Stone): string | undefined {
+    private clearAtEnd(sim: ISim, colour: Stone): void {
         if (!this.checkedEyes || sim.cleared || !sim.placedStone) {
-            return undefined;
+            return;
         }
         sim.cleared = true;
         this.clear(sim, colour);
-        return this.recordPosition(sim) ? undefined : "KO_PSK";
     }
 
     /** Serve handicap passes at the start of a move. */
@@ -628,14 +620,11 @@ export class ThueMorseGoGame extends GameBase {
 
     /**
      * Apply one placement token (a cell, `pass`, or `button`) for `colour` to `sim`. Returns the
-     * key of the validation message when the token is illegal. Every stone placement creates a
-     * position that must not repeat an earlier one; with checked weak eyes the position after a
-     * placement that is not the move's last is the board before any clearing.
+     * key of the validation message when the token is illegal. Clearing follows every stone, or
+     * with checked weak eyes only the move's last placement; whether the position the move
+     * leaves is allowed is judged in `finishMove`.
      */
     private applyToken(sim: ISim, token: string, colour: Stone): string | undefined {
-        if (sim.over) {
-            return "OVER_MID_MOVE";
-        }
         if (sim.placed >= sim.length) {
             return "TOO_MANY";
         }
@@ -645,10 +634,7 @@ export class ThueMorseGoGame extends GameBase {
                 return "NO_PASS";
             }
             sim.results.push({ type: "pass" });
-            sim.placed++;
-            return final ? this.clearAtEnd(sim, colour) : undefined;
-        }
-        if (token === "button") {
+        } else if (token === "button") {
             if (this.buttonValue === 0) {
                 return "NO_BUTTON";
             }
@@ -657,32 +643,34 @@ export class ThueMorseGoGame extends GameBase {
             }
             sim.buttonTaken = true;
             sim.results.push({ type: "button" });
-            sim.placed++;
-            return final ? this.clearAtEnd(sim, colour) : undefined;
+        } else {
+            if (!this.isValidCell(token)) {
+                return "INVALIDCELL";
+            }
+            if (sim.board.has(token)) {
+                return "OCCUPIED";
+            }
+            sim.board.set(token, colour);
+            sim.results.push({ type: "place", where: token });
+            sim.placedStone = true;
+            if (!this.checkedEyes) {
+                this.clear(sim, colour);
+            }
         }
-        if (!this.isValidCell(token)) {
-            return "INVALIDCELL";
-        }
-        if (sim.board.has(token)) {
-            return "OCCUPIED";
-        }
-        sim.board.set(token, colour);
-        sim.results.push({ type: "place", where: token });
-        sim.placedStone = true;
         sim.placed++;
-        if (!this.checkedEyes) {
-            this.clear(sim, colour);
-            return this.recordPosition(sim) ? undefined : "KO_PSK";
-        }
         if (final) {
-            return this.clearAtEnd(sim, colour);
+            this.clearAtEnd(sim, colour);
         }
-        return this.recordPosition(sim) ? undefined : "KO_PSK";
+        return undefined;
     }
 
-    /** Pass the placements a move string left unspecified (standard game only). */
+    /**
+     * Complete the move on `sim`: pass the placements the move string left unspecified (standard
+     * game only), clear the board if that is still owed, and judge the position left. Returns the
+     * key of the validation message when the move is not allowed.
+     */
     private finishMove(sim: ISim, colour: Stone): string | undefined {
-        while (!sim.over && sim.placed < sim.length) {
+        while (sim.placed < sim.length) {
             if (this.killAll) {
                 return "INCOMPLETE";
             }
@@ -691,7 +679,8 @@ export class ThueMorseGoGame extends GameBase {
                 return err;
             }
         }
-        return undefined;
+        this.clearAtEnd(sim, colour);
+        return this.endPosition(sim);
     }
 
     private tokenMessage(key: string, token: string): string {
@@ -726,8 +715,8 @@ export class ThueMorseGoGame extends GameBase {
 
     /** Whether some legal sequence of placements completes the move on `sim`. */
     private hasContinuation(sim: ISim, colour: Stone): boolean {
-        if (sim.over || sim.placed >= sim.length) {
-            return true;
+        if (sim.placed >= sim.length) {
+            return this.finishMove(this.copySim(sim), colour) === undefined;
         }
         for (const token of this.candidates(sim)) {
             const trial = this.copySim(sim);
@@ -743,8 +732,8 @@ export class ThueMorseGoGame extends GameBase {
 
     /** Every legal sequence of placements that completes the move on `sim`. */
     private completions(sim: ISim, colour: Stone): string[][] {
-        if (sim.over || sim.placed >= sim.length) {
-            return [[]];
+        if (sim.placed >= sim.length) {
+            return this.finishMove(this.copySim(sim), colour) === undefined ? [[]] : [];
         }
         const out: string[][] = [];
         for (const token of this.candidates(sim)) {
@@ -761,8 +750,8 @@ export class ThueMorseGoGame extends GameBase {
 
     /** A random legal sequence of placements that completes the move on `sim`. */
     private randomCompletion(sim: ISim, colour: Stone): string[] | undefined {
-        if (sim.over || sim.placed >= sim.length) {
-            return [];
+        if (sim.placed >= sim.length) {
+            return this.finishMove(this.copySim(sim), colour) === undefined ? [] : undefined;
         }
         for (const token of shuffle(this.candidates(sim)) as string[]) {
             const trial = this.copySim(sim);
@@ -1220,7 +1209,11 @@ export class ThueMorseGoGame extends GameBase {
 
     /** The verdict on a move whose explicit placements were all legal. */
     private completeness(sim: ISim, colour: Stone, result: IValidationResult): IValidationResult {
-        if (sim.over || sim.placed === sim.length) {
+        if (sim.placed === sim.length) {
+            const err = this.finishMove(this.copySim(sim), colour);
+            if (err !== undefined) {
+                return this.fail(result, this.tokenMessage(err, "pass"));
+            }
             return this.ok(result, 1, i18next.t("apgames:validation._general.VALID_MOVE"), true);
         }
         const left = sim.length - sim.placed;
@@ -1230,10 +1223,11 @@ export class ThueMorseGoGame extends GameBase {
             }
             return this.ok(result, -1, i18next.t("apgames:validation.thuemorsego.PLACE_MORE", { count: left }), true);
         }
-        // Submitting now passes the rest of the move, which checked weak eyes can forbid.
-        const trial = this.copySim(sim);
-        if (this.finishMove(trial, colour) !== undefined) {
-            return this.ok(result, -1, i18next.t("apgames:validation.thuemorsego.MUST_CONTINUE"), true);
+        // Submitting now passes the rest of the move, which may leave a forbidden position.
+        const err = this.finishMove(this.copySim(sim), colour);
+        if (err !== undefined) {
+            const key = err === "SUICIDE_REPEAT" ? "MUST_CONTINUE_SUICIDE" : "MUST_CONTINUE";
+            return this.ok(result, -1, i18next.t(`apgames:validation.thuemorsego.${key}`), true);
         }
         const button = this.buttonValue > 0 && this.button === undefined && !sim.buttonTaken;
         return this.ok(result, 0, i18next.t(`apgames:validation.thuemorsego.${button ? "MORE_OR_SUBMIT_BUTTON" : "MORE_OR_SUBMIT"}`, { count: left }), true);
@@ -1261,7 +1255,6 @@ export class ThueMorseGoGame extends GameBase {
         if (m.length === 0) { return this; }
 
         this.results = [];
-        this.interim = [];
         this.novel = false;
         this.alive = undefined;
 
@@ -1303,31 +1296,28 @@ export class ThueMorseGoGame extends GameBase {
     }
 
     /** Opening stones for the Attacker (no captures are possible before the Defender has moved). */
-    private placeSetupStones(cells: string[], created: string[]): void {
+    private placeSetupStones(cells: string[]): void {
         for (const cell of cells) {
             this.board.set(cell, 2);
             this.results.push({ type: "place", where: cell, what: "setup" });
-            created.push(signature(this.board, this.geo));
         }
+        this.novel = cells.length > 0;
     }
 
     private moveAltPlace(m: string, partial: boolean): boolean {
-        const created: string[] = [];
         if (m === "attacker" || m.startsWith("attacker:")) {
             this.results.push({ type: "claim", how: "attacker" });
-            this.placeSetupStones(this.parseTokens(m.substring("attacker:".length)), created);
+            this.placeSetupStones(this.parseTokens(m.substring("attacker:".length)));
             if (partial) { return false; }
             this.defenderSeat = this.otherSeat(this.currplayer);
             this.phase = "play";
             this.placed = 0;
             this.currplayer = this.defenderSeat;
         } else {
-            this.placeSetupStones([m], created);
+            this.placeSetupStones([m]);
             if (partial) { return false; }
             this.currplayer = this.otherSeat(this.currplayer);
         }
-        this.interim = created.slice(0, -1);
-        this.novel = created.length > 0;
         this.lastmove = m;
         return true;
     }
@@ -1374,8 +1364,7 @@ export class ThueMorseGoGame extends GameBase {
         }
         const spelled = [...tokens, ...Array<string>(sim.placed - forced - tokens.length).fill("pass")];
         this.commitSim(sim, seat, declared, forced);
-        this.interim = sim.created.slice(0, -1);
-        this.novel = sim.created.length > 0;
+        this.novel = sim.placedStone;
         if (declared !== undefined) {
             this.lastmove = [declared.toString(), ...spelled].join(",");
             this.passes = [];
@@ -1423,7 +1412,6 @@ export class ThueMorseGoGame extends GameBase {
             for (let i = 0; i < length; i++) {
                 this.results.push({ type: "pass", why: "handicap" });
             }
-            this.interim = [];
             this.novel = false;
             this.alive = undefined;
             this.passesOwed -= length;
@@ -1649,7 +1637,6 @@ export class ThueMorseGoGame extends GameBase {
             phase: this.phase,
             placed: this.placed,
             passes: [...this.passes],
-            interim: [...this.interim],
             novel: this.novel,
         };
         if (this.button !== undefined) { state.button = this.button; }
