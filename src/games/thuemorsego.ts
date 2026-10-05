@@ -176,10 +176,36 @@ export class ThueMorseGoGame extends GameBase {
         notes: "apgames:notes.thuemorsego",
         urls: [
             "https://forums.online-go.com/t/thue-morse-fair-sharing-sequence-a-possible-alternative-to-komi/22547",
+            "https://www.reddit.com/r/baduk/comments/65nx60/using_the_thuemorse_sequence_to_determine_whose/",
+            "https://www.reddit.com/r/baduk/comments/92clfm/how_would_go_using_the_thuemorse_fairestsharing/",
+            "https://www.youtube.com/watch?v=prh72BLNjIk",
+            "https://www.chessvariants.com/multimove.dir/marseill.html",
             "https://en.wikipedia.org/wiki/Thue%E2%80%93Morse_sequence",
             "https://tromp.github.io/go.html",
         ],
+        // The Thue-Morse order was proposed for Go independently at least three times; the Online
+        // Go Forum community then built tools, ran tournaments and settled the rules used here.
         people: [
+            {
+                type: "designer",
+                name: "atimholt",
+                urls: ["https://www.reddit.com/r/baduk/comments/65nx60/using_the_thuemorse_sequence_to_determine_whose/"],
+            },
+            {
+                type: "designer",
+                name: "TheElvenAngelCatboy",
+                urls: ["https://www.reddit.com/r/baduk/comments/92clfm/how_would_go_using_the_thuemorse_fairestsharing/"],
+            },
+            {
+                type: "designer",
+                name: "BHydden",
+                urls: ["https://forums.online-go.com/t/thue-morse-fair-sharing-sequence-a-possible-alternative-to-komi/22547"],
+            },
+            {
+                type: "other",
+                name: "Online Go Forum community",
+                urls: ["https://forums.online-go.com/t/thue-morse-fair-sharing-sequence-a-possible-alternative-to-komi/22547"],
+            },
             {
                 type: "coder",
                 name: "Samraku",
@@ -194,7 +220,17 @@ export class ThueMorseGoGame extends GameBase {
             { uid: "#connect" },
             { uid: "snub", group: "connect" },
             { uid: "#protocol" },
-            { uid: "marseillais", group: "protocol" },
+            {
+                uid: "marseillais",
+                group: "protocol",
+                people: [
+                    {
+                        type: "designer",
+                        name: "Robert Bruce",
+                        urls: ["https://www.chessvariants.com/multimove.dir/marseill.html"],
+                    },
+                ],
+            },
             { uid: "handicap", unrated: true },
             { uid: "#ko" },
             { uid: "repetition", group: "ko" },
@@ -893,7 +929,9 @@ export class ThueMorseGoGame extends GameBase {
         if (this.forcedPasses() === this.moveLength(this.placed)) {
             return [];
         }
-        const buttons: ICustomButton[] = [{ label: "apgames:buttons.pass", move: "pass" }];
+        // The Pass button passes the whole move; a single click on the board can still fill a placement.
+        const free = this.moveLength(this.placed) - this.forcedPasses();
+        const buttons: ICustomButton[] = [{ label: "apgames:buttons.pass", move: Array<string>(free).fill("pass").join(",") }];
         if (this.buttonValue > 0 && this.button === undefined) {
             buttons.push({ label: "apgames:buttons.takebutton", move: "button" });
         }
@@ -1553,23 +1591,29 @@ export class ThueMorseGoGame extends GameBase {
         return score;
     }
 
-    /** Area, plus stones captured, plus the button. */
+    /** Tromp-Taylor area plus the button; captured stones are tallied but do not score. */
     public getPlayerScore(player: playerid): number {
         const colour = this.colourOfSeat(player);
         if (colour === undefined) {
             return 0;
         }
-        return this.area(colour) + this.captures[player - 1] + (this.button === player ? this.buttonValue : 0);
+        return this.area(colour) + (this.button === player ? this.buttonValue : 0);
     }
 
     public sidebarScores(): IScores[] {
         if (this.killAll) {
             return [];
         }
-        return [{
-            name: this.neutralAreaLabel("apgames:status.SCORES"),
-            scores: [this.getPlayerScore(1), this.getPlayerScore(2)],
-        }];
+        return [
+            {
+                name: this.neutralAreaLabel("apgames:status.SCORES"),
+                scores: [this.getPlayerScore(1), this.getPlayerScore(2)],
+            },
+            {
+                name: this.neutralAreaLabel("apgames:status.thuemorsego.CAPTURES"),
+                scores: [this.captures[0], this.captures[1]],
+            },
+        ];
     }
 
     // -----------------------------------------------------------------------

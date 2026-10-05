@@ -136,12 +136,34 @@ describe("Thue-Morse Go: moves", () => {
         expect(refused.move).to.equal("e5");
     });
 
-    it("offers the whole-move buttons", () => {
+    it("offers a button that passes the whole move, and one that takes the button while it lasts", () => {
         const g = small();
         expect(g.getButtons().map((b) => b.move)).to.deep.equal(["pass", "button"]);
         g.move("button");
-        expect(g.getButtons().map((b) => b.move)).to.deep.equal(["pass"]);
+        expect(g.getButtons().map((b) => b.move)).to.deep.equal(["pass,pass"]);
+        expect(g.validateMove("pass,pass").complete).to.equal(1);
         expect(small(["no-button"]).getButtons().map((b) => b.move)).to.deep.equal(["pass"]);
+        // With one placement served by the handicap, only the other is passed.
+        const h = play(small(["handicap"]), ["f6", "4", "e5", "d4,d5"]);
+        expect(h.getButtons().map((b) => b.move)).to.deep.equal(["pass", "button"]);
+    });
+
+    it("takes the button and then places a stone by clicking", () => {
+        const g = play(small(), ["f6"]);
+        expect(g.validateMove("button").complete).to.equal(0);
+        const [x, y] = g.algebraic2coords("e5");
+        const click = g.handleClick("button", y, x);
+        expect(click.move).to.equal("button,e5");
+        expect(click.complete).to.equal(1);
+        g.move(click.move);
+        expect(g.button).to.equal(2);
+        expect(g.board.get("e5")).to.equal(2);
+        expect(g.placed).to.equal(3);
+        // Taking the button is not a pass: the following whole-move passes end the game on the board as it is.
+        play(g, ["pass", "pass"]);
+        expect(g.gameover).to.be.true;
+        expect(g.winner).to.deep.equal([2]);
+        expect([g.getPlayerScore(1), g.getPlayerScore(2)]).to.deep.equal([1, 2]);
     });
 
     it("captures and credits the stones", () => {
@@ -151,10 +173,10 @@ describe("Thue-Morse Go: moves", () => {
         expect(g.board.has("a1")).to.be.false;
         expect(g.captures).to.deep.equal([1, 0]);
         expect(g.results.filter((r) => r.type === "capture").map((r) => r.count)).to.deep.equal([1]);
-        // Two stones, the point they enclose, and the rest of the empty board, plus the capture.
-        expect(g.getPlayerScore(1)).to.equal(122);
+        // Two stones, the point they enclose, and the rest of the empty board; the capture is only tallied.
+        expect(g.getPlayerScore(1)).to.equal(121);
         expect(g.getPlayerScore(2)).to.equal(0);
-        expect(g.sidebarScores()[0].scores).to.deep.equal([122, 0]);
+        expect(g.sidebarScores().map((table) => table.scores)).to.deep.equal([[121, 0], [1, 0]]);
     });
 
     it("allows multi-stone suicide but not the single stone that repeats the position", () => {
@@ -224,11 +246,16 @@ describe("Thue-Morse Go: moves", () => {
         expect(small(["no-button"]).validateMove("button").valid).to.be.false;
     });
 
-    it("ends when both players pass their moves in turn", () => {
+    it("ends when both players pass their whole moves in turn", () => {
         const g = play(small(), ["pass", "pass,pass"]);
         expect(g.gameover).to.be.true;
         expect(g.winner).to.deep.equal([1, 2]);
         expect(g.results.find((r) => r.type === "eog")!.reason).to.equal("consecutive-passes");
+        // A move that passes only one of its placements does not count.
+        const partial = play(small(), ["f6", "pass,e5", "pass"]);
+        expect(partial.gameover).to.be.false;
+        partial.move("pass");
+        expect(partial.gameover).to.be.true;
 
         const h = play(small(), ["button", "pass,pass"]);
         expect(h.gameover).to.be.false;
