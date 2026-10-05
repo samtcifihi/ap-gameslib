@@ -199,6 +199,13 @@ interface IPreview {
     move?: string;
     /** Units the ply would eliminate, as they were before it, so that they can still be drawn (faded). */
     ghosts?: IUnit[];
+    /**
+     * Who decides next in the previewed position, while a combat is pending there. Playing the ply out hands
+     * `currplayer` over as a real move would, but a preview puts it back: the front end treats the current
+     * player of a partially entered move as the one entering it (the Playground, for one, takes its
+     * perspective from it), so the hand-over is recorded here instead and `getButtons` reads it.
+     */
+    next?: playerid;
 }
 
 /** One stop on the way through a ply: a decision its author has to make, and what was entered for it. */
@@ -1297,6 +1304,7 @@ export class SquaresGame extends GameBaseSequenced {
     /** Show a move that is still being entered: play out what is settled, and outline what is still being chosen. */
     private applyPreview(move: string): void {
         const [head, ...decisions] = move.split("/");
+        const actor = this.currplayer;
         const before = cloneUnits(this.units);
         const preview: IPreview = { outline: [] };
         this.preview = preview;
@@ -1304,6 +1312,13 @@ export class SquaresGame extends GameBaseSequenced {
         if (headResult.valid && headResult.complete !== -1) {
             // A legal head is played out, with every finished decision after it, to show where the ply leads.
             const walk = this.walkPly(head, decisions);
+            // The walk leaves `currplayer` with whoever decides next (the defender, after an attack). The ply is
+            // still its author's to finish entering, so the author stays the current player and the hand-over
+            // is kept on the preview.
+            if (this.combat !== undefined) {
+                preview.next = this.currplayer;
+            }
+            this.currplayer = actor;
             preview.move = [head, ...decisions.slice(0, walk.played)].join("/");
             preview.ghosts = [...this.units.values()]
                 .filter(u => u.loc === "X" && before.get(u.id)!.loc !== "X")
@@ -2258,7 +2273,8 @@ export class SquaresGame extends GameBaseSequenced {
         if (c === undefined) {
             return prefix === undefined && !this.isDouble ? [{ label: "apgames:buttons.pass", move: "pass" }] : [];
         }
-        if (prefix !== undefined && this.currplayer !== this.stack[this.stack.length - 1].currplayer) {
+        if (prefix !== undefined && this.preview?.next !== this.currplayer) {
+            // The next decision in the previewed position is the opponent's, not the author's.
             return [];
         }
         const legal = this.combatOptions();

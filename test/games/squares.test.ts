@@ -797,6 +797,23 @@ describe("Squares", () => {
             expect(h.getButtons()).to.deep.equal([{ label: "apgames:buttons.pass", move: "pass" }]);
         });
 
+        it("keeps the ply's author as the current player while a preview waits on the opponent", () => {
+            const g = setup({ "1I1": "G1C", "1C1": "G1CL", "2I1": "B1C" });
+            // The attack is played out for the preview and the defender decides next, but the ply is still Gray's
+            // to enter: the front end takes a partial move's current player as the one entering it.
+            const preview = g.clone();
+            preview.move("IG1C>IB1C", { partial: true });
+            expect(preview.currplayer).to.equal(1);
+            expect(preview.getButtons()).to.deep.equal([]);
+            const supported = g.clone();
+            supported.move("IG1C+CG1CL>IB1C", { partial: true });
+            expect(supported.currplayer).to.equal(1);
+            expect(supported.getButtons()).to.deep.equal([]);
+            // Played for real, the same attack does hand play to the defender.
+            g.move("IG1C>IB1C");
+            expect(g.currplayer).to.equal(2);
+        });
+
         it("folds the attacker's own decisions into the attack's ply, entered by clicks or buttons", () => {
             const g = setup({ "1I1": "G1C", "1A1": "G1CL", "2A1": "B1C" });
             // the artillery must stand, so the attack alone is not a whole ply
