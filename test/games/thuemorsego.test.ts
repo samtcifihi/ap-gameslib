@@ -21,6 +21,9 @@ const play = (g: ThueMorseGoGame, moves: string[]): ThueMorseGoGame => {
 /** A fresh game on the 11x11 board. */
 const small = (variants: string[] = []): ThueMorseGoGame => new ThueMorseGoGame(undefined, ["size-11", ...variants]);
 
+/** A fresh game on the default 16x16 board, whose handicap limit is 6. */
+const sixteen = (variants: string[] = []): ThueMorseGoGame => new ThueMorseGoGame(undefined, variants);
+
 /** Put stones on the board, and into the initial position, without playing them. */
 const setStones = (g: ThueMorseGoGame, colour1: string[], colour2: string[]): void => {
     const board = new Map<string, 1 | 2>();
@@ -191,8 +194,8 @@ describe("Thue-Morse Go: moves", () => {
         expect(g.validateMove("pass,pass").complete).to.equal(0);
         // There is no button by default.
         expect(small().getButtons().map((b) => b.move)).to.deep.equal(["pass"]);
-        // With one placement served by the handicap, only the other is passed.
-        const h = play(small(["handicap", "button"]), ["f6", "4", "e5", "d4,d5"]);
+        // With one placement given away by the handicap, only the other is passed.
+        const h = play(sixteen(["handicap", "button"]), ["h8", "4", "g7", "f6,f7"]);
         expect(h.getButtons().map((b) => b.move)).to.deep.equal(["pass", "button"]);
     });
 
@@ -407,7 +410,7 @@ describe("Thue-Morse Go: handicap", () => {
     });
 
     it("can run out partway through a two-placement move", () => {
-        const g = play(small(["handicap"]), ["f6", "4", "e5"]);
+        const g = play(sixteen(["handicap"]), ["f6", "4", "e5"]);
         expect(g.passesOwed).to.equal(1);
         expect(g.currplayer).to.equal(1);
         g.move("d4,d5");
@@ -423,40 +426,58 @@ describe("Thue-Morse Go: handicap", () => {
     });
 
     it("keeps marking the last placement across an automatically served move", () => {
-        const g = play(small(["handicap"]), ["f6", "4", "e5"]);
+        const g = play(small(["handicap"]), ["f6", "3", "e5"]);
         expect(g.results).to.deep.equal([{ type: "pass", why: "handicap" }]);
         const [x, y] = g.algebraic2coords("e5");
         expect(g.render().annotations).to.deep.include({ type: "enter", targets: [{ row: y, col: x }] });
     });
 
     it("does not count served passes towards the end of the game", () => {
-        const g = play(small(["handicap"]), ["f6", "4", "pass", "pass,pass"]);
+        const g = play(small(["handicap"]), ["f6", "3", "pass", "pass,pass"]);
         expect(g.gameover).to.be.false;
         expect(g.currplayer).to.equal(2);
         g.move("pass");
         expect(g.gameover).to.be.true;
     });
 
-    it("offers the values 1 to 9 across the centre row, covered cells still answering to clicks", () => {
-        const g = play(small(["handicap"]), ["c6"]);
+    it("offers a fortieth of the board's points across the centre row, covered cells still answering to clicks", () => {
+        const g = play(small(["handicap"]), ["f6"]);
         const pieces = g.render().pieces as string;
-        expect(pieces).to.contain("n1");
-        expect(pieces).to.contain("n9");
-        expect(pieces).to.not.contain("n10");
-        // Player 1's stone at c6 covers the stone for 2, which shows as the stone but still means 2.
+        expect(pieces).to.contain("n1,").and.to.contain("n3,");
+        expect(pieces).to.not.contain("n4");
+        // Player 1's stone at f6 covers the stone for 2, which shows as the stone but still means 2.
         expect(pieces).to.not.contain("n2,");
         const click = (move: string, cell: string): IClickResult => {
             const [x, y] = g.algebraic2coords(cell);
             return g.handleClick(move, y, x);
         };
-        expect(click("", "b6").move).to.equal("1");
-        expect(click("", "c6").move).to.equal("2");
-        expect(click("", "j6").move).to.equal("9");
+        expect(click("", "e6").move).to.equal("1");
+        expect(click("", "f6").move).to.equal("2");
+        expect(click("", "g6").move).to.equal("3");
+        expect(click("3", "e6").move).to.equal("1");
         expect(click("1", "e5").move).to.equal("1,e5");
-        // e9 is not on the row of numbered stones.
-        expect(click("", "e9").valid).to.be.false;
-        // Kill-All keeps its two rows of nine.
-        expect(small(["kill-all", "handicap"]).render().pieces as string).to.contain("n18");
+        expect(g.validateMove("4").valid).to.be.false;
+        // Off the numbered stones the click explains itself; with no placement left it does too.
+        const early = click("", "e9");
+        expect(early.valid).to.be.false;
+        expect(early.message).to.contain("Choose the handicap first");
+        expect(click("3", "e9").message).to.contain("no placement left");
+        // Larger boards offer more, rounded away from nine: 6, 10 and 14.
+        expect(sixteen(["handicap"]).move("h8").validateMove("6").valid).to.be.true;
+        expect(sixteen(["handicap"]).move("h8").validateMove("7").valid).to.be.false;
+        expect(new ThueMorseGoGame(undefined, ["size-19", "handicap"]).move("k10").validateMove("10").valid).to.be.true;
+        expect(new ThueMorseGoGame(undefined, ["size-23", "handicap"]).move("l12").validateMove("14").valid).to.be.true;
+        expect(new ThueMorseGoGame(undefined, ["size-23", "handicap"]).move("l12").validateMove("15").valid).to.be.false;
+        // Kill-All doubles the limit, odd values in a row above the centre and even ones below.
+        const k = small(["kill-all", "handicap"]);
+        const kp = k.render().pieces as string;
+        expect(kp).to.contain("n5,").and.to.contain("n6,").and.to.not.contain("n7");
+        const [ox, oy] = k.algebraic2coords("e7");
+        expect(k.handleClick("", oy, ox).move).to.equal("1");
+        const [ex, ey] = k.algebraic2coords("e5");
+        expect(k.handleClick("", ey, ex).move).to.equal("2");
+        expect(k.validateMove("6").valid).to.be.true;
+        expect(k.validateMove("7").valid).to.be.false;
     });
 });
 
@@ -687,8 +708,8 @@ describe("Thue-Morse Go: chat log", () => {
         assertChatLogParity(g, ["Alice", "Bob"]);
         const log = g.chatLog(["Alice", "Bob"]).flat().join("\n");
         expect(log).to.contain("Alice placed a piece at b1.");
-        expect(log).to.contain("Bob set the handicap to 2 passes.");
-        expect(log).to.contain("Bob served a handicap pass.");
+        expect(log).to.contain("Bob set the handicap to 2 stones.");
+        expect(log).to.contain("Bob gave a handicap stone by passing.");
         expect(log).to.contain("Alice took the button.");
     });
 });
@@ -950,7 +971,12 @@ describe("Thue-Morse Go: boards and star points", () => {
 });
 
 describe("Thue-Morse Go: reverse komi", () => {
-    it("begins Player 2's first move, costing no placement, within two points of the board", () => {
+    const click = (g: ThueMorseGoGame, move: string, cell: string): IClickResult => {
+        const [x, y] = g.algebraic2coords(cell);
+        return g.handleClick(move, y, x);
+    };
+
+    it("begins Player 2's first move with a multiple of 14 given to Player 1, costing no placement", () => {
         const g = small(["reverse-komi"]);
         expect(g.allvariants()!.find((v) => v.uid === "reverse-komi")).to.deep.include({ unrated: true, fans: true });
         expect(g.currplayer).to.equal(1);
@@ -961,117 +987,124 @@ describe("Thue-Morse Go: reverse komi", () => {
         expect(empty.complete).to.equal(-1);
         expect(empty.message).to.contain("reverse komi");
         expect(g.validateMove("e5").valid).to.be.false;
-        expect(g.validateMove("120").valid).to.be.false;
-        expect(g.validateMove("-120").valid).to.be.false;
-        expect(g.validateMove("7.5").valid).to.be.false;
-        const alone = g.validateMove("7");
+        expect(g.validateMove("7").valid).to.be.false;
+        expect(g.validateMove("-14").valid).to.be.false;
+        expect(g.validateMove("56").valid).to.be.false;
+        const alone = g.validateMove("14");
         expect(alone.complete).to.equal(0);
-        expect(alone.message).to.contain("7 points");
-        expect(g.validateMove("-119,e5").complete).to.equal(0);
-        expect(g.validateMove("119,e5,g7").complete).to.equal(1);
-        expect(g.validateMove("7,e5,g7,d4").valid).to.be.false;
-        expect(g.moves()).to.include("0,e5,g7");
-        expect(g.randomMove()).to.match(/^-?\d(,|$)/);
-        // Numbered stones offer multiples of 14 either way, just above and below the centre.
-        const click = (move: string, cell: string): IClickResult => {
-            const [cx, cy] = g.algebraic2coords(cell);
-            return g.handleClick(move, cy, cx);
-        };
+        expect(alone.message).to.contain("14 points");
+        expect(g.validateMove("42,e5").complete).to.equal(0);
+        expect(g.validateMove("28,e5,g7").complete).to.equal(1);
+        expect(g.validateMove("14,e5,g7,d4").valid).to.be.false;
+        expect(g.moves()).to.include("14,e5,g7");
+        expect(g.randomMove()).to.match(/^(14|28|42)(,|$)/);
+        // The numbered stones offer 14, 28 and 42 across the centre row; f6 is covered but still means 28.
         let pieces = g.render().pieces as string;
-        expect(pieces).to.contain("n14,").and.to.contain("n112");
-        expect(pieces).to.contain("neg14,").and.to.contain("neg112");
-        expect(pieces).to.not.contain("n126");
-        expect(click("", "b7").move).to.equal("14");
-        expect(click("", "e5").move).to.equal("-56");
-        const early = click("", "e9");
+        expect(pieces).to.contain("n14,").and.to.contain("n42");
+        expect(pieces).to.not.contain("n28,").and.to.not.contain("n56");
+        expect(click(g, "", "e6").move).to.equal("14");
+        expect(click(g, "", "f6").move).to.equal("28");
+        expect(click(g, "", "g6").move).to.equal("42");
+        const early = click(g, "", "e9");
         expect(early.valid).to.be.false;
         expect(early.message).to.contain("reverse komi");
-        // Once the komi is set the stones give way to the board, and clicks place.
+        // Once the komi is set the stones give way to the board, and clicks place, even on their cells.
         pieces = g.clone().move("14", { partial: true }).render().pieces as string;
         expect(pieces).to.not.contain("n14");
-        const sixteen = play(new ThueMorseGoGame(undefined, ["reverse-komi"]), ["h8"]);
-        expect(sixteen.render().pieces as string).to.contain("n126").and.to.contain("neg126");
-        const [x, y] = g.algebraic2coords("e5");
-        expect(g.handleClick("7", y, x).move).to.equal("7,e5");
-        expect(g.handleClick("7,e5", y, x).move).to.equal("7");
-        expect(g.handleClick("7,e5", -1, -1, "_btn_pass").move).to.equal("7,pass,pass");
+        expect(click(g, "14", "e5").move).to.equal("14,e5");
+        expect(click(g, "14", "e6").move).to.equal("14,e6");
+        expect(click(g, "14,e5", "e5").move).to.equal("14");
+        expect(g.handleClick("14,e5", -1, -1, "_btn_pass").move).to.equal("14,pass,pass");
+        // Larger boards offer up to 14 times the handicap limit.
+        expect(play(sixteen(["reverse-komi"]), ["h8"]).validateMove("84").valid).to.be.true;
+        expect(play(sixteen(["reverse-komi"]), ["h8"]).validateMove("98").valid).to.be.false;
+        expect(play(new ThueMorseGoGame(undefined, ["size-23", "reverse-komi"]), ["l12"]).render().pieces as string).to.contain("n196");
         // Submitting the komi alone passes the move.
-        const passed = g.clone().move("7");
-        expect(passed.lastmove).to.equal("7,pass,pass");
+        const passed = g.clone().move("14");
+        expect(passed.lastmove).to.equal("14,pass,pass");
         expect(passed.passes).to.deep.equal([2]);
-        expect(passed.komi).to.equal(7);
-        g.move("-7,e5,g7");
-        expect(g.komi).to.equal(-7);
+        expect(passed.komi).to.equal(14);
+        g.move("28,e5,g7");
+        expect(g.komi).to.equal(28);
         expect(g.placed).to.equal(3);
         expect(g.currplayer).to.equal(1);
-        expect(g.lastmove).to.equal("-7,e5,g7");
-        expect(g.results.slice(0, 2)).to.deep.equal([{ type: "komi", value: -7 }, { type: "place", where: "e5" }]);
-        expect(g.getPlayerScore(2)).to.equal(2 - 7);
+        expect(g.lastmove).to.equal("28,e5,g7");
+        expect(g.results.slice(0, 2)).to.deep.equal([{ type: "komi", value: 28 }, { type: "place", where: "e5" }]);
+        expect(g.getPlayerScore(1)).to.equal(1 + 28);
+        expect(g.getPlayerScore(2)).to.equal(2);
         expect(g.getButtons().map((b) => b.move)).to.deep.equal(["pass"]);
         // The move table stays sequential, and reloading keeps the komi.
-        expect(g.getRounds()).to.deep.equal([[{ move: "f6", result: [{ type: "place", where: "f6" }] }, { move: "-7,e5,g7", result: g.results }]]);
+        expect(g.getRounds()).to.deep.equal([[{ move: "f6", result: [{ type: "place", where: "f6" }] }, { move: "28,e5,g7", result: g.results }]]);
         const again = new ThueMorseGoGame(g.serialize());
-        expect(again.komi).to.equal(-7);
-        expect(again.sidebarStatuses().some((s) => JSON.stringify(s).includes("\"-7\""))).to.be.true;
+        expect(again.komi).to.equal(28);
+        expect(again.sidebarStatuses().some((s) => JSON.stringify(s).includes("\"28\""))).to.be.true;
         expect(again.validateMove("f7").valid).to.be.true;
     });
 
-    it("counts the komi at the end of the game and in the chat log", () => {
-        const g = play(small(["reverse-komi"]), ["f6", "3", "pass"]);
+    it("counts the komi for Player 1 at the end of the game and in the chat log", () => {
+        const g = play(small(["reverse-komi"]), ["f6", "14", "pass"]);
         expect(g.gameover).to.be.true;
-        // Player 1 holds the whole board; the komi still has Player 2 on 3.
-        expect(g.getPlayerScore(1)).to.equal(121);
-        expect(g.getPlayerScore(2)).to.equal(3);
+        expect(g.getPlayerScore(1)).to.equal(121 + 14);
+        expect(g.getPlayerScore(2)).to.equal(0);
         expect(g.winner).to.deep.equal([1]);
         assertChatLogParity(g, ["Alice", "Bob"]);
         const log = g.chatLog(["Alice", "Bob"]).flat().join("\n");
-        expect(log).to.contain("Bob set the reverse komi to 3 points.");
+        expect(log).to.contain("Bob gave their opponent a reverse komi of 14 points.");
         expect(log).to.contain("Bob passed.");
-        const h = play(small(["reverse-komi"]), ["f6", "1,e5"]);
-        expect(h.chatLog(["Alice", "Bob"]).flat().join("\n")).to.contain("Bob set the reverse komi to 1 point.");
-        expect(play(small(["reverse-komi"]), ["f6", "-119", "pass"]).getPlayerScore(2)).to.equal(-119);
         // One stone each is level, so the komi decides.
-        expect(play(small(["reverse-komi"]), ["f6", "0,e5", "pass", "pass"]).winner).to.deep.equal([1, 2]);
-        expect(play(small(["reverse-komi"]), ["f6", "1,e5", "pass", "pass"]).winner).to.deep.equal([2]);
-        expect(play(small(["reverse-komi"]), ["f6", "-1,e5", "pass", "pass"]).winner).to.deep.equal([1]);
+        expect(play(small(["reverse-komi"]), ["f6", "14,e5", "pass", "pass"]).winner).to.deep.equal([1]);
+        expect(play(small(), ["f6", "e5", "pass", "pass"]).winner).to.deep.equal([1, 2]);
     });
 
-    it("comes before the handicap declaration and cannot be combined with Kill-All", () => {
+    it("comes before the handicap, both choices staying open to clicks until a placement remains", () => {
         const g = play(small(["reverse-komi", "handicap"]), ["f6"]);
         expect(g.validateMove("").message).to.contain("handicap");
-        const komiOnly = g.validateMove("5");
+        const komiOnly = g.validateMove("14");
         expect(komiOnly.complete).to.equal(-1);
         expect(komiOnly.message).to.contain("handicap");
-        // The komi stones come first; the handicap row appears once the komi is set.
-        const click = (move: string, cell: string): IClickResult => {
-            const [cx, cy] = g.algebraic2coords(cell);
-            return g.handleClick(move, cy, cx);
-        };
-        expect(click("", "b7").move).to.equal("14");
-        expect(click("", "b6").valid).to.be.false;
-        expect(click("5", "b6").move).to.equal("5,1");
-        // With the komi set and the handicap still to declare, a point off the handicap row means nothing.
-        expect(click("5", "b7").valid).to.be.false;
-        const partial = g.clone().move("5", { partial: true }).render().pieces as string;
-        expect(partial).to.contain("n1,").and.to.not.contain("n14");
-        expect(g.validateMove("5,3").complete).to.equal(0);
-        g.move("5,3");
-        expect(g.komi).to.equal(5);
+        // Komi stones in the row above the centre, handicap stones in the row below.
+        const pieces = g.render().pieces as string;
+        expect(pieces).to.contain("n14,").and.to.contain("n42").and.to.contain("n1,").and.to.contain("n3,");
+        expect(click(g, "", "e7").move).to.equal("14");
+        expect(click(g, "", "e5").message).to.contain("Choose the reverse komi first");
+        expect(click(g, "14", "e5").move).to.equal("14,1");
+        expect(click(g, "14", "g5").move).to.equal("14,3");
+        // Either choice can be changed while the stones show; a new handicap drops any placement.
+        expect(click(g, "14,3", "f7").move).to.equal("28,3");
+        expect(click(g, "14,3", "f5").move).to.equal("14,2");
+        // With a handicap of one the stones are gone, so f5 is a point: it replaces the placement.
+        expect(click(g, "14,1,c3", "f5").move).to.equal("14,1,f5");
+        expect(click(g, "14,3", "c3").message).to.contain("no placement left");
+        // A handicap of one leaves a placement, so the board takes over, the stones' cells included.
+        expect(click(g, "14,1", "c3").move).to.equal("14,1,c3");
+        expect(click(g, "14,1", "e7").move).to.equal("14,1,e7");
+        let partial = g.clone().move("14,3", { partial: true }).render();
+        expect(partial.pieces as string).to.contain("n14,").and.to.contain("n1,");
+        const [kx, ky] = g.algebraic2coords("e7");
+        const [hx, hy] = g.algebraic2coords("g5");
+        expect(partial.annotations).to.deep.include({ type: "enter", targets: [{ row: ky, col: kx }] });
+        expect(partial.annotations).to.deep.include({ type: "enter", targets: [{ row: hy, col: hx }] });
+        partial = g.clone().move("14,1", { partial: true }).render();
+        expect(partial.pieces as string).to.not.contain("n14");
+        expect(g.validateMove("14,3").complete).to.equal(0);
+        expect(g.validateMove("14,4").valid).to.be.false;
+        g.move("14,3");
+        expect(g.komi).to.equal(14);
         expect(g.handicap).to.equal(3);
         expect(g.passesOwed).to.equal(1);
         expect(g.placed).to.equal(3);
         expect(g.currplayer).to.equal(1);
         // The declaration serves placement 1 and a forced pass placement 2, as in a plain handicap move.
-        expect(g.lastmove).to.equal("5,3");
+        expect(g.lastmove).to.equal("14,3");
         g.move("e5");
         // Player 2's single placement 4 is served by the handicap.
         expect(g.placed).to.equal(5);
         expect(g.currplayer).to.equal(1);
         expect(g.passesOwed).to.equal(0);
-        expect(g.getPlayerScore(1)).to.equal(121);
-        expect(g.getPlayerScore(2)).to.equal(5);
-        const one = play(small(["reverse-komi", "handicap"]), ["f6", "-2,1,e5"]);
-        expect(one.komi).to.equal(-2);
+        expect(g.getPlayerScore(1)).to.equal(121 + 14);
+        expect(g.getPlayerScore(2)).to.equal(0);
+        const one = play(small(["reverse-komi", "handicap"]), ["f6", "28,1,e5"]);
+        expect(one.komi).to.equal(28);
         expect(one.board.get("e5")).to.equal(2);
         expect(new ThueMorseGoGame(undefined, ["kill-all", "reverse-komi"]).variants).to.deep.equal(["reverse-komi"]);
         expect(new ThueMorseGoGame(undefined, ["reverse-komi", "kill-all"]).variants).to.deep.equal(["kill-all"]);

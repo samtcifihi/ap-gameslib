@@ -233,12 +233,10 @@
         "killallgo_handicap_other": "{{player}} set the handicap to {{count}} stones.",
         "mchess": "{{player}} has \"called the clock.\" If no capture is made in the next seven turns, the game will end and be scored.",
         "renju": "{{player}} has declared {{count}} tentative fifths.",
-        "thuemorsego_passes_one": "{{player}} set the handicap to one pass.",
-        "thuemorsego_passes_other": "{{player}} set the handicap to {{count}} passes.",
         "thuemorsego_stones_one": "{{player}} set the handicap to one stone.",
         "thuemorsego_stones_other": "{{player}} set the handicap to {{count}} stones.",
-        "thuemorsego_komi_one": "{{player}} set the reverse komi to {{count}} point.",
-        "thuemorsego_komi_other": "{{player}} set the reverse komi to {{count}} points."
+        "thuemorsego_komi_one": "{{player}} gave their opponent a reverse komi of {{count}} point.",
+        "thuemorsego_komi_other": "{{player}} gave their opponent a reverse komi of {{count}} points."
     },
     "DELTA_SCORE_GAIN_one": "{{player}} gained {{delta}} point.",
     "DELTA_SCORE_GAIN_other": "{{player}} gained {{delta}} points.",
@@ -468,7 +466,7 @@
         "tablero": "{{player}} bumped!",
         "tiebreaker": "{{player}} passed, winning the tiebreaker.",
         "agofmars_noObjSwap": "{{player}} did not swap objectives.",
-        "thuemorsego_handicap": "{{player}} served a handicap pass."
+        "thuemorsego_handicap": "{{player}} gave a handicap stone by passing."
     },
     "PIE": {
         "deckfish": "{{player}} moves second.",

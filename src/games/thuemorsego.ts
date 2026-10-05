@@ -73,11 +73,14 @@ interface IRegion {
     owner?: Stone;
 }
 
-/** One numbered stone of the on-board handicap picker. */
+/** One numbered stone of an on-board picker. */
 interface IPickerButton {
     cell: string;
     value: number;
 }
+
+/** What a click does: the move it leaves, or the key of the message saying why it does nothing. */
+type IClickOutcome = { move: string } | { error: "NOT_A_NUMBERED_STONE" | "KOMI_FIRST" | "DECLARE_FIRST" | "NO_PLACEMENT_LEFT" };
 
 /**
  * A move in progress: the board and bookkeeping as the placements of one move are applied, on a
@@ -122,15 +125,12 @@ const TRACK_TINT = 0.2;
  */
 const MARKER_BORDER = "#000";
 const REPETITIONS_FOR_DRAW = 5;
-/** Kill-All offers this many handicap stones, in two rows; the other pickers one row of nine. */
-const PICKER_MAX = 18;
-const PICKER_WIDTH = 9;
-/** The reverse komi picker offers multiples of this many points, either way. */
+/** The reverse komi comes in multiples of this many points. */
 const KOMI_STEP = 14;
 /** The legend keys of the tracker's glyphs: the small stones s1/s2 and the digit markers m1d0 to m2df. */
 const TRACK_KEY_RE = /^(s[12]|m[12]d[0-9a-f])$/;
-/** A reverse komi token: a whole number, possibly negative. */
-const KOMI_RE = /^-?\d+$/;
+/** A reverse komi or handicap token: a whole number. */
+const KOMI_RE = /^\d+$/;
 /** Opacity of a stone marked dead. */
 const DEAD_OPACITY = 0.4;
 /** Diameter of a territory dot as a fraction of a cell, the size of the renderer's own dots. */
@@ -433,9 +433,32 @@ export class ThueMorseGoGame extends GameBase {
         return this.variants.includes("reverse-komi");
     }
 
-    /** Reverse komi: the most points Player 2 may give either way, two short of the board. */
+    /** A fortieth of the board's points, rounded away from nine: the handicap stones offered. */
+    private get handicapLimit(): number {
+        const base = this.points / 40;
+        return base <= 9 ? Math.floor(base) : Math.ceil(base);
+    }
+
+    /** The largest handicap: the limit, or twice that for Kill-All's cheaper Attacker stones. */
+    private get maxHandicap(): number {
+        return this.killAll ? 2 * this.handicapLimit : this.handicapLimit;
+    }
+
+    /** Reverse komi: multiples of 14 points given to Player 1, up to 14 times the handicap limit. */
     private get maxKomi(): number {
-        return this.points - 2;
+        return KOMI_STEP * this.handicapLimit;
+    }
+
+    private komiValues(): number[] {
+        const values: number[] = [];
+        for (let value = KOMI_STEP; value <= this.maxKomi; value += KOMI_STEP) {
+            values.push(value);
+        }
+        return values;
+    }
+
+    private isKomi(n: number): boolean {
+        return n >= KOMI_STEP && n <= this.maxKomi && n % KOMI_STEP === 0;
     }
 
     /** Checked weak eyes: only the last placement of a move clears the board. */
@@ -572,9 +595,12 @@ export class ThueMorseGoGame extends GameBase {
     // Turn structure
     // -----------------------------------------------------------------------
 
-    /** Whether this is Player 2's first move of the standard game, which follows placement 0. */
+    /**
+     * Whether this is Player 2's first move of the standard game, which follows placement 0. The
+     * stack says so even while a partial move has already counted its declaration.
+     */
     private firstMoveOfPlayer2(): boolean {
-        return !this.killAll && this.phase === "play" && this.placed === 1 && this.currplayer === 2;
+        return !this.killAll && this.phase === "play" && this.stack.length === 2 && this.currplayer === 2;
     }
 
     /** Standard handicap: whether this is Player 2's first move, in which the handicap is set. */
@@ -988,7 +1014,7 @@ export class ThueMorseGoGame extends GameBase {
         const moves: string[] = [];
         switch (this.phase) {
             case "hand-n":
-                for (let n = 1; n <= this.maxSetupStones(); n++) {
+                for (let n = 1; n <= this.maxHandicap; n++) {
                     moves.push(n.toString());
                 }
                 break;
@@ -1005,8 +1031,8 @@ export class ThueMorseGoGame extends GameBase {
                 }
                 break;
             case "play":
-                // The komi may be any whole number within range; the list shows the moves with 0.
-                moves.push(...this.playMoves().map((move) => this.komiPending() ? `0,${move}` : move));
+                // The komi may be any of the numbered values; the list shows the moves with the first.
+                moves.push(...this.playMoves().map((move) => this.komiPending() ? `${KOMI_STEP},${move}` : move));
                 break;
         }
         return moves;
@@ -1018,7 +1044,7 @@ export class ThueMorseGoGame extends GameBase {
         const base = this.positionCounts();
         const moves: string[] = [];
         if (this.declaring() && this.handicap === undefined) {
-            for (let n = 1; n <= this.points; n++) {
+            for (let n = 1; n <= this.maxHandicap; n++) {
                 const forced = Math.min(n, length);
                 if (forced === length) {
                     moves.push(n.toString());
@@ -1049,14 +1075,14 @@ export class ThueMorseGoGame extends GameBase {
             const moves = this.moves();
             return moves[Math.floor(Math.random() * moves.length)];
         }
-        // A modest reverse komi either way, rather than one from the whole range.
-        const komi = this.komiPending() ? [(Math.floor(Math.random() * 19) - 9).toString()] : [];
+        const values = this.komiValues();
+        const komi = this.komiPending() ? [values[Math.floor(Math.random() * values.length)].toString()] : [];
         const colour = this.colourOfSeat(this.currplayer)!;
         const length = this.moveLength(this.placed);
         let forced: number;
         let prefix: string[] = [];
         if (this.declaring() && this.handicap === undefined) {
-            const n = 1 + Math.floor(Math.random() * Math.min(9, this.points));
+            const n = 1 + Math.floor(Math.random() * this.maxHandicap);
             forced = Math.min(n, length);
             prefix = [n.toString()];
         } else {
@@ -1073,64 +1099,91 @@ export class ThueMorseGoGame extends GameBase {
     // -----------------------------------------------------------------------
 
     /**
-     * Numbered stones in a row across the board: `values` left to right from four columns left of
-     * the centre, `offset` rows below the centre point. A cell that already holds a stone shows
-     * that stone instead, but still answers to a click with its value, since clicking the
-     * opponent's stone means nothing else; larger values are entered manually.
+     * Numbered stones in a row across the board: `values` left to right, centred on the centre
+     * column, `offset` rows below the centre point. A cell that already holds a stone shows that
+     * stone instead, but still answers to a click with its value, since clicking the opponent's
+     * stone means nothing else.
      */
     private pickerRow(values: number[], offset: number): IPickerButton[] {
         const centre = Math.floor(this.boardSize / 2);
-        return values.map((value, i) => ({ cell: this.coords2algebraic(centre - 4 + i, centre + offset), value }));
+        const left = centre - Math.floor(values.length / 2);
+        return values.map((value, i) => ({ cell: this.coords2algebraic(left + i, centre + offset), value }));
+    }
+
+    private range(max: number): number[] {
+        const values: number[] = [];
+        for (let value = 1; value <= max; value++) {
+            values.push(value);
+        }
+        return values;
+    }
+
+    /** Kill-All handicap: the odd values in a row just above the centre, the even ones just below. */
+    private killAllPicker(): IPickerButton[] {
+        const values = this.range(this.maxHandicap);
+        return [
+            ...this.pickerRow(values.filter((value) => value % 2 === 1), -1),
+            ...this.pickerRow(values.filter((value) => value % 2 === 0), 1),
+        ];
+    }
+
+    /** Standard handicap: every value up to the limit in one row. */
+    private handicapPicker(offset: number): IPickerButton[] {
+        return this.pickerRow(this.range(this.maxHandicap), offset);
+    }
+
+    /** Reverse komi: every multiple of 14 up to the limit in one row. */
+    private komiPicker(offset: number): IPickerButton[] {
+        return this.pickerRow(this.komiValues(), offset);
+    }
+
+    /** Rows of the first-move pickers: the komi above the handicap when both are offered. */
+    private pickerOffsets(): { komi: number; handicap: number } {
+        const both = this.reverseKomi && this.handicapVariant;
+        return { komi: both ? -1 : 0, handicap: both ? 1 : 0 };
     }
 
     /**
-     * Kill-All handicap: the values 1 to 18 in two rows of nine, the odd values just above the
-     * centre point and the even values just below it, so each column holds a consecutive pair.
+     * The picker the current state shows, if any, and the cells of the values chosen so far. On
+     * Player 2's first move the komi and handicap stones stay until every choice is made, and
+     * then as long as no placement remains, so that a choice can be changed by clicking.
      */
-    private killAllPicker(): IPickerButton[] {
-        const odd: number[] = [];
-        const even: number[] = [];
-        for (let value = 1; value <= Math.min(PICKER_MAX, this.maxSetupStones()); value++) {
-            (value % 2 === 1 ? odd : even).push(value);
-        }
-        return [...this.pickerRow(odd, -1), ...this.pickerRow(even, 1)];
-    }
-
-    /** Standard handicap: the values 1 to 9 across the centre row. */
-    private handicapPicker(): IPickerButton[] {
-        const values: number[] = [];
-        for (let value = 1; value <= PICKER_WIDTH; value++) {
-            values.push(value);
-        }
-        return this.pickerRow(values, 0);
-    }
-
-    /** Reverse komi: multiples of 14 within range, positive just above the centre and negative just below. */
-    private komiPicker(): IPickerButton[] {
-        const values: number[] = [];
-        for (let k = 1; k <= PICKER_WIDTH && k * KOMI_STEP <= this.maxKomi; k++) {
-            values.push(k * KOMI_STEP);
-        }
-        return [...this.pickerRow(values, -1), ...this.pickerRow(values.map((value) => -value), 1)];
-    }
-
-    /** The picker the current state shows, if any, and the value chosen so far. */
-    private picker(): { buttons: IPickerButton[]; chosen?: number } | undefined {
+    private picker(): { buttons: IPickerButton[]; chosen: string[] } | undefined {
         if (this.gameover) {
             return undefined;
         }
         if (this.phase === "hand-n") {
-            return { buttons: this.killAllPicker(), chosen: this.handicap };
+            const buttons = this.killAllPicker();
+            return { buttons, chosen: buttons.filter((btn) => btn.value === this.handicap).map((btn) => btn.cell) };
         }
-        // The komi comes first; once chosen, the board (or the handicap picker) takes its place.
-        if (this.komiPending()) {
-            return { buttons: this.komiPicker() };
+        if (!this.firstMoveOfPlayer2() || (!this.reverseKomi && !this.handicapVariant)) {
+            return undefined;
         }
-        // A handicap of one pass leaves a placement to make, so the board is shown instead.
-        if (this.phase === "play" && this.declaring() && this.handicap !== 1) {
-            return { buttons: this.handicapPicker(), chosen: this.handicap };
+        const chosenAll = (!this.reverseKomi || this.komi !== undefined) && (!this.handicapVariant || this.handicap !== undefined);
+        if (chosenAll && (!this.handicapVariant || this.handicap === 1)) {
+            // A placement remains, so the board takes over.
+            return undefined;
         }
-        return undefined;
+        const offsets = this.pickerOffsets();
+        const buttons: IPickerButton[] = [];
+        const chosen: string[] = [];
+        if (this.reverseKomi) {
+            for (const btn of this.komiPicker(offsets.komi)) {
+                buttons.push(btn);
+                if (btn.value === this.komi) {
+                    chosen.push(btn.cell);
+                }
+            }
+        }
+        if (this.handicapVariant) {
+            for (const btn of this.handicapPicker(offsets.handicap)) {
+                buttons.push(btn);
+                if (btn.value === this.handicap) {
+                    chosen.push(btn.cell);
+                }
+            }
+        }
+        return { buttons, chosen };
     }
 
     /**
@@ -1205,13 +1258,11 @@ export class ThueMorseGoGame extends GameBase {
                 return result;
             }
             const cell = this.coords2algebraic(col, row);
-            const normalized = move.toLowerCase().replace(/\s+/g, "");
-            const newmove = this.clickCell(normalized, cell);
-            if (newmove === undefined) {
-                const komiFirst = this.komiPending() && !KOMI_RE.test(this.parseTokens(normalized)[0] ?? "");
-                const key = komiFirst ? "KOMI_FIRST" : "NOT_A_NUMBERED_STONE";
-                return { move, valid: false, message: i18next.t(`apgames:validation.thuemorsego.${key}`, { where: cell }) };
+            const outcome = this.clickCell(move.toLowerCase().replace(/\s+/g, ""), cell);
+            if ("error" in outcome) {
+                return { move, valid: false, message: i18next.t(`apgames:validation.thuemorsego.${outcome.error}`, { where: cell }) };
             }
+            const newmove = outcome.move;
             const result = this.validateMove(newmove) as IClickResult;
             result.move = result.valid ? newmove : move;
             return result;
@@ -1228,8 +1279,8 @@ export class ThueMorseGoGame extends GameBase {
         return move.length === 0 ? [] : move.split(",");
     }
 
-    /** Extend `move` with a click on `cell`, or undefined when the click means nothing now. */
-    private clickCell(move: string, cell: string): string | undefined {
+    /** Extend `move` with a click on `cell`, or say why the click means nothing now. */
+    private clickCell(move: string, cell: string): IClickOutcome {
         const valueAt = (buttons: IPickerButton[]): string | undefined => buttons.find((btn) => btn.cell === cell)?.value.toString();
         const toggle = (list: string): string => {
             const cells = this.parseTokens(list);
@@ -1237,48 +1288,78 @@ export class ThueMorseGoGame extends GameBase {
             return next.join(",");
         };
         switch (this.phase) {
-            case "hand-n":
-                return valueAt(this.killAllPicker());
+            case "hand-n": {
+                const value = valueAt(this.killAllPicker());
+                return value === undefined ? { error: "NOT_A_NUMBERED_STONE" } : { move: value };
+            }
             case "alt-place":
                 if (move.startsWith("attacker")) {
-                    return `attacker:${toggle(move.substring("attacker:".length))}`;
+                    return { move: `attacker:${toggle(move.substring("attacker:".length))}` };
                 }
-                return cell;
+                return { move: cell };
             case "play": {
-                let tokens = this.parseTokens(move);
-                const prefix: string[] = [];
-                if (this.komiPending()) {
-                    if (tokens.length === 0 || !KOMI_RE.test(tokens[0])) {
-                        // The komi comes first: a numbered stone sets it.
-                        return valueAt(this.komiPicker());
-                    }
-                    // The komi stays in front of whatever the click changes.
-                    prefix.push(tokens[0]);
-                    tokens = tokens.slice(1);
+                const tokens = this.parseTokens(move);
+                if (this.komiPending() || (this.declaring() && this.handicap === undefined)) {
+                    return this.clickFirstMove(tokens, cell);
                 }
-                const rest = this.clickPlacements(tokens, cell, () => valueAt(this.handicapPicker()));
-                if (rest === undefined) {
-                    return undefined;
-                }
-                return [...prefix, ...(rest.length > 0 ? [rest] : [])].join(",");
+                return { move: this.clickPlacements(tokens, cell, this.moveLength(this.placed) - this.forcedPasses()) };
             }
         }
     }
 
-    /** Extend the placement tokens of a move in progress with a click on `cell`. */
-    private clickPlacements(tokens: string[], cell: string, pickerValue: () => string | undefined): string | undefined {
+    /**
+     * Player 2's first move with a reverse komi or handicap to choose: the move is the komi, then
+     * the handicap, then any placements. A numbered stone sets or changes its value, the komi
+     * first; a changed handicap drops the placements, as it decides how many there are. Once
+     * every choice is made and a placement remains, the stones give way to the board.
+     */
+    private clickFirstMove(tokens: string[], cell: string): IClickOutcome {
+        const valueAt = (buttons: IPickerButton[]): string | undefined => buttons.find((btn) => btn.cell === cell)?.value.toString();
+        const wantKomi = this.reverseKomi;
+        const wantHandicap = this.handicapVariant;
         const length = this.moveLength(this.placed);
-        if (this.declaring() && this.handicap === undefined) {
-            if (tokens.length === 0) {
-                return pickerValue();
-            }
-            if (tokens[0] === "1" && length > 1) {
-                // The second placement of the move follows a handicap of one pass.
-                return tokens.length > 1 && tokens[1] === cell ? "1" : `1,${cell}`;
-            }
-            return pickerValue();
+        let i = 0;
+        let komi: string | undefined;
+        if (wantKomi && tokens[i] !== undefined && KOMI_RE.test(tokens[i])) {
+            komi = tokens[i++];
         }
-        const free = length - this.forcedPasses();
+        let handicap: string | undefined;
+        if (wantHandicap && (!wantKomi || komi !== undefined) && tokens[i] !== undefined && KOMI_RE.test(tokens[i])) {
+            handicap = tokens[i++];
+        }
+        let placements = tokens.slice(i);
+        const chosenAll = (!wantKomi || komi !== undefined) && (!wantHandicap || handicap !== undefined);
+        const stonesShown = !(chosenAll && (!wantHandicap || handicap === "1"));
+        const offsets = this.pickerOffsets();
+        const komiHit = stonesShown && wantKomi ? valueAt(this.komiPicker(offsets.komi)) : undefined;
+        const handicapHit = stonesShown && wantHandicap ? valueAt(this.handicapPicker(offsets.handicap)) : undefined;
+        if (komiHit !== undefined) {
+            komi = komiHit;
+        } else if (handicapHit !== undefined) {
+            if (wantKomi && komi === undefined) {
+                return { error: "KOMI_FIRST" };
+            }
+            handicap = handicapHit;
+            placements = [];
+        } else {
+            if (wantKomi && komi === undefined) {
+                return { error: "KOMI_FIRST" };
+            }
+            if (wantHandicap && handicap === undefined) {
+                return { error: "DECLARE_FIRST" };
+            }
+            const forced = handicap === undefined ? 0 : Math.min(parseInt(handicap, 10), length);
+            if (length - forced === 0) {
+                return { error: "NO_PLACEMENT_LEFT" };
+            }
+            placements = this.parseTokens(this.clickPlacements(placements, cell, length - forced));
+        }
+        const parts = [komi, handicap, ...placements].filter((part): part is string => part !== undefined);
+        return { move: parts.join(",") };
+    }
+
+    /** Extend the placement tokens of a move in progress with a click on `cell`, `free` placements being the player's. */
+    private clickPlacements(tokens: string[], cell: string, free: number): string {
         const { placements, marked } = this.splitMarks(tokens);
         if (this.board.has(cell) && this.passesWholeMove(placements)) {
             // A stone clicked while the move passes every placement: its string is marked
@@ -1300,9 +1381,12 @@ export class ThueMorseGoGame extends GameBase {
         if (placements.length < free) {
             return [...placements, cell].join(",");
         }
-            return [...placements.slice(0, -1), cell].join(",");
+        return [...placements.slice(0, -1), cell].join(",");
     }
 
+    // -----------------------------------------------------------------------
+    // Validation
+    // -----------------------------------------------------------------------
     // -----------------------------------------------------------------------
     // Validation
     // -----------------------------------------------------------------------
@@ -1339,7 +1423,7 @@ export class ThueMorseGoGame extends GameBase {
     }
 
     private validateHandicapStones(m: string, result: IValidationResult): IValidationResult {
-        const max = this.maxSetupStones();
+        const max = this.maxHandicap;
         if (m.length === 0) {
             return this.ok(result, -1, i18next.t("apgames:validation.thuemorsego.INSTRUCTIONS_HANDICAP", { max }));
         }
@@ -1432,13 +1516,10 @@ export class ThueMorseGoGame extends GameBase {
             return this.ok(result, -1, i18next.t(`apgames:validation.thuemorsego.${key}`, { max }));
         }
         const [first, ...rest] = m.split(",");
-        if (!KOMI_RE.test(first)) {
+        if (!KOMI_RE.test(first) || !this.isKomi(parseInt(first, 10))) {
             return this.fail(result, i18next.t("apgames:validation.thuemorsego.KOMI_INVALID", { max }));
         }
-        const n = parseInt(first, 10) || 0;
-        if (n < -max || n > max) {
-            return this.fail(result, i18next.t("apgames:validation.thuemorsego.KOMI_RANGE", { max }));
-        }
+        const n = parseInt(first, 10);
         if (rest.length === 0) {
             const key = declaring ? "KOMI_THEN_DECLARE" : "KOMI_THEN_PLACE";
             return this.ok(result, declaring ? -1 : 0, i18next.t(`apgames:validation.thuemorsego.${key}`, { count: n }), true);
@@ -1528,7 +1609,7 @@ export class ThueMorseGoGame extends GameBase {
     }
 
     private validateDeclaration(m: string, result: IValidationResult, colour: Stone, length: number): IValidationResult {
-        const max = this.points;
+        const max = this.maxHandicap;
         if (m.length === 0) {
             return this.ok(result, -1, i18next.t("apgames:validation.thuemorsego.INSTRUCTIONS_DECLARE", { max }));
         }
@@ -1697,7 +1778,7 @@ export class ThueMorseGoGame extends GameBase {
         if (this.komiPending()) {
             // The reverse komi leads Player 2's first move and costs no placement.
             const [first, ...rest] = m.split(",");
-            const n = parseInt(first, 10) || 0;
+            const n = parseInt(first, 10);
             this.komi = n;
             komiResult = { type: "komi", value: n };
             prefix.push(n.toString());
@@ -2034,13 +2115,13 @@ export class ThueMorseGoGame extends GameBase {
         return score;
     }
 
-    /** Tromp-Taylor area, with the strings marked dead removed, plus the button. */
+    /** Tromp-Taylor area, with the strings marked dead removed, plus the button, plus Player 1's reverse komi. */
     public getPlayerScore(player: playerid): number {
         const colour = this.colourOfSeat(player);
         if (colour === undefined) {
             return 0;
         }
-        const komi = player === 2 ? this.komi ?? 0 : 0;
+        const komi = player === 1 ? this.komi ?? 0 : 0;
         return this.area(colour, this.effectiveBoard()) + (this.button === player ? this.buttonValue : 0) + komi;
     }
 
@@ -2106,10 +2187,9 @@ export class ThueMorseGoGame extends GameBase {
      */
     private pickerOverlay(legend: ILegend, swap: boolean): { overlay: Map<string, string>; chosen: string[] } {
         const overlay = new Map<string, string>();
-        const chosen: string[] = [];
         const picker = this.picker();
         if (picker === undefined) {
-            return { overlay, chosen };
+            return { overlay, chosen: [] };
         }
         const fill = this.killAll ? this.paletteOfColour(2, swap) : UNDECIDED_COLOUR;
         for (const btn of picker.buttons) {
@@ -2117,14 +2197,11 @@ export class ThueMorseGoGame extends GameBase {
                 // The stone shows; the point still answers to a click with this value.
                 continue;
             }
-            const key = btn.value < 0 ? `neg${-btn.value}` : `n${btn.value}`;
+            const key = `n${btn.value}`;
             legend[key] = [{ name: "piece", paint: { fill } }, { text: btn.value.toString(), scale: 0.75, rotate: null }];
             overlay.set(btn.cell, key);
-            if (btn.value === picker.chosen) {
-                chosen.push(btn.cell);
-            }
         }
-        return { overlay, chosen };
+        return { overlay, chosen: [...picker.chosen] };
     }
 
     /**
@@ -2516,11 +2593,7 @@ export class ThueMorseGoGame extends GameBase {
                 }
                 return true;
             case "declare":
-                if (this.killAll) {
-                    this.pushSeatChatLine(lines, ctx.defaultSeat, "apresults:DECLARE.thuemorsego_stones", { count: r.count! });
-                } else {
-                    this.pushSeatChatLine(lines, ctx.defaultSeat, "apresults:DECLARE.thuemorsego_passes", { count: r.count! });
-                }
+                this.pushSeatChatLine(lines, ctx.defaultSeat, "apresults:DECLARE.thuemorsego_stones", { count: r.count! });
                 return true;
             case "claim":
                 if (r.how === "attacker") {
