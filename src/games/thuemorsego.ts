@@ -126,7 +126,7 @@ const ATTACKER_SLOT = 3;
 const DEFENDER_SLOT = 4;
 const CELL_RE = /^[a-z]+\d+$/;
 const TRACK_ROWS = 16;
-const MIN_TRACK_DIGITS = 3;
+const TRACK_DIGITS = 3;
 /** sqrt(1/3): the small tracker glyphs have about a third of the area of the digit markers. */
 const SMALL_SCALE = 0.57735;
 const TRACK_TINT = 0.2;
@@ -135,8 +135,10 @@ const BORDER_SLOT_OFFSET = 4;
 const REPETITIONS_FOR_DRAW = 5;
 /** The reverse komi comes in multiples of this many points. */
 const KOMI_STEP = 14;
-/** The legend keys of the tracker's glyphs: the small stones s1/s2 and the digit markers m1d0 to m2df. */
-const TRACK_KEY_RE = /^(s[12]|m[12]d[0-9a-f])$/;
+/** The legend keys of the tracker's glyphs: the small stones s1/s2 (s0 when grey), and the digit markers m1d0 to m2df. */
+const TRACK_KEY_RE = /^(s[012]|m[12]d[0-9a-f])$/;
+/** The last placement the digit tracker's three columns can show; past it the tracker goes grey. */
+const MAX_TRACK_INDEX = 0xfff;
 /**
  * A declaration token of Player 2's first move: a whole number, tagged `p` for points of reverse
  * komi or `s` for handicap stones, or untagged to fill the komi and then the handicap in turn.
@@ -295,7 +297,7 @@ export class ThueMorseGoGame extends GameBase {
         ],
         categories: ["goal>area", "goal>cripple", "mechanic>place", "mechanic>capture", "mechanic>enclose", "board>shape>rect", "board>connect>rect", "board>connect>snub", "components>simple>1per"],
         flags: ["experimental", "scores", "custom-buttons", "no-moves", "custom-randomization"],
-        displays: [{ uid: "digits" }, { uid: "digits-down" }, { uid: "hide-territory" }, { uid: "palette-borders" }],
+        displays: [{ uid: "tms-tracker" }, { uid: "digits-down" }, { uid: "hide-territory" }, { uid: "palette-borders" }],
         // Kill-All games draw their roles from slots 3 and 4, so that the Attacker takes the first
         // colour as in Kill-All Go by default, and a player who prefers the Defender in the first
         // colour can set those two slots the other way round.
@@ -2434,15 +2436,17 @@ export class ThueMorseGoGame extends GameBase {
      * The rolling display shows one column of the next 16 placements instead, marking those of the
      * next move. The tint behind the columns is the colour of the next placement. Blank columns
      * separate the columns and keep the last one clear of the board's row labels. A repeating
-     * protocol needs no tracker.
+     * protocol needs no tracker. The digit tracker has three columns; once the index needs more,
+     * it shows only grey stones, with no markers, tint or border, rather than digits it cannot show.
      */
     private trackArea(legend: ILegend, downward: boolean, rolling: boolean, paletteBorders: boolean): AreaTrack | undefined {
         if (this.period > 0) {
             return undefined;
         }
         const next = this.placed;
+        const overflow = !rolling && next > MAX_TRACK_INDEX;
         const nextFill = this.paletteOfColour(this.colourAt(next));
-        const tint: Glyph = { name: "piece-square", paint: { fill: nextFill }, opacity: TRACK_TINT };
+        const tint: Glyph = { name: "piece-square", paint: { fill: overflow ? UNDECIDED_COLOUR : nextFill }, opacity: TRACK_TINT };
         // Keys that differ only in case would be confused by a page in quirks mode, where id lookups
         // ignore case, so the small glyphs are s1/s2 and the markers m1d0 to m2df, by their digit.
         const small = (colour: Stone): string => {
@@ -2475,8 +2479,14 @@ export class ThueMorseGoGame extends GameBase {
                 column.push(i < length ? marker(colour, (next + i) % TRACK_ROWS) : small(colour));
             }
             columns.push(column);
+        } else if (overflow) {
+            const key = "s0";
+            legend[key] = [tint, { name: "piece", paint: { fill: UNDECIDED_COLOUR }, scale: SMALL_SCALE }];
+            for (let d = 0; d < TRACK_DIGITS; d++) {
+                columns.push(Array<string>(TRACK_ROWS).fill(key));
+            }
         } else {
-            const digits = Math.max(MIN_TRACK_DIGITS, next.toString(16).length);
+            const digits = TRACK_DIGITS;
             for (let d = 0; d < digits; d++) {
                 const unit = Math.pow(16, digits - 1 - d);
                 const above = Math.floor(next / (unit * 16));
@@ -2510,8 +2520,8 @@ export class ThueMorseGoGame extends GameBase {
             // Multi-character keys need the comma-delimited form.
             rows.push(cells.join(","));
         }
-        // A thick border around the columns in the colour of the next placement; the line points
-        // of a squares board are cell corners.
+        // A thick border around the columns in the colour of the next placement, unless the tracker
+        // has gone grey; the line points of a squares board are cell corners.
         const corners: RowCol[] = [
             { row: 1, col: 1 },
             { row: 1, col: width - 1 },
@@ -2532,7 +2542,7 @@ export class ThueMorseGoGame extends GameBase {
                 width,
                 height,
                 blocked: blocked as [RowCol, ...RowCol[]],
-                markers: border,
+                ...(overflow ? {} : { markers: border }),
             },
             pieces: rows.join("\n"),
         };
@@ -2553,7 +2563,7 @@ export class ThueMorseGoGame extends GameBase {
 
     public render(opts?: IRenderOpts): APRenderRep {
         const downward = this.hasDisplay(opts, "digits-down");
-        const rolling = !this.hasDisplay(opts, "digits");
+        const rolling = !this.hasDisplay(opts, "tms-tracker");
         const hideDots = this.hasDisplay(opts, "hide-territory");
         const paletteBorders = this.hasDisplay(opts, "palette-borders");
         const legend: ILegend = {
@@ -2634,9 +2644,11 @@ export class ThueMorseGoGame extends GameBase {
 
     public sidebarStatuses(): IStatus[] {
         const statuses: IStatus[] = [];
+        // Every placement of the next move, so that a two-placement move shows both indices.
+        const placements = Array.from({ length: this.moveLength(this.placed) }, (_, i) => (this.placed + i).toString(16));
         statuses.push({
             key: this.neutralAreaLabel("apgames:status.thuemorsego.NEXT_PLACEMENT"),
-            value: [this.placed.toString(16)],
+            value: [placements.join(", ")],
         });
         if (this.killAll) {
             const undecided = this.neutralAreaLabel("apgames:status.thuemorsego.UNDECIDED");

@@ -620,7 +620,7 @@ describe("Thue-Morse Go: Kill-All", () => {
         const h = play(small(), ["f6"]);
         expect(h.getPlayerColour(1)).to.equal(1);
         expect((layers(h, "B")[0] as { paint: { fill: number } }).paint.fill).to.equal(2);
-        expect(ThueMorseGoGame.gameinfo.displays!.map((d) => d.uid)).to.deep.equal(["digits", "digits-down", "hide-territory", "palette-borders"]);
+        expect(ThueMorseGoGame.gameinfo.displays!.map((d) => d.uid)).to.deep.equal(["tms-tracker", "digits-down", "hide-territory", "palette-borders"]);
     });
 });
 
@@ -628,7 +628,7 @@ describe("Thue-Morse Go: tracker and sidebar", () => {
     it("draws the tracker of the mockup for placement 0x123 under the digit display", () => {
         const g = small();
         g.placed = 0x123;
-        const digits = { altDisplays: ["digits"] };
+        const digits = { altDisplays: ["tms-tracker"] };
         const track = g.render(digits).areas![0] as AreaTrack;
         expect(track.type).to.equal("track");
         expect(track.position).to.equal("left");
@@ -659,13 +659,30 @@ describe("Thue-Morse Go: tracker and sidebar", () => {
         expect(layers(g, "s1")[0]).to.deep.equal({ name: "piece-square", paint: { fill: 2 }, opacity: 0.2 });
     });
 
-    it("can run the digits downward and grows with the index", () => {
+    it("can run the digits downward, and goes grey past placement fff", () => {
         const g = small();
         g.placed = 0x123;
-        const track = g.render({ altDisplays: ["digits", "digits-down"] }).areas![0] as AreaTrack;
+        const track = g.render({ altDisplays: ["tms-tracker", "digits-down"] }).areas![0] as AreaTrack;
         expect(track.pieces).to.equal(TRACK_0X123.split("\n").reverse().join("\n"));
+        // The last index the three columns can show still has markers and a border.
+        g.placed = 0xfff;
+        const last = g.render({ altDisplays: ["tms-tracker"] }).areas![0] as AreaTrack;
+        expect(last.board.width).to.equal(7);
+        expect(last.board.markers).to.have.lengthOf(4);
+        expect(last.pieces).to.contain("m1df");
+        // Past it the tracker keeps its shape but shows only grey stones: no markers, tint or border.
         g.placed = 0x1000;
-        expect((g.render({ altDisplays: ["digits"] }).areas![0] as AreaTrack).board.width).to.equal(9);
+        const grey = g.render({ altDisplays: ["tms-tracker"] }).areas![0] as AreaTrack;
+        expect(grey.board.width).to.equal(7);
+        expect(grey.board.markers).to.be.undefined;
+        expect(grey.pieces!.split("\n").slice(1, -1)).to.deep.equal(Array<string>(16).fill("-,s0,-,s0,-,s0,-"));
+        expect(layers(g, "s0", { altDisplays: ["tms-tracker"] })).to.deep.equal([
+            { name: "piece-square", paint: { fill: "#999999" }, opacity: 0.2 },
+            { name: "piece", paint: { fill: "#999999" }, scale: 0.57735 },
+        ]);
+        // The rolling tracker has no such limit.
+        expect((g.render().areas![0] as AreaTrack).board.markers).to.have.lengthOf(4);
+        expect((g.render().areas![0] as AreaTrack).pieces).to.contain("m2d0");
     });
 
     it("rolls a single column of the next 16 placements by default", () => {
@@ -700,14 +717,19 @@ describe("Thue-Morse Go: tracker and sidebar", () => {
         expect(small().render().areas).to.have.lengthOf(1);
     });
 
-    it("reports the next placement in hexadecimal without a prefix", () => {
+    it("reports the placements of the next move in hexadecimal without a prefix", () => {
         const g = small();
         expect(g.sidebarStatuses()[0].value).to.deep.equal(["0"]);
         expect(JSON.stringify(g.sidebarStatuses()[0].key)).to.contain("NEXT_PLACEMENT");
-        play(g, ["f6", "e5,g7"]);
+        // A two-placement move lists both of its placements.
+        play(g, ["f6"]);
+        expect(g.sidebarStatuses()[0].value).to.deep.equal(["1, 2"]);
+        play(g, ["e5,g7"]);
         expect(g.sidebarStatuses()[0].value).to.deep.equal(["3"]);
         g.placed = 0x1a;
         expect(g.sidebarStatuses()[0].value).to.deep.equal(["1a"]);
+        g.placed = 0x1d;
+        expect(g.sidebarStatuses()[0].value).to.deep.equal(["1d, 1e"]);
         // The coming placements are no longer listed; the tracker shows them.
         expect(g.sidebarStatuses()).to.have.lengthOf(1);
     });
@@ -931,7 +953,10 @@ describe("Thue-Morse Go: territory and dead strings", () => {
         expect(g.sidebarStatuses().some((s) => JSON.stringify(s.value).includes("MARKING_LOCKED"))).to.be.true;
         expect(g.validateMove("pass,pass,-j11").valid).to.be.false;
         expect(g.validateMove("pass,-k10").valid).to.be.false;
-        expect(click(g, "pass", "j11").valid).to.be.false;
+        const lockedClick = click(g, "pass", "j11");
+        expect(lockedClick.valid).to.be.false;
+        expect(lockedClick.message).to.contain("the game resumed");
+        expect(lockedClick.message).to.contain("Capture any dead stones");
         expect(g.getButtons()[0].move).to.equal("pass");
         const plain = g.validateMove("pass");
         expect(plain.complete).to.equal(1);
