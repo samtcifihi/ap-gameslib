@@ -24,7 +24,6 @@ Each entry in `gameinfo.displays` is an `AlternativeDisplay` object (see [`gamei
 | Layer | Behaviour |
 |-------|-----------|
 | Front display picker (Phase 4) | Disables invalid controls; sanitizes selection |
-| Developer playground (`playground/playgroundDisplays.mjs`) | Same shape as the front picker: a radio group per `group` with its default first, a checkbox per ungrouped display, legacy composites hidden; sanitizes, disables unselectable controls, passes `altDisplays` to `render()` |
 | `GameBase.resolveActiveDisplays()` | Sanitizes before `hasDisplay()` checks in `render()` |
 | Legacy `IRenderOpts.altDisplay` | Single string; coalesced to one uid until callers migrate |
 
