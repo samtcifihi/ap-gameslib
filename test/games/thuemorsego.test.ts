@@ -33,9 +33,6 @@ const setStones = (g: ThueMorseGoGame, colour1: string[], colour2: string[]): vo
     g.board = new Map(board);
 };
 
-/** The sheet-glyph colours of a sidebar status value. */
-const glyphColours = (value: unknown[]): unknown[] => value.map((v) => (v as { colour: unknown }).colour);
-
 /** The layers of a tracker legend entry. */
 const layers = (g: ThueMorseGoGame, key: string, opts?: { altDisplays?: string[] }): Glyph[] => {
     const legend = g.render(opts).legend as Record<string, Glyph[]>;
@@ -606,44 +603,44 @@ describe("Thue-Morse Go: Kill-All", () => {
         expect((layers(g, "A")[0] as { paint: { fill: number } }).paint.fill).to.equal(4);
         expect((layers(g, "B")[0] as { paint: { fill: number } }).paint.fill).to.equal(3);
         expect((layers(g, "s1")[1] as { paint: { fill: number } }).paint.fill).to.equal(4);
-        expect(glyphColours(g.sidebarStatuses()[1].value)).to.deep.equal([4, 3, 3, 4, 3, 4, 4, 3]);
         const slots = ThueMorseGoGame.gameinfo.customizations!.map((c) => ("num" in c ? [c.num, c.default] : []));
         expect(slots).to.deep.equal([[1, 1], [2, 2], [3, 1], [4, 2]]);
         // Standard games keep the seats' own slots, and there is no swap display any more.
         const h = play(small(), ["f6"]);
         expect(h.getPlayerColour(1)).to.equal(1);
         expect((layers(h, "B")[0] as { paint: { fill: number } }).paint.fill).to.equal(2);
-        expect(ThueMorseGoGame.gameinfo.displays!.map((d) => d.uid)).to.deep.equal(["rolling", "digits-down", "hide-territory"]);
+        expect(ThueMorseGoGame.gameinfo.displays!.map((d) => d.uid)).to.deep.equal(["digits", "digits-down", "hide-territory"]);
     });
 });
 
 describe("Thue-Morse Go: tracker and sidebar", () => {
-    it("draws the tracker of the mockup for placement 0x123", () => {
+    it("draws the tracker of the mockup for placement 0x123 under the digit display", () => {
         const g = small();
         g.placed = 0x123;
-        const track = g.render().areas![0] as AreaTrack;
+        const digits = { altDisplays: ["digits"] };
+        const track = g.render(digits).areas![0] as AreaTrack;
         expect(track.type).to.equal("track");
         expect(track.position).to.equal("left");
         expect(track.board.width).to.equal(7);
         expect(track.board.height).to.equal(18);
         expect(track.board.blocked).to.have.lengthOf(7 * 18 - 48);
         expect(track.pieces).to.equal(TRACK_0X123);
-        const [tint, marker, digit] = layers(g, "m1d2");
+        const [tint, marker, digit] = layers(g, "m1d2", digits);
         expect(tint).to.deep.equal({ name: "piece-square", paint: { fill: 1 }, opacity: 0.2 });
         // The marker spells out the glyph's default border so its paint, and so its symbol, differs from the small glyph's.
         expect(marker).to.deep.equal({ name: "piece", paint: { fill: 1, border: "#000" } });
         expect(digit).to.deep.equal({ text: "2", scale: 0.75, rotate: null });
-        expect(layers(g, "m2d1")[2]).to.deep.equal({ text: "1", scale: 0.75, rotate: null });
-        const [, smallGlyph] = layers(g, "s2");
+        expect(layers(g, "m2d1", digits)[2]).to.deep.equal({ text: "1", scale: 0.75, rotate: null });
+        const [, smallGlyph] = layers(g, "s2", digits);
         expect(smallGlyph).to.deep.equal({ name: "piece", paint: { fill: 2 }, scale: 0.57735 });
-        expect(layers(g, "s2")).to.have.lengthOf(2);
+        expect(layers(g, "s2", digits)).to.have.lengthOf(2);
         // A thick border in the colour of the next placement runs around the columns, inside the frame.
         const border = track.board.markers as MarkerLine[];
         expect(border).to.have.lengthOf(4);
         expect(border[0]).to.deep.equal({ type: "line", points: [{ row: 1, col: 1 }, { row: 1, col: 6 }], colour: 1, width: 8 });
         expect(border[2]).to.deep.equal({ type: "line", points: [{ row: 17, col: 6 }, { row: 17, col: 1 }], colour: 1, width: 8 });
         g.placed = 0x124;
-        const next = (g.render().areas![0] as AreaTrack).board.markers as MarkerLine[];
+        const next = (g.render(digits).areas![0] as AreaTrack).board.markers as MarkerLine[];
         expect(next.every((line) => line.colour === 2)).to.be.true;
     });
 
@@ -655,13 +652,13 @@ describe("Thue-Morse Go: tracker and sidebar", () => {
     it("can run the digits downward and grows with the index", () => {
         const g = small();
         g.placed = 0x123;
-        const track = g.render({ altDisplays: ["digits-down"] }).areas![0] as AreaTrack;
+        const track = g.render({ altDisplays: ["digits", "digits-down"] }).areas![0] as AreaTrack;
         expect(track.pieces).to.equal(TRACK_0X123.split("\n").reverse().join("\n"));
         g.placed = 0x1000;
-        expect((g.render().areas![0] as AreaTrack).board.width).to.equal(9);
+        expect((g.render({ altDisplays: ["digits"] }).areas![0] as AreaTrack).board.width).to.equal(9);
     });
 
-    it("can roll a single column of the next 16 placements", () => {
+    it("rolls a single column of the next 16 placements by default", () => {
         const g = small();
         const expected = (from: number, length: number, downward: boolean): string => {
             const rows: string[] = ["-,-,-"];
@@ -673,18 +670,18 @@ describe("Thue-Morse Go: tracker and sidebar", () => {
             rows.push("-,-,-");
             return rows.join("\n");
         };
-        let track = g.render({ altDisplays: ["rolling"] }).areas![0] as AreaTrack;
+        let track = g.render().areas![0] as AreaTrack;
         expect(track.board.width).to.equal(3);
         expect(track.board.height).to.equal(18);
         expect(track.board.blocked).to.have.lengthOf(3 * 18 - 16);
         expect(track.pieces).to.equal(expected(0, 1, false));
         g.move("f6");
         // Player 2's move is two placements, both marked with their digits.
-        track = g.render({ altDisplays: ["rolling"] }).areas![0] as AreaTrack;
+        track = g.render().areas![0] as AreaTrack;
         expect(track.pieces).to.equal(expected(1, 2, false));
         expect(track.pieces.split("\n")[16]).to.equal("-,m2d1,-");
         expect(track.pieces.split("\n")[15]).to.equal("-,m2d2,-");
-        track = g.render({ altDisplays: ["rolling", "digits-down"] }).areas![0] as AreaTrack;
+        track = g.render({ altDisplays: ["digits-down"] }).areas![0] as AreaTrack;
         expect(track.pieces).to.equal(expected(1, 2, true));
     });
 
@@ -693,15 +690,16 @@ describe("Thue-Morse Go: tracker and sidebar", () => {
         expect(small().render().areas).to.have.lengthOf(1);
     });
 
-    it("reports the next placement and the colours to come", () => {
+    it("reports the next placement in hexadecimal without a prefix", () => {
         const g = small();
-        let statuses = g.sidebarStatuses();
-        expect(statuses[0].value).to.deep.equal(["0x0"]);
-        expect(glyphColours(statuses[1].value)).to.deep.equal([1, 2, 2, 1, 2, 1, 1, 2]);
+        expect(g.sidebarStatuses()[0].value).to.deep.equal(["0"]);
+        expect(JSON.stringify(g.sidebarStatuses()[0].key)).to.contain("NEXT_PLACEMENT");
         play(g, ["f6", "e5,g7"]);
-        statuses = g.sidebarStatuses();
-        expect(statuses[0].value).to.deep.equal(["0x3"]);
-        expect(glyphColours(statuses[1].value)).to.deep.equal([1, 2, 1, 1, 2, 2, 1, 1]);
+        expect(g.sidebarStatuses()[0].value).to.deep.equal(["3"]);
+        g.placed = 0x1a;
+        expect(g.sidebarStatuses()[0].value).to.deep.equal(["1a"]);
+        // The coming placements are no longer listed; the tracker shows them.
+        expect(g.sidebarStatuses()).to.have.lengthOf(1);
     });
 
     it("uses the snub square board and its connections", () => {

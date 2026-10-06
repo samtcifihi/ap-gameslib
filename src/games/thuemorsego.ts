@@ -300,7 +300,7 @@ export class ThueMorseGoGame extends GameBase {
         ],
         categories: ["goal>area", "goal>cripple", "mechanic>place", "mechanic>capture", "mechanic>enclose", "board>shape>rect", "board>connect>rect", "board>connect>snub", "components>simple>1per"],
         flags: ["experimental", "scores", "custom-buttons", "no-moves", "custom-randomization"],
-        displays: [{ uid: "rolling" }, { uid: "digits-down" }, { uid: "hide-territory" }],
+        displays: [{ uid: "digits" }, { uid: "digits-down" }, { uid: "hide-territory" }],
         // Kill-All games draw their roles from slots 3 and 4, so that the Attacker takes the first
         // colour as in Kill-All Go by default, and a player who prefers the Defender in the first
         // colour can set those two slots the other way round.
@@ -2518,7 +2518,7 @@ export class ThueMorseGoGame extends GameBase {
 
     public render(opts?: IRenderOpts): APRenderRep {
         const downward = this.hasDisplay(opts, "digits-down");
-        const rolling = this.hasDisplay(opts, "rolling");
+        const rolling = !this.hasDisplay(opts, "digits");
         const hideDots = this.hasDisplay(opts, "hide-territory");
         const legend: ILegend = {
             A: [{ name: "piece", paint: { fill: this.paletteOfColour(1) } }],
@@ -2600,15 +2600,7 @@ export class ThueMorseGoGame extends GameBase {
         const statuses: IStatus[] = [];
         statuses.push({
             key: this.neutralAreaLabel("apgames:status.thuemorsego.NEXT_PLACEMENT"),
-            value: [`0x${this.placed.toString(16)}`],
-        });
-        const upcoming = [];
-        for (let i = 0; i < 8; i++) {
-            upcoming.push(this.statusSheetGlyph("piece", this.paletteOfColour(this.colourAt(this.placed + i))));
-        }
-        statuses.push({
-            key: this.neutralAreaLabel("apgames:status.thuemorsego.UPCOMING"),
-            value: upcoming,
+            value: [this.placed.toString(16)],
         });
         if (this.killAll) {
             const undecided = this.neutralAreaLabel("apgames:status.thuemorsego.UNDECIDED");
