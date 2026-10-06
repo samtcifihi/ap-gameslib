@@ -156,7 +156,7 @@ describe("Thue-Morse Go: moves", () => {
 
     it("ignores clicks on the tracker's glyphs", () => {
         const g = play(small(), ["f6"]);
-        for (const [piece, move] of [["s1", ""], ["s2", "e5"], ["m2d1", "e5"], ["m1da", "pass,pass"]]) {
+        for (const [piece, move] of [["s1", ""], ["s2", "e5"], ["m2", "e5"], ["m1", ""], ["m2d1", "e5"], ["m1da", "pass,pass"]]) {
             const result = g.handleClick(move, 3, 1, piece);
             expect(result.valid).to.be.true;
             expect(result.move).to.equal(move);
@@ -734,7 +734,7 @@ describe("Thue-Morse Go: tracker and sidebar", () => {
         ]);
         // The rolling tracker has no such limit.
         expect((g.render().areas![0] as AreaTrack).board.markers).to.have.lengthOf(4);
-        expect((g.render().areas![0] as AreaTrack).pieces).to.contain("m2d0");
+        expect((g.render().areas![0] as AreaTrack).pieces).to.contain("-,m2,-");
     });
 
     it("rolls a single column of the next 16 placements by default", () => {
@@ -744,7 +744,7 @@ describe("Thue-Morse Go: tracker and sidebar", () => {
             for (let row = 0; row < 16; row++) {
                 const i = downward ? row : 15 - row;
                 const colour = g.colourAt(from + i);
-                rows.push(`-,${i < length ? `m${colour}d${((from + i) % 16).toString(16)}` : `s${colour}`},-`);
+                rows.push(`-,${i < length ? `m${colour}` : `s${colour}`},-`);
             }
             rows.push("-,-,-");
             return rows.join("\n");
@@ -755,11 +755,17 @@ describe("Thue-Morse Go: tracker and sidebar", () => {
         expect(track.board.blocked).to.have.lengthOf(3 * 18 - 16);
         expect(track.pieces).to.equal(expected(0, 1, false));
         g.move("f6");
-        // Player 2's move is two placements, both marked with their digits.
+        // Player 2's move is two placements, both full-size stones with no digit on them.
         track = g.render().areas![0] as AreaTrack;
         expect(track.pieces).to.equal(expected(1, 2, false));
-        expect(track.pieces.split("\n")[16]).to.equal("-,m2d1,-");
-        expect(track.pieces.split("\n")[15]).to.equal("-,m2d2,-");
+        expect(track.pieces.split("\n")[16]).to.equal("-,m2,-");
+        expect(track.pieces.split("\n")[15]).to.equal("-,m2,-");
+        const legend = g.render().legend as Record<string, Glyph[]>;
+        expect(legend.m2).to.deep.equal([
+            { name: "piece-square", paint: { fill: 2 }, opacity: 0.2 },
+            { name: "piece", paint: stonePaint(2) },
+        ]);
+        expect(Object.keys(legend).filter((key) => /^m[12]d/.test(key))).to.deep.equal([]);
         track = g.render({ altDisplays: ["digits-down"] }).areas![0] as AreaTrack;
         expect(track.pieces).to.equal(expected(1, 2, true));
     });

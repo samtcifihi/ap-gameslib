@@ -135,8 +135,11 @@ const BORDER_SLOT_OFFSET = 4;
 const REPETITIONS_FOR_DRAW = 5;
 /** The reverse komi comes in multiples of this many points. */
 const KOMI_STEP = 14;
-/** The legend keys of the tracker's glyphs: the small stones s1/s2 (s0 when grey), and the digit markers m1d0 to m2df. */
-const TRACK_KEY_RE = /^(s[012]|m[12]d[0-9a-f])$/;
+/**
+ * The legend keys of the tracker's glyphs: the small stones s1/s2 (s0 when grey), the rolling
+ * tracker's plain markers m1/m2, and the TMS tracker's digit markers m1d0 to m2df.
+ */
+const TRACK_KEY_RE = /^(s[012]|m[12](d[0-9a-f])?)$/;
 /** The last placement the digit tracker's three columns can show; past it the tracker goes grey. */
 const MAX_TRACK_INDEX = 0xfff;
 /**
@@ -2465,7 +2468,8 @@ export class ThueMorseGoGame extends GameBase {
         const nextFill = this.paletteOfColour(this.colourAt(next));
         const tint: Glyph = { name: "piece-square", paint: { fill: overflow ? UNDECIDED_COLOUR : nextFill }, opacity: TRACK_TINT };
         // Keys that differ only in case would be confused by a page in quirks mode, where id lookups
-        // ignore case, so the small glyphs are s1/s2 and the markers m1d0 to m2df, by their digit.
+        // ignore case, so the small glyphs are s1/s2, the plain markers m1/m2, and the digit
+        // markers m1d0 to m2df, by their digit.
         const small = (colour: Stone): string => {
             const key = `s${colour}`;
             if (!(key in legend)) {
@@ -2473,14 +2477,14 @@ export class ThueMorseGoGame extends GameBase {
             }
             return key;
         };
-        const marker = (colour: Stone, digit: number): string => {
-            const key = `m${colour}d${digit.toString(16)}`;
+        // A full-size stone; the TMS tracker writes the digit it stands for on it.
+        const marker = (colour: Stone, digit?: number): string => {
+            const key = digit === undefined ? `m${colour}` : `m${colour}d${digit.toString(16)}`;
             if (!(key in legend)) {
-                legend[key] = [
-                    tint,
-                    { name: "piece", paint: this.stonePaint(this.paletteOfColour(colour), paletteBorders) },
-                    { text: digit.toString(16), scale: DIGIT_SCALE, rotate: null },
-                ];
+                const stone: Glyph = { name: "piece", paint: this.stonePaint(this.paletteOfColour(colour), paletteBorders) };
+                legend[key] = digit === undefined
+                    ? [tint, stone]
+                    : [tint, stone, { text: digit.toString(16), scale: DIGIT_SCALE, rotate: null }];
             }
             return key;
         };
@@ -2493,7 +2497,7 @@ export class ThueMorseGoGame extends GameBase {
             for (let row = 0; row < TRACK_ROWS; row++) {
                 const i = downward ? row : TRACK_ROWS - 1 - row;
                 const colour = this.colourAt(next + i);
-                column.push(i < length ? marker(colour, (next + i) % TRACK_ROWS) : small(colour));
+                column.push(i < length ? marker(colour) : small(colour));
             }
             columns.push(column);
         } else if (overflow) {
