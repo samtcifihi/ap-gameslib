@@ -23,10 +23,10 @@ const small = (variants: string[] = []): ThueMorseGoGame => new ThueMorseGoGame(
 
 /** A fresh game on the default 16x16 board, whose handicap limit is 6. */
 const sixteen = (variants: string[] = []): ThueMorseGoGame => new ThueMorseGoGame(undefined, variants);
-/** The paint of a stone in palette slot `slot`: its border is slot `slot + 4` when customized, else black or white. */
-const stonePaint = (slot: number) => ({
+/** The paint of a stone in palette slot `slot`: its border is black or white by contrast, or slot `slot + 4` under the display option. */
+const stonePaint = (slot: number, fromPalette = false) => ({
     fill: slot,
-    border: { func: "custom", default: { func: "bestContrast", bg: slot, fg: ["#000", "#fff"] }, palette: slot + 4 },
+    border: fromPalette ? slot + 4 : { func: "bestContrast", bg: slot, fg: ["#000", "#fff"] },
 });
 
 /** Put stones on the board, and into the initial position, without playing them. */
@@ -609,15 +609,18 @@ describe("Thue-Morse Go: Kill-All", () => {
         expect((layers(g, "B")[0] as { paint: { fill: number } }).paint.fill).to.equal(3);
         expect((layers(g, "s1")[1] as { paint: { fill: number } }).paint.fill).to.equal(4);
         const slots = ThueMorseGoGame.gameinfo.customizations!.map((c) => ("num" in c ? [c.num, c.default] : []));
-        expect(slots).to.deep.equal([[1, 1], [2, 2], [3, 1], [4, 2], [5, "black/white"], [6, "black/white"], [7, "black/white"], [8, "black/white"]]);
-        // Every stone's border is the slot four above its fill when customized, else black or white by contrast.
+        expect(slots).to.deep.equal([[1, 1], [2, 2], [3, 1], [4, 2], [5, "#000000"], [6, "#000000"], [7, "#000000"], [8, "#000000"]]);
+        // Every stone's border is black or white by contrast, or the slot four above its fill under the display option.
         expect((layers(g, "A")[0] as { paint: unknown }).paint).to.deep.equal(stonePaint(4));
         expect((layers(g, "B")[0] as { paint: unknown }).paint).to.deep.equal(stonePaint(3));
+        const fromPalette = g.render({ altDisplays: ["palette-borders"] }).legend as Record<string, Glyph[]>;
+        expect((fromPalette.A[0] as { paint: unknown }).paint).to.deep.equal(stonePaint(4, true));
+        expect((fromPalette.B[0] as { paint: unknown }).paint).to.deep.equal(stonePaint(3, true));
         // Standard games keep the seats' own slots, and there is no swap display any more.
         const h = play(small(), ["f6"]);
         expect(h.getPlayerColour(1)).to.equal(1);
         expect((layers(h, "B")[0] as { paint: { fill: number } }).paint.fill).to.equal(2);
-        expect(ThueMorseGoGame.gameinfo.displays!.map((d) => d.uid)).to.deep.equal(["digits", "digits-down", "hide-territory"]);
+        expect(ThueMorseGoGame.gameinfo.displays!.map((d) => d.uid)).to.deep.equal(["digits", "digits-down", "hide-territory", "palette-borders"]);
     });
 });
 
@@ -846,6 +849,27 @@ describe("Thue-Morse Go: territory and dead strings", () => {
         expect((g.render({ altDisplays: ["hide-territory"] }).legend as Record<string, Glyph[]>).D2).to.have.lengthOf(1);
         // A typo in a mark names nothing when clicking, and is reported when validating.
         expect(click(scene(), "pass,-zz9", "j11").move).to.equal("pass,-j11");
+    });
+
+    it("takes the stone borders from palette slots 5 to 8 only under the display option", () => {
+        expect(ThueMorseGoGame.gameinfo.displays!.map((d) => d.uid)).to.include("palette-borders");
+        const g = play(scene(), ["pass,-k10"]);
+        const paintOf = (legend: Record<string, Glyph[]>, key: string, layer = 0): unknown => (legend[key][layer] as { paint: unknown }).paint;
+        // By default no slot above 2 is named, so a two-colour palette suffices.
+        const plain = g.render().legend as Record<string, Glyph[]>;
+        expect(paintOf(plain, "A")).to.deep.equal(stonePaint(1));
+        expect(paintOf(plain, "B")).to.deep.equal(stonePaint(2));
+        expect(JSON.stringify(plain)).to.not.match(/"border":[3-9]/);
+        // Under the option every stone, faded or in the tracker, names the slot four above its fill.
+        const custom = g.render({ altDisplays: ["palette-borders"] }).legend as Record<string, Glyph[]>;
+        expect(paintOf(custom, "A")).to.deep.equal(stonePaint(1, true));
+        expect(paintOf(custom, "B")).to.deep.equal(stonePaint(2, true));
+        const faded = Object.keys(custom).filter((key) => key.startsWith("D2"));
+        expect(faded).to.have.lengthOf(1);
+        expect(paintOf(custom, faded[0])).to.deep.equal({ fill: 2, border: 6 });
+        expect(paintOf(custom, "s1", 1)).to.deep.equal(stonePaint(1, true));
+        expect(paintOf(custom, "s2", 1)).to.deep.equal(stonePaint(2, true));
+        expect(JSON.stringify(custom)).to.not.contain("bestContrast");
     });
 
     it("ends the game when the opponent passes keeping the marking, removing the marked strings", () => {
