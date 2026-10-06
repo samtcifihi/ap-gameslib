@@ -80,7 +80,16 @@ interface IPickerButton {
 }
 
 /** What a click does: the move it leaves, or the key of the message saying why it does nothing. */
-type IClickOutcome = { move: string } | { error: "NOT_A_NUMBERED_STONE" | "KOMI_FIRST" | "DECLARE_FIRST" | "NO_PLACEMENT_LEFT" };
+type IClickOutcome = { move: string } | { error: "NOT_A_NUMBERED_STONE" | "KOMI_FIRST" | "DECLARE_FIRST" | "CHOOSE_FIRST" | "NO_PLACEMENT_LEFT" };
+
+/** The parts of Player 2's first move: the declarations it names, and what follows them. */
+interface IFirstMove {
+    komi?: string;
+    handicap?: string;
+    placements: string[];
+    /** The key of the validation message when the declarations are malformed. */
+    error?: string;
+}
 
 /**
  * A move in progress: the board and bookkeeping as the placements of one move are applied, on a
@@ -129,8 +138,11 @@ const REPETITIONS_FOR_DRAW = 5;
 const KOMI_STEP = 14;
 /** The legend keys of the tracker's glyphs: the small stones s1/s2 and the digit markers m1d0 to m2df. */
 const TRACK_KEY_RE = /^(s[12]|m[12]d[0-9a-f])$/;
-/** A reverse komi or handicap token: a whole number. */
-const KOMI_RE = /^\d+$/;
+/**
+ * A declaration token of Player 2's first move: a whole number, tagged `p` for points of reverse
+ * komi or `s` for handicap stones, or untagged to fill the komi and then the handicap in turn.
+ */
+const DECLARATION_RE = /^(\d+)([ps]?)$/;
 /** Opacity of a stone marked dead. */
 const DEAD_OPACITY = 0.4;
 /** Diameter of a territory dot as a fraction of a cell, the size of the renderer's own dots. */
@@ -597,6 +609,60 @@ export class ThueMorseGoGame extends GameBase {
     // -----------------------------------------------------------------------
 
     /**
+     * Split Player 2's first move into its declarations and the placements after them. Tagged
+     * tokens (`14p`, `3s`) may come in either order; untagged numbers fill the reverse komi and
+     * then the handicap, whichever of them the variants ask for, in that order.
+     */
+    private parseFirstMove(tokens: string[]): IFirstMove {
+        const out: IFirstMove = { placements: [] };
+        let i = 0;
+        for (; i < tokens.length; i++) {
+            const m = DECLARATION_RE.exec(tokens[i]);
+            if (m === null) {
+                break;
+            }
+            let slot: "komi" | "handicap";
+            if (m[2] === "p") {
+                slot = "komi";
+            } else if (m[2] === "s") {
+                slot = "handicap";
+            } else if (this.reverseKomi && out.komi === undefined) {
+                slot = "komi";
+            } else if (this.handicapVariant && out.handicap === undefined) {
+                slot = "handicap";
+            } else {
+                out.error = "BAD_DECLARATION";
+                return out;
+            }
+            const wanted = slot === "komi" ? this.reverseKomi : this.handicapVariant;
+            if (!wanted || out[slot] !== undefined) {
+                out.error = "BAD_DECLARATION";
+                return out;
+            }
+            out[slot] = m[1];
+        }
+        out.placements = tokens.slice(i);
+        return out;
+    }
+
+    /** The canonical tokens of the declarations: points as `14p`, stones as `3s`. */
+    private declarationTokens(first: IFirstMove): string[] {
+        const tokens: string[] = [];
+        if (first.komi !== undefined) {
+            tokens.push(`${first.komi}p`);
+        }
+        if (first.handicap !== undefined) {
+            tokens.push(`${first.handicap}s`);
+        }
+        return tokens;
+    }
+
+    /** Whether Player 2's first move still has a reverse komi or handicap to declare. */
+    private declarationsPending(): boolean {
+        return this.komiPending() || (this.declaring() && this.handicap === undefined);
+    }
+
+    /**
      * Whether this is Player 2's first move of the standard game, which follows placement 0. The
      * stack says so even while a partial move has already counted its declaration.
      */
@@ -1033,7 +1099,7 @@ export class ThueMorseGoGame extends GameBase {
                 break;
             case "play":
                 // The komi may be any of the numbered values; the list shows the moves with the first.
-                moves.push(...this.playMoves().map((move) => this.komiPending() ? `${KOMI_STEP},${move}` : move));
+                moves.push(...this.playMoves().map((move) => this.komiPending() ? `${KOMI_STEP}p,${move}` : move));
                 break;
         }
         return moves;
@@ -1048,12 +1114,12 @@ export class ThueMorseGoGame extends GameBase {
             for (let n = 1; n <= this.maxHandicap; n++) {
                 const forced = Math.min(n, length);
                 if (forced === length) {
-                    moves.push(n.toString());
+                    moves.push(`${n}s`);
                     continue;
                 }
                 const sim = this.newSim(length, forced, base);
                 for (const rest of this.completions(sim, colour)) {
-                    moves.push([n.toString(), ...rest].join(","));
+                    moves.push([`${n}s`, ...rest].join(","));
                 }
             }
             return moves;
@@ -1077,7 +1143,7 @@ export class ThueMorseGoGame extends GameBase {
             return moves[Math.floor(Math.random() * moves.length)];
         }
         const values = this.komiValues();
-        const komi = this.komiPending() ? [values[Math.floor(Math.random() * values.length)].toString()] : [];
+        const komi = this.komiPending() ? [`${values[Math.floor(Math.random() * values.length)]}p`] : [];
         const colour = this.colourOfSeat(this.currplayer)!;
         const length = this.moveLength(this.placed);
         let forced: number;
@@ -1085,7 +1151,7 @@ export class ThueMorseGoGame extends GameBase {
         if (this.declaring() && this.handicap === undefined) {
             const n = 1 + Math.floor(Math.random() * this.maxHandicap);
             forced = Math.min(n, length);
-            prefix = [n.toString()];
+            prefix = [`${n}s`];
         } else {
             forced = this.forcedPasses();
         }
@@ -1205,9 +1271,8 @@ export class ThueMorseGoGame extends GameBase {
             return value;
         }
         const pass = this.wholeMovePass();
-        if (this.komiPending()) {
-            const first = this.parseTokens(move)[0];
-            return first !== undefined && KOMI_RE.test(first) ? `${first},${pass}` : pass;
+        if (this.declarationsPending()) {
+            return [...this.declarationTokens(this.parseFirstMove(this.parseTokens(move))), pass].join(",");
         }
         return pass;
     }
@@ -1300,7 +1365,7 @@ export class ThueMorseGoGame extends GameBase {
                 return { move: cell };
             case "play": {
                 const tokens = this.parseTokens(move);
-                if (this.komiPending() || (this.declaring() && this.handicap === undefined)) {
+                if (this.declarationsPending()) {
                     return this.clickFirstMove(tokens, cell);
                 }
                 return { move: this.clickPlacements(tokens, cell, this.moveLength(this.placed) - this.forcedPasses()) };
@@ -1309,54 +1374,51 @@ export class ThueMorseGoGame extends GameBase {
     }
 
     /**
-     * Player 2's first move with a reverse komi or handicap to choose: the move is the komi, then
-     * the handicap, then any placements. A numbered stone sets or changes its value, the komi
-     * first; a changed handicap drops the placements, as it decides how many there are. Once
-     * every choice is made and a placement remains, the stones give way to the board.
+     * Player 2's first move with a reverse komi or handicap to choose: a numbered stone sets or
+     * changes its value, in either order; a changed handicap drops the placements, as it decides
+     * how many there are. Once every choice is made and a placement remains, the stones give way
+     * to the board.
      */
     private clickFirstMove(tokens: string[], cell: string): IClickOutcome {
         const valueAt = (buttons: IPickerButton[]): string | undefined => buttons.find((btn) => btn.cell === cell)?.value.toString();
         const wantKomi = this.reverseKomi;
         const wantHandicap = this.handicapVariant;
         const length = this.moveLength(this.placed);
-        let i = 0;
-        let komi: string | undefined;
-        if (wantKomi && tokens[i] !== undefined && KOMI_RE.test(tokens[i])) {
-            komi = tokens[i++];
+        const first = this.parseFirstMove(tokens);
+        if (first.error !== undefined) {
+            first.komi = undefined;
+            first.handicap = undefined;
+            first.placements = [];
         }
-        let handicap: string | undefined;
-        if (wantHandicap && (!wantKomi || komi !== undefined) && tokens[i] !== undefined && KOMI_RE.test(tokens[i])) {
-            handicap = tokens[i++];
-        }
-        let placements = tokens.slice(i);
-        const chosenAll = (!wantKomi || komi !== undefined) && (!wantHandicap || handicap !== undefined);
-        const stonesShown = !(chosenAll && (!wantHandicap || handicap === "1"));
+        const chosenAll = (!wantKomi || first.komi !== undefined) && (!wantHandicap || first.handicap !== undefined);
+        const stonesShown = !(chosenAll && (!wantHandicap || first.handicap === "1"));
         const offsets = this.pickerOffsets();
         const komiHit = stonesShown && wantKomi ? valueAt(this.komiPicker(offsets.komi)) : undefined;
         const handicapHit = stonesShown && wantHandicap ? valueAt(this.handicapPicker(offsets.handicap)) : undefined;
         if (komiHit !== undefined) {
-            komi = komiHit;
+            first.komi = komiHit;
         } else if (handicapHit !== undefined) {
-            if (wantKomi && komi === undefined) {
-                return { error: "KOMI_FIRST" };
-            }
-            handicap = handicapHit;
-            placements = [];
+            first.handicap = handicapHit;
+            first.placements = [];
         } else {
-            if (wantKomi && komi === undefined) {
+            const komiMissing = wantKomi && first.komi === undefined;
+            const handicapMissing = wantHandicap && first.handicap === undefined;
+            if (komiMissing && handicapMissing) {
+                return { error: "CHOOSE_FIRST" };
+            }
+            if (komiMissing) {
                 return { error: "KOMI_FIRST" };
             }
-            if (wantHandicap && handicap === undefined) {
+            if (handicapMissing) {
                 return { error: "DECLARE_FIRST" };
             }
-            const forced = handicap === undefined ? 0 : Math.min(parseInt(handicap, 10), length);
+            const forced = first.handicap === undefined ? 0 : Math.min(parseInt(first.handicap, 10), length);
             if (length - forced === 0) {
                 return { error: "NO_PLACEMENT_LEFT" };
             }
-            placements = this.parseTokens(this.clickPlacements(placements, cell, length - forced));
+            first.placements = this.parseTokens(this.clickPlacements(first.placements, cell, length - forced));
         }
-        const parts = [komi, handicap, ...placements].filter((part): part is string => part !== undefined);
-        return { move: parts.join(",") };
+        return { move: [...this.declarationTokens(first), ...first.placements].join(",") };
     }
 
     /** Extend the placement tokens of a move in progress with a click on `cell`, `free` placements being the player's. */
@@ -1506,34 +1568,70 @@ export class ThueMorseGoGame extends GameBase {
     }
 
     private validatePlay(m: string, result: IValidationResult): IValidationResult {
-        if (!this.komiPending()) {
+        if (!this.declarationsPending()) {
             return this.validatePlacements(m, result);
         }
-        // Player 2's first move begins with the reverse komi, which costs no placement.
+        return this.validateFirstMove(m, result);
+    }
+
+    /**
+     * Player 2's first move: the reverse komi and the handicap it declares, in either order, then
+     * its placements. Neither declaration costs a placement; the handicap stones are the
+     * placements passed, this declaration being the first.
+     */
+    private validateFirstMove(m: string, result: IValidationResult): IValidationResult {
+        const colour = this.colourOfSeat(this.currplayer)!;
+        const length = this.moveLength(this.placed);
+        const wantKomi = this.komiPending();
+        const wantHandicap = this.declaring() && this.handicap === undefined;
         const max = this.maxKomi;
-        const declaring = this.declaring() && this.handicap === undefined;
+        const stones = this.maxHandicap;
         if (m.length === 0) {
-            const key = declaring ? "INSTRUCTIONS_KOMI_DECLARE" : "INSTRUCTIONS_KOMI";
-            return this.ok(result, -1, i18next.t(`apgames:validation.thuemorsego.${key}`, { max }));
+            const key = wantKomi && wantHandicap ? "INSTRUCTIONS_BOTH" : wantKomi ? "INSTRUCTIONS_KOMI" : "INSTRUCTIONS_DECLARE";
+            return this.ok(result, -1, i18next.t(`apgames:validation.thuemorsego.${key}`, { max: wantKomi ? max : stones, stones }));
         }
-        const [first, ...rest] = m.split(",");
-        if (!KOMI_RE.test(first) || !this.isKomi(parseInt(first, 10))) {
-            return this.fail(result, i18next.t("apgames:validation.thuemorsego.KOMI_INVALID", { max }));
+        const first = this.parseFirstMove(m.split(","));
+        if (first.error !== undefined) {
+            return this.fail(result, i18next.t(`apgames:validation.thuemorsego.${first.error}`));
         }
-        const n = parseInt(first, 10);
-        if (rest.length === 0) {
-            const key = declaring ? "KOMI_THEN_DECLARE" : "KOMI_THEN_PLACE";
-            return this.ok(result, declaring ? -1 : 0, i18next.t(`apgames:validation.thuemorsego.${key}`, { count: n }), true);
+        let komi: number | undefined;
+        if (first.komi !== undefined) {
+            komi = parseInt(first.komi, 10);
+            if (!this.isKomi(komi)) {
+                return this.fail(result, i18next.t("apgames:validation.thuemorsego.KOMI_INVALID", { max }));
+            }
         }
-        return this.validatePlacements(rest.join(","), result);
+        let handicap: number | undefined;
+        if (first.handicap !== undefined) {
+            handicap = parseInt(first.handicap, 10);
+            if (handicap < 1 || handicap > stones) {
+                return this.fail(result, i18next.t("apgames:validation.thuemorsego.DECLARE_RANGE", { max: stones }));
+            }
+        }
+        if (wantKomi && komi === undefined) {
+            if (first.placements.length > 0) {
+                return this.fail(result, i18next.t("apgames:validation.thuemorsego.KOMI_MISSING"));
+            }
+            return this.ok(result, -1, i18next.t("apgames:validation.thuemorsego.HANDICAP_THEN_KOMI", { count: handicap }), true);
+        }
+        if (wantHandicap && handicap === undefined) {
+            if (first.placements.length > 0) {
+                return this.fail(result, i18next.t("apgames:validation.thuemorsego.DECLARE_MISSING"));
+            }
+            return this.ok(result, -1, i18next.t("apgames:validation.thuemorsego.KOMI_THEN_DECLARE", { count: komi }), true);
+        }
+        if (handicap !== undefined) {
+            return this.validateDeclaration(handicap, first.placements, result, colour, length);
+        }
+        if (first.placements.length === 0) {
+            return this.ok(result, 0, i18next.t("apgames:validation.thuemorsego.KOMI_THEN_PLACE", { count: komi }), true);
+        }
+        return this.validatePlacements(first.placements.join(","), result);
     }
 
     private validatePlacements(m: string, result: IValidationResult): IValidationResult {
         const colour = this.colourOfSeat(this.currplayer)!;
         const length = this.moveLength(this.placed);
-        if (this.declaring() && this.handicap === undefined) {
-            return this.validateDeclaration(m, result, colour, length);
-        }
         const forced = this.forcedPasses();
         const free = length - forced;
         if (m.length === 0) {
@@ -1609,23 +1707,11 @@ export class ThueMorseGoGame extends GameBase {
         return this.ok(result, 0, i18next.t(`apgames:validation.thuemorsego.${key}`, { count }), true);
     }
 
-    private validateDeclaration(m: string, result: IValidationResult, colour: Stone, length: number): IValidationResult {
-        const max = this.maxHandicap;
-        if (m.length === 0) {
-            return this.ok(result, -1, i18next.t("apgames:validation.thuemorsego.INSTRUCTIONS_DECLARE", { max }));
-        }
-        const tokens = m.split(",");
-        if (!/^\d+$/.test(tokens[0])) {
-            return this.fail(result, i18next.t("apgames:validation.thuemorsego.DECLARE_INVALID"));
-        }
-        const n = parseInt(tokens[0], 10);
-        if (n < 1 || n > max) {
-            return this.fail(result, i18next.t("apgames:validation.thuemorsego.DECLARE_RANGE", { max }));
-        }
+    /** The rest of a first move that declares a handicap of `n`: the placements `rest` after it. */
+    private validateDeclaration(n: number, rest: string[], result: IValidationResult, colour: Stone, length: number): IValidationResult {
         // The declaration itself is the first pass served.
         const forced = Math.min(n, length);
         const free = length - forced;
-        const rest = tokens.slice(1);
         if (free === 0) {
             if (rest.length > 0) {
                 return this.fail(result, i18next.t("apgames:validation.thuemorsego.DECLARE_NO_PLACEMENT", { count: n }));
@@ -1776,23 +1862,27 @@ export class ThueMorseGoGame extends GameBase {
         const length = this.moveLength(this.placed);
         const prefix: string[] = [];
         let komiResult: APMoveResult | undefined;
-        if (this.komiPending()) {
-            // The reverse komi leads Player 2's first move and costs no placement.
-            const [first, ...rest] = m.split(",");
-            const n = parseInt(first, 10);
-            this.komi = n;
-            komiResult = { type: "komi", value: n };
-            prefix.push(n.toString());
-            m = rest.join(",");
+        let declared: number | undefined;
+        let raw = m.length === 0 ? [] : m.split(",");
+        if (this.declarationsPending()) {
+            // The reverse komi and the handicap lead Player 2's first move; the komi costs no placement.
+            const first = this.parseFirstMove(raw);
+            if (first.komi !== undefined) {
+                const n = parseInt(first.komi, 10);
+                this.komi = n;
+                komiResult = { type: "komi", value: n };
+                prefix.push(`${n}p`);
+            }
+            if (first.handicap !== undefined) {
+                declared = parseInt(first.handicap, 10);
+            }
+            raw = first.placements;
         }
-        const split = this.splitMarks(m.length === 0 ? [] : m.split(","));
+        const split = this.splitMarks(raw);
         const marked = split.marked;
         let tokens = split.placements;
-        let declared: number | undefined;
         let forced: number;
-        if (this.declaring() && this.handicap === undefined && tokens.length > 0) {
-            declared = parseInt(tokens[0], 10);
-            tokens = tokens.slice(1);
+        if (declared !== undefined) {
             forced = Math.min(declared, length);
         } else {
             forced = this.forcedPasses();
@@ -1841,7 +1931,7 @@ export class ThueMorseGoGame extends GameBase {
         this.novel = sim.created.length > 0;
         let agreed = false;
         if (declared !== undefined) {
-            this.lastmove = [declared.toString(), ...spelled].join(",");
+            this.lastmove = [`${declared}s`, ...spelled].join(",");
             this.passes = [];
             this.clearMarks();
         } else if (forced === length) {

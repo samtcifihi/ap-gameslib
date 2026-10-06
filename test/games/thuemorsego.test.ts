@@ -384,7 +384,7 @@ describe("Thue-Morse Go: handicap", () => {
         expect(g.passesOwed).to.equal(1);
         expect(g.placed).to.equal(3);
         expect(g.currplayer).to.equal(1);
-        expect(g.lastmove).to.equal("3");
+        expect(g.lastmove).to.equal("3s");
         expect(g.results.map((r) => r.type)).to.deep.equal(["declare", "pass"]);
         // Player 2's next move is a single placement, so it is served automatically.
         g.move("e5");
@@ -406,7 +406,8 @@ describe("Thue-Morse Go: handicap", () => {
         expect(g.board.get("e5")).to.equal(2);
         expect(g.passesOwed).to.equal(0);
         expect(g.placed).to.equal(3);
-        expect(play(small(["handicap"]), ["f6", "1"]).lastmove).to.equal("1,pass");
+        expect(play(small(["handicap"]), ["f6", "1"]).lastmove).to.equal("1s,pass");
+        expect(play(small(["handicap"]), ["f6", "1s,e5"]).board.get("e5")).to.equal(2);
     });
 
     it("can run out partway through a two-placement move", () => {
@@ -451,11 +452,11 @@ describe("Thue-Morse Go: handicap", () => {
             const [x, y] = g.algebraic2coords(cell);
             return g.handleClick(move, y, x);
         };
-        expect(click("", "e6").move).to.equal("1");
-        expect(click("", "f6").move).to.equal("2");
-        expect(click("", "g6").move).to.equal("3");
-        expect(click("3", "e6").move).to.equal("1");
-        expect(click("1", "e5").move).to.equal("1,e5");
+        expect(click("", "e6").move).to.equal("1s");
+        expect(click("", "f6").move).to.equal("2s");
+        expect(click("", "g6").move).to.equal("3s");
+        expect(click("3", "e6").move).to.equal("1s");
+        expect(click("1", "e5").move).to.equal("1s,e5");
         expect(g.validateMove("4").valid).to.be.false;
         // Off the numbered stones the click explains itself; with no placement left it does too.
         const early = click("", "e9");
@@ -1000,45 +1001,45 @@ describe("Thue-Morse Go: reverse komi", () => {
         expect(g.validateMove("42,e5").complete).to.equal(0);
         expect(g.validateMove("28,e5,g7").complete).to.equal(1);
         expect(g.validateMove("14,e5,g7,d4").valid).to.be.false;
-        expect(g.moves()).to.include("14,e5,g7");
-        expect(g.randomMove()).to.match(/^(14|28|42)(,|$)/);
+        expect(g.moves()).to.include("14p,e5,g7");
+        expect(g.randomMove()).to.match(/^(14|28|42)p(,|$)/);
         // The numbered stones offer 14, 28 and 42 across the centre row; f6 is covered but still means 28.
         let pieces = g.render().pieces as string;
         expect(pieces).to.contain("n14,").and.to.contain("n42");
         expect(pieces).to.not.contain("n28,").and.to.not.contain("n56");
-        expect(click(g, "", "e6").move).to.equal("14");
-        expect(click(g, "", "f6").move).to.equal("28");
-        expect(click(g, "", "g6").move).to.equal("42");
+        expect(click(g, "", "e6").move).to.equal("14p");
+        expect(click(g, "", "f6").move).to.equal("28p");
+        expect(click(g, "", "g6").move).to.equal("42p");
         const early = click(g, "", "e9");
         expect(early.valid).to.be.false;
         expect(early.message).to.contain("reverse komi");
         // Once the komi is set the stones give way to the board, and clicks place, even on their cells.
         pieces = g.clone().move("14", { partial: true }).render().pieces as string;
         expect(pieces).to.not.contain("n14");
-        expect(click(g, "14", "e5").move).to.equal("14,e5");
-        expect(click(g, "14", "e6").move).to.equal("14,e6");
-        expect(click(g, "14,e5", "e5").move).to.equal("14");
-        expect(g.handleClick("14,e5", -1, -1, "_btn_pass").move).to.equal("14,pass,pass");
+        expect(click(g, "14", "e5").move).to.equal("14p,e5");
+        expect(click(g, "14p", "e6").move).to.equal("14p,e6");
+        expect(click(g, "14p,e5", "e5").move).to.equal("14p");
+        expect(g.handleClick("14,e5", -1, -1, "_btn_pass").move).to.equal("14p,pass,pass");
         // Larger boards offer up to 14 times the handicap limit.
         expect(play(sixteen(["reverse-komi"]), ["h8"]).validateMove("84").valid).to.be.true;
         expect(play(sixteen(["reverse-komi"]), ["h8"]).validateMove("85").valid).to.be.false;
         expect(play(new ThueMorseGoGame(undefined, ["size-23", "reverse-komi"]), ["l12"]).render().pieces as string).to.contain("n196");
         // Submitting the komi alone passes the move.
         const passed = g.clone().move("14");
-        expect(passed.lastmove).to.equal("14,pass,pass");
+        expect(passed.lastmove).to.equal("14p,pass,pass");
         expect(passed.passes).to.deep.equal([2]);
         expect(passed.komi).to.equal(14);
-        g.move("28,e5,g7");
+        g.move("28p,e5,g7");
         expect(g.komi).to.equal(28);
         expect(g.placed).to.equal(3);
         expect(g.currplayer).to.equal(1);
-        expect(g.lastmove).to.equal("28,e5,g7");
+        expect(g.lastmove).to.equal("28p,e5,g7");
         expect(g.results.slice(0, 2)).to.deep.equal([{ type: "komi", value: 28 }, { type: "place", where: "e5" }]);
         expect(g.getPlayerScore(1)).to.equal(1 + 28);
         expect(g.getPlayerScore(2)).to.equal(2);
         expect(g.getButtons().map((b) => b.move)).to.deep.equal(["pass"]);
         // The move table stays sequential, and reloading keeps the komi.
-        expect(g.getRounds()).to.deep.equal([[{ move: "f6", result: [{ type: "place", where: "f6" }] }, { move: "28,e5,g7", result: g.results }]]);
+        expect(g.getRounds()).to.deep.equal([[{ move: "f6", result: [{ type: "place", where: "f6" }] }, { move: "28p,e5,g7", result: g.results }]]);
         const again = new ThueMorseGoGame(g.serialize());
         expect(again.komi).to.equal(28);
         expect(again.sidebarStatuses().some((s) => JSON.stringify(s).includes("\"28\""))).to.be.true;
@@ -1060,28 +1061,45 @@ describe("Thue-Morse Go: reverse komi", () => {
         expect(play(small(), ["f6", "e5", "pass", "pass"]).winner).to.deep.equal([1, 2]);
     });
 
-    it("comes before the handicap, both choices staying open to clicks until a placement remains", () => {
+    it("takes the komi and the handicap in either order, both open to clicks until a placement remains", () => {
         const g = play(small(["reverse-komi", "handicap"]), ["f6"]);
-        expect(g.validateMove("").message).to.contain("handicap");
+        expect(g.validateMove("").message).to.contain("in either order");
         const komiOnly = g.validateMove("14");
         expect(komiOnly.complete).to.equal(-1);
-        expect(komiOnly.message).to.contain("handicap");
+        expect(komiOnly.message).to.contain("lower row");
+        const handicapOnly = g.validateMove("3s");
+        expect(handicapOnly.complete).to.equal(-1);
+        expect(handicapOnly.message).to.contain("upper row");
+        // Tagged tokens come in either order; bare numbers fill the komi and then the handicap.
+        expect(g.validateMove("3s,14p").complete).to.equal(0);
+        expect(g.validateMove("3s,14").complete).to.equal(0);
+        expect(g.validateMove("14p,3s").complete).to.equal(0);
+        expect(g.validateMove("14,3").complete).to.equal(0);
+        expect(g.validateMove("14p,14p").valid).to.be.false;
+        expect(g.validateMove("3s,e5").valid).to.be.false;
+        expect(g.validateMove("14p,e5").valid).to.be.false;
+        expect(g.validateMove("e5").valid).to.be.false;
+        expect(play(small(["reverse-komi", "handicap"]), ["f6", "3s,14"]).lastmove).to.equal("14p,3s");
         // Komi stones in the row above the centre, handicap stones in the row below.
         const pieces = g.render().pieces as string;
         expect(pieces).to.contain("n14,").and.to.contain("n42").and.to.contain("n1,").and.to.contain("n3,");
-        expect(click(g, "", "e7").move).to.equal("14");
-        expect(click(g, "", "e5").message).to.contain("Choose the reverse komi first");
-        expect(click(g, "14", "e5").move).to.equal("14,1");
-        expect(click(g, "14", "g5").move).to.equal("14,3");
+        expect(click(g, "", "e7").move).to.equal("14p");
+        expect(click(g, "", "e5").move).to.equal("1s");
+        expect(click(g, "1s", "e7").move).to.equal("14p,1s");
+        expect(click(g, "14", "e5").move).to.equal("14p,1s");
+        expect(click(g, "14", "g5").move).to.equal("14p,3s");
+        expect(click(g, "", "c3").message).to.contain("from each row");
+        expect(click(g, "3s", "c3").message).to.contain("Choose the reverse komi first");
+        expect(click(g, "14p", "c3").message).to.contain("Choose the handicap first");
         // Either choice can be changed while the stones show; a new handicap drops any placement.
-        expect(click(g, "14,3", "f7").move).to.equal("28,3");
-        expect(click(g, "14,3", "f5").move).to.equal("14,2");
+        expect(click(g, "14,3", "f7").move).to.equal("28p,3s");
+        expect(click(g, "14,3", "f5").move).to.equal("14p,2s");
         // With a handicap of one the stones are gone, so f5 is a point: it replaces the placement.
-        expect(click(g, "14,1,c3", "f5").move).to.equal("14,1,f5");
+        expect(click(g, "14,1,c3", "f5").move).to.equal("14p,1s,f5");
         expect(click(g, "14,3", "c3").message).to.contain("no placement left");
         // A handicap of one leaves a placement, so the board takes over, the stones' cells included.
-        expect(click(g, "14,1", "c3").move).to.equal("14,1,c3");
-        expect(click(g, "14,1", "e7").move).to.equal("14,1,e7");
+        expect(click(g, "14,1", "c3").move).to.equal("14p,1s,c3");
+        expect(click(g, "14,1", "e7").move).to.equal("14p,1s,e7");
         let partial = g.clone().move("14,3", { partial: true }).render();
         expect(partial.pieces as string).to.contain("n14,").and.to.contain("n1,");
         const [kx, ky] = g.algebraic2coords("e7");
@@ -1099,7 +1117,7 @@ describe("Thue-Morse Go: reverse komi", () => {
         expect(g.placed).to.equal(3);
         expect(g.currplayer).to.equal(1);
         // The declaration serves placement 1 and a forced pass placement 2, as in a plain handicap move.
-        expect(g.lastmove).to.equal("14,3");
+        expect(g.lastmove).to.equal("14p,3s");
         g.move("e5");
         // Player 2's single placement 4 is served by the handicap.
         expect(g.placed).to.equal(5);
