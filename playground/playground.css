@@ -963,7 +963,18 @@ body[data-theme='dark'] .color-swatch.dragging {
     margin-top: 0.5rem;
 }
 #displayOptionsContainer fieldset {
+    margin-bottom: 0.5rem;
+}
+#displayOptionsContainer fieldset:last-child {
     margin-bottom: 0;
+}
+#displayOptionsContainer .display-option-help {
+    margin: 0 0 0.25rem 1.6em;
+    font-size: 0.85em;
+    opacity: 0.75;
+}
+#displayOptionsContainer input:disabled + label {
+    opacity: 0.55;
 }
 
 /* Native color input */
