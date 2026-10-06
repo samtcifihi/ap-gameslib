@@ -1054,11 +1054,20 @@ describe("Squares", () => {
             expect(areas[0].pieces.length).to.equal(15);
         });
 
-        it("reports losses with glyphs and points with unit counts", () => {
+        it("reports losses by unit name and points with unit counts", () => {
             const g = setup({ "1I1": "G1C", "2I1": "B1C" });
             g.move("IG1C>IB1C");
             g.move("stand");
-            expect(JSON.stringify(g.sidebarStatuses())).to.contain('{"kind":"sheet","name":"nato-infantry"');
+            const losses = g.sidebarStatuses().filter(row => JSON.stringify(row.key).includes("LOSSES"));
+            expect(losses).to.have.length(2);
+            for (const row of losses) {
+                expect(row.value).to.deep.equal([{
+                    textKey: "apgames:status.squares.LOSS_COUNTS",
+                    actor: { kind: "none" },
+                    textParams: { infantry: 1, artillery: 0, cavalry: 0 },
+                }]);
+            }
+            expect(i18next.t("apgames:status.squares.LOSS_COUNTS", { infantry: 1, artillery: 0, cavalry: 0 })).to.equal("1 infantry, 0 artillery, 0 cavalry");
             expect(g.sidebarScores()[0].scores).to.deep.equal(["1 (1)", "1 (1)"]);
         });
 

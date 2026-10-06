@@ -1,5 +1,5 @@
 import { GameBaseSequenced } from "./_turn-sequenced.js";
-import { IAPGameState, IClickResult, ICustomButton, IIndividualState, IRenderOpts, IScores, IStatus, IValidationResult, StatusValue, type ChatLogCollectContext, type ChatLogLine } from "./_base.js";
+import { IAPGameState, IClickResult, ICustomButton, IIndividualState, IRenderOpts, IScores, IStatus, IValidationResult, type ChatLogCollectContext, type ChatLogLine } from "./_base.js";
 import type { APGamesInformation } from "../schemas/gameinfo.js";
 import type { APRenderRep, AreaReserves, Colourfuncs } from "@abstractplay/renderer/build/schemas/schema";
 import type { APMoveResult } from "../schemas/moveresults.js";
@@ -2585,12 +2585,11 @@ export class SquaresGame extends GameBaseSequenced {
             });
         }
         for (const p of [1, 2] as playerid[]) {
+            // Counts by unit name rather than NATO symbols: the sidebar draws a glyph inside a small square, and
+            // the wide symbols come out too small to read next to the numbers.
             const lost = this.losses(p);
-            const value: StatusValue[] = [];
-            for (const t of UNIT_TYPES) {
-                value.push(`${lost[t]} `, this.statusSheetGlyph(`nato-${UNIT_NAMES[t]}`, this.getPlayerColour(p)), " ");
-            }
-            out.push({ key: this.seatAreaLabel(p, "apgames:status.squares.LOSSES"), value });
+            const counts = this.neutralAreaLabel("apgames:status.squares.LOSS_COUNTS", { infantry: lost.I, artillery: lost.A, cavalry: lost.C });
+            out.push({ key: this.seatAreaLabel(p, "apgames:status.squares.LOSSES"), value: [counts] });
         }
         return out;
     }

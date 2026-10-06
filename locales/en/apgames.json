@@ -5209,6 +5209,7 @@
       "DOUBLE_one": "Double turn, {{count}} action left",
       "DOUBLE_other": "Double turn, {{count}} actions left",
       "LOSSES": "{{player}}'s losses",
+      "LOSS_COUNTS": "{{infantry}} infantry, {{artillery}} artillery, {{cavalry}} cavalry",
       "POINTS": "Points to 10 (units eliminated)",
       "SINGLE": "Single turn",
       "STAGE_ADVANCE": "The attacker may advance",
