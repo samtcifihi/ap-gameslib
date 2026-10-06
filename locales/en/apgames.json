@@ -5011,7 +5011,7 @@
         },
         "thuemorsego": {
             "digits": {
-                "name": "Digit tracker",
+                "name": "TMS tracker",
                 "description": "Show the tracker as the hexadecimal digits of the next placement's index, one column of 16 per digit, instead of a single column of the next 16 placements."
             },
             "digits-down": {

@@ -993,7 +993,8 @@ describe("Thue-Morse Go: reverse komi", () => {
 
     it("begins Player 2's first move with a multiple of 14 given to Player 1, costing no placement", () => {
         const g = small(["reverse-komi"]);
-        expect(g.allvariants()!.find((v) => v.uid === "reverse-komi")).to.deep.include({ unrated: true, fans: true });
+        expect(g.allvariants()!.find((v) => v.uid === "reverse-komi")).to.deep.include({ unrated: true });
+        expect(g.allvariants()!.some((v) => v.fans === true)).to.be.false;
         expect(g.currplayer).to.equal(1);
         expect(g.turnModel()).to.equal("sequential");
         g.move("f6");
