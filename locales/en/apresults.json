@@ -688,7 +688,8 @@
         "thuemorsego_marked_other": "{{player}} marked {{count}} stones as dead.",
         "thuemorsego_changed_one": "{{player}} changed the marking: one stone is marked dead.",
         "thuemorsego_changed_other": "{{player}} changed the marking: {{count}} stones are marked dead.",
-        "thuemorsego_cleared": "{{player}} cleared the marking: no stones are marked dead."
+        "thuemorsego_cleared": "{{player}} cleared the marking: no stones are marked dead.",
+        "thuemorsego_locked": "Both players have changed the marking in turn, so it is dropped: no stones are marked dead, and passes carry no marking for the rest of the game."
     },
     "SET": {
         "biscuit_biscuit_one": "{{player}} scored a biscuit.",

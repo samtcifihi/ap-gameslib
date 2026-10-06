@@ -1,6 +1,6 @@
 import { GameBase, IAPGameState, IClickResult, ICustomButton, IIndividualState, IRenderOpts, IScores, IStatus, IValidationResult, type ChatLogCollectContext, type ChatLogLine } from "./_base.js";
 import type { APGamesInformation } from "../schemas/gameinfo.js";
-import type { APRenderRep, AreaTrack, BoardBasic, Glyph, MarkerDots, MarkerLine, RowCol } from "@abstractplay/renderer/build/schemas/schema";
+import type { APRenderRep, AreaTrack, BoardBasic, Colourfuncs, Glyph, MarkerDots, MarkerLine, RowCol } from "@abstractplay/renderer/build/schemas/schema";
 import type { APMoveResult } from "../schemas/moveresults.js";
 import { reviver, shuffle, SnubSquareGraph, UserFacingError } from "../common/index.js";
 import type { FlagContext, GameFlag } from "../common/flags.js";
@@ -130,12 +130,8 @@ const MIN_TRACK_DIGITS = 3;
 /** sqrt(1/3): the small tracker glyphs have about a third of the area of the digit markers. */
 const SMALL_SCALE = 0.57735;
 const TRACK_TINT = 0.2;
-/**
- * The marker glyphs name the border colour the `piece` glyph has anyway. That gives them their own
- * paint, and so their own symbol, in renderer builds that share one symbol per glyph and paint and
- * would otherwise draw the markers at the small glyphs' scale.
- */
-const MARKER_BORDER = "#000";
+/** The palette slot of a stone's border lies this far above the slot of its fill: 5 to 8 for 1 to 4. */
+const BORDER_SLOT_OFFSET = 4;
 const REPETITIONS_FOR_DRAW = 5;
 /** The reverse komi comes in multiples of this many points. */
 const KOMI_STEP = 14;
@@ -325,6 +321,26 @@ export class ThueMorseGoGame extends GameBase {
                 num: 4,
                 default: 2,
                 explanation: "Colour of the Defender's stones in Kill-All games",
+            },
+            {
+                num: 5,
+                default: "black/white",
+                explanation: "Border of the stones in slot 1: black or white, whichever contrasts better with the fill, unless customized",
+            },
+            {
+                num: 6,
+                default: "black/white",
+                explanation: "Border of the stones in slot 2",
+            },
+            {
+                num: 7,
+                default: "black/white",
+                explanation: "Border of the stones in slot 3",
+            },
+            {
+                num: 8,
+                default: "black/white",
+                explanation: "Border of the stones in slot 4",
             },
         ],
     };
@@ -581,6 +597,22 @@ export class ThueMorseGoGame extends GameBase {
         return colour === 1 ? DEFENDER_SLOT : ATTACKER_SLOT;
     }
 
+    /**
+     * The paint of a stone whose fill is palette slot `slot`. Its border is the slot four above,
+     * which is used when the player has customized it for this game; otherwise the border is black
+     * or white, whichever contrasts better with the fill.
+     */
+    private stonePaint(slot: number): { fill: number; border: Colourfuncs } {
+        return {
+            fill: slot,
+            border: {
+                func: "custom",
+                default: { func: "bestContrast", bg: slot, fg: ["#000", "#fff"] },
+                palette: slot + BORDER_SLOT_OFFSET,
+            },
+        };
+    }
+
     public getPlayerColour(p: playerid): number | string {
         if (!this.killAll) {
             return p;
@@ -781,7 +813,8 @@ export class ThueMorseGoGame extends GameBase {
 
     /**
      * The marking a whole-move pass by the current player answers: the pending one when the
-     * opponent's last move was a whole-move pass, so that keeping it ends the game.
+     * opponent's last move was a whole-move pass, so that keeping it ends the game. Dropping the
+     * marking empties the run of passes, so the pass that dropped it is never answered.
      */
     private inheritedMarks(): string[] | undefined {
         const n = this.passes.length;
@@ -1707,15 +1740,15 @@ export class ThueMorseGoGame extends GameBase {
     private passVerdict(marked: string[], result: IValidationResult): IValidationResult {
         const marks = this.canonicalMarks(marked);
         const count = marks.length;
-        const unchanged = this.sameMarks(marks, this.marks);
         const inherited = this.inheritedMarks();
         if (this.locked) {
-            if (!unchanged) {
+            if (count > 0) {
                 return this.fail(result, i18next.t("apgames:validation.thuemorsego.MARKS_LOCKED"));
             }
             const key = inherited === undefined ? "PASS_LOCKED" : "PASS_LOCKED_ENDS";
-            return this.ok(result, 1, i18next.t(`apgames:validation.thuemorsego.${key}`, { count }), true);
+            return this.ok(result, 1, i18next.t(`apgames:validation.thuemorsego.${key}`), true);
         }
+        const unchanged = this.sameMarks(marks, this.marks);
         let key: string;
         if (inherited === undefined) {
             key = "PASS_OPEN";
@@ -1932,7 +1965,7 @@ export class ThueMorseGoGame extends GameBase {
             }
             // Show the marking the move would leave: its own when it passes, none once it places.
             if (declared === undefined && this.passesWholeMove(tokens)) {
-                this.marks = this.canonicalMarks(marked);
+                this.marks = this.locked ? [] : this.canonicalMarks(marked);
             } else if (tokens.some((token) => token !== "pass")) {
                 this.marks = [];
             }
@@ -1981,7 +2014,9 @@ export class ThueMorseGoGame extends GameBase {
     /**
      * Record a whole-move pass and the marking it carries. When the opponent's last move was a
      * whole-move pass, this pass answers its marking: keeping it ends the game, which is what
-     * the result reports, and changing it is allowed until both players have done so in turn.
+     * the result reports, and changing it never does. Changing a marking the opponent's pass had
+     * itself changed drops the marking for the rest of the game, and the run of passes that can
+     * end the game starts afresh, so that the dropped marking is never taken as accepted.
      */
     private recordPass(seat: playerid, spelled: string[], marked: string[]): boolean {
         const marks = this.canonicalMarks(marked);
@@ -1991,13 +2026,17 @@ export class ThueMorseGoGame extends GameBase {
             const how = !changed ? "marked" : marks.length > 0 ? "changed" : "cleared";
             this.results.push({ type: "select", what: "dead", how, ...(marks.length > 0 ? { where: marks.join(",") } : {}) });
         }
+        this.lastmove = [...spelled, ...this.markTokens(marks)].join(",");
         if (changed && this.dispute) {
+            this.results.push({ type: "select", what: "dead", how: "locked" });
             this.locked = true;
+            this.clearMarks();
+            this.passes = [];
+            return false;
         }
         this.dispute = changed;
         this.marks = marks;
         this.passes = [...this.passes, seat];
-        this.lastmove = [...spelled, ...this.markTokens(marks)].join(",");
         return inherited !== undefined && !changed;
     }
 
@@ -2302,14 +2341,14 @@ export class ThueMorseGoGame extends GameBase {
         if (picker === undefined) {
             return { overlay, chosen: [] };
         }
-        const fill = this.killAll ? this.paletteOfColour(2) : UNDECIDED_COLOUR;
+        const paint = this.killAll ? this.stonePaint(this.paletteOfColour(2)) : { fill: UNDECIDED_COLOUR };
         for (const btn of picker.buttons) {
             if (this.board.has(btn.cell)) {
                 // The stone shows; the point still answers to a click with this value.
                 continue;
             }
             const key = `n${btn.value}`;
-            legend[key] = [{ name: "piece", paint: { fill } }, { text: btn.value.toString(), scale: 0.75, rotate: null }];
+            legend[key] = [{ name: "piece", paint }, { text: btn.value.toString(), scale: 0.75, rotate: null }];
             overlay.set(btn.cell, key);
         }
         return { overlay, chosen: [...picker.chosen] };
@@ -2367,7 +2406,7 @@ export class ThueMorseGoGame extends GameBase {
             const under = owner.get(cell);
             const key = under === undefined ? `D${stone}` : `D${stone}T${under}`;
             if (!(key in legend)) {
-                const faded: Glyph = { name: "piece", paint: { fill: stone }, opacity: DEAD_OPACITY };
+                const faded: Glyph = { name: "piece", paint: this.stonePaint(stone), opacity: DEAD_OPACITY };
                 legend[key] = under === undefined ? [faded] : [faded, { name: "piece-borderless", paint: { fill: under }, scale: DOT_SIZE }];
             }
             dead.set(cell, key);
@@ -2412,7 +2451,7 @@ export class ThueMorseGoGame extends GameBase {
         const small = (colour: Stone): string => {
             const key = `s${colour}`;
             if (!(key in legend)) {
-                legend[key] = [tint, { name: "piece", paint: { fill: this.paletteOfColour(colour) }, scale: SMALL_SCALE }];
+                legend[key] = [tint, { name: "piece", paint: this.stonePaint(this.paletteOfColour(colour)), scale: SMALL_SCALE }];
             }
             return key;
         };
@@ -2421,7 +2460,7 @@ export class ThueMorseGoGame extends GameBase {
             if (!(key in legend)) {
                 legend[key] = [
                     tint,
-                    { name: "piece", paint: { fill: this.paletteOfColour(colour), border: MARKER_BORDER } },
+                    { name: "piece", paint: this.stonePaint(this.paletteOfColour(colour)) },
                     { text: digit.toString(16), scale: DIGIT_SCALE, rotate: null },
                 ];
             }
@@ -2520,8 +2559,8 @@ export class ThueMorseGoGame extends GameBase {
         const rolling = !this.hasDisplay(opts, "digits");
         const hideDots = this.hasDisplay(opts, "hide-territory");
         const legend: ILegend = {
-            A: [{ name: "piece", paint: { fill: this.paletteOfColour(1) } }],
-            B: [{ name: "piece", paint: { fill: this.paletteOfColour(2) } }],
+            A: [{ name: "piece", paint: this.stonePaint(this.paletteOfColour(1)) }],
+            B: [{ name: "piece", paint: this.stonePaint(this.paletteOfColour(2)) }],
         };
         const { overlay, chosen } = this.pickerOverlay(legend);
         const { dead, dots } = this.territoryOverlay(legend, hideDots);
@@ -2705,6 +2744,10 @@ export class ThueMorseGoGame extends GameBase {
                 return super.collectChatLogLine(lines, r, ctx);
             case "select":
                 if (r.what === "dead") {
+                    if (r.how === "locked") {
+                        this.pushNeutralChatLine(lines, "apresults:SELECT.thuemorsego_locked");
+                        return true;
+                    }
                     const count = r.where === undefined ? 0 : r.where.split(",").length;
                     this.pushSeatChatLine(lines, ctx.defaultSeat, `apresults:SELECT.thuemorsego_${r.how!}`, { count });
                     return true;
