@@ -15,6 +15,10 @@ Since the `1.0.0-beta` release, the version in `package.json` has stayed at `1.0
 
 - **New games (dev / experimental only):** Agents of MARS, Bagh Chal, Bashni, Clearpath, Croda, Dama, Ice Palace, Kill-All Go, Neutron, Thricewise, Yodd.
 
+### Changed
+
+- **Developer playground:** display options now follow `gameinfo.displays` like the live site: a radio group per `group` (default first), a checkbox per independent display, constraint-aware disabling, and several displays active at once via `altDisplays`.
+
 ## [1.0.0-ci] - 2026-10-05
 
 ### Added
