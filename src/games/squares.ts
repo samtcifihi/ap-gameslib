@@ -75,6 +75,16 @@ const SOUTH_RESERVE = "GR";
 /** Gray (the south) moves first, so that the board's natural orientation is the first player's. */
 export const RESERVES: Readonly<Record<playerid, string>> = { 1: SOUTH_RESERVE, 2: NORTH_RESERVE };
 const BOARD_HEIGHT = 300;
+/**
+ * The renderer fills a reserve strip in reading order, left to right then top to bottom, in rows as wide as
+ * the board: nine cells for the `dvgc` board. The strip is drawn as part of the board, so when the board is
+ * shown upside down (Blue's perspective) the strip turns with it, and its contents would read the other way
+ * round. `render` compensates by listing the pieces in reverse, padded to whole rows with invisible glyphs,
+ * so that each strip reads infantry first, top left, from either side of the table. (The renderer's rotate
+ * button turns the board without telling the game, so a manually rotated board still shows the strips
+ * the other way up.)
+ */
+const RESERVE_COLUMNS = 9;
 /** A piece that has just arrived in a reserve is drawn a little smaller inside a dashed frame. */
 const FRAME_SCALE = 1.1;
 const FRAMED_PIECE_SCALE = 0.9;
@@ -1995,9 +2005,10 @@ export class SquaresGame extends GameBaseSequenced {
             let clickedType: UnitType | undefined;
             if (row >= 0 && col >= 0) {
                 loc = CELL_ROWS[row]?.[col];
-            } else if (piece === "_reserves_N") {
+            } else if (piece === "_reserves_N" || piece === "padN") {
+                // The strip itself, or one of the invisible glyphs that fill out its last row.
                 loc = NORTH_RESERVE;
-            } else if (piece === "_reserves_S") {
+            } else if (piece === "_reserves_S" || piece === "padS") {
                 loc = SOUTH_RESERVE;
             } else if (piece !== undefined && /^[BG][IAC]/.test(piece)) {
                 // A piece in a strip, whether plain, framed as just arrived or faded as about to be lost.
@@ -2346,6 +2357,8 @@ export class SquaresGame extends GameBaseSequenced {
             return k;
         };
         const ghosts = this.preview?.ghosts ?? [];
+        // Gray (player 1) sits at the south, as in the rulebook's diagram; each player sees their own side at the bottom.
+        const upsideDown = opts?.perspective === 2;
         const pstr = CELL_ROWS.map(row => row.map(cell => {
             const u = this.unitAt(cell);
             const ghost = ghosts.find(x => x.loc === cell);
@@ -2389,11 +2402,26 @@ export class SquaresGame extends GameBaseSequenced {
             // An enemy unit that has entered this reserve is shown in it: that is how the game was won.
             const intruders = group(inside.filter(u => u.owner !== p));
             const lost = ghosts.filter(u => u.loc === RESERVES[p]).map(u => faded(u.owner, u.type));
+            const side = p === 1 ? "S" : "N";
+            const pieces = [...own, ...intruders, ...lost];
+            if (upsideDown && pieces.length > 0) {
+                // Seen from Blue's side the board is turned through 180°, strips included, so the renderer's
+                // reading order runs from the bottom right. Filling the strip out to whole rows and reversing
+                // the list puts every piece where it will appear in reading order once the board is turned,
+                // with the gap at the end of the last row as usual. The padding is a fully transparent glyph;
+                // a click on it is treated as a click on the strip itself (see `handleClick`).
+                const pad = `pad${side}`;
+                legend[pad] = { name: "piece-square", paint: { fill: { colour: "_context_fill", opacity: 0 } }, opacity: 0 };
+                while (pieces.length % RESERVE_COLUMNS !== 0) {
+                    pieces.push(pad);
+                }
+                pieces.reverse();
+            }
             return {
                 type: "reserves",
-                side: p === 1 ? "S" : "N",
+                side,
                 background: this.getPlayerColour(p),
-                pieces: [...own, ...intruders, ...lost],
+                pieces,
             };
         };
         const annotations: NonNullable<APRenderRep["annotations"]> = [];
@@ -2504,8 +2532,7 @@ export class SquaresGame extends GameBaseSequenced {
             }
         }
 
-        // Gray (player 1) sits at the south, as in the rulebook's diagram; each player sees their own side at the bottom.
-        const board: APRenderRep["board"] = opts?.perspective === 2 ? { style: "dvgc", rotate: 180 } : { style: "dvgc" };
+        const board: APRenderRep["board"] = upsideDown ? { style: "dvgc", rotate: 180 } : { style: "dvgc" };
         if (edges.size > 0) {
             board.markers = [...edges].map(edge => ({ type: "edge" as const, edge, colour: this.getPlayerColour(edge === "N" ? 2 : 1) }));
         }

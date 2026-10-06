@@ -977,9 +977,12 @@ describe("Squares", () => {
             expect(rep.annotations).to.deep.include({ type: "exit", targets: [{ row: 2, col: 2 }] });
             expect(rep.annotations!.some(a => a.type === "move")).to.be.false;
             // the unit that came home is framed in its strip
+            // (from Blue's side the list is padded to whole rows and reversed, so the padding is skipped here)
             const strip = rep.areas![1] as { pieces: string[] };
-            expect(strip.pieces.filter(k => k === "BIe").length).to.equal(1);
-            expect(strip.pieces.length).to.equal(16);
+            const shown = strip.pieces.filter(k => k !== "padN");
+            expect(shown.filter(k => k === "BIe").length).to.equal(1);
+            expect(shown.length).to.equal(16);
+            expect(strip.pieces.length).to.equal(18);
             expect(rep.legend!.BIe).to.be.an("array");
             expect(JSON.stringify(rep.annotations)).to.not.contain("#c00");
             const out = new SquaresGame();
@@ -1046,7 +1049,8 @@ describe("Squares", () => {
             const frame = rep.legend!.GIe as { name: string; paint: { fill: { opacity?: number } } }[];
             expect(frame.map(part => part.name)).to.deep.equal(["piece-square-dashed", "nato-infantry"]);
             expect(frame[0].paint.fill.opacity).to.equal(0);
-            expect(g.render({ perspective: 2 }).areas![1]).to.deep.include({ pieces: ["GIe"] });
+            // from Blue's side the strip is filled out to a row of nine and reversed
+            expect(g.render({ perspective: 2 }).areas![1]).to.deep.include({ pieces: [...Array<string>(8).fill("padN"), "GIe"] });
             expect(areas[0].pieces.length).to.equal(15);
         });
 
@@ -1070,6 +1074,62 @@ describe("Squares", () => {
             expect(g.winner).to.deep.equal([1, 2]);
             expect(plies).to.equal(18);
             expect(g.stack[g.stack.length - 1]._results).to.deep.include({ type: "eog", reason: "repetition" });
+        });
+    });
+
+    describe("reserve strips", () => {
+        type Strip = { type: string; side: string; pieces: string[] };
+        const strips = (g: SquaresGame, perspective: number): Strip[] => (g.render({ perspective }).areas as Strip[]).filter(a => a.type === "reserves");
+        const fill = (key: string, n: number): string[] => Array<string>(n).fill(key);
+
+        it("lists pieces in reading order, infantry first, from Gray's side", () => {
+            const g = new SquaresGame();
+            const south = strips(g, 1).find(a => a.side === "S")!;
+            expect(south.pieces).to.deep.equal([...fill("GI", 9), ...fill("GA", 3), ...fill("GC", 4)]);
+            const north = strips(g, 1).find(a => a.side === "N")!;
+            expect(north.pieces).to.deep.equal([...fill("BI", 9), ...fill("BA", 3), ...fill("BC", 4)]);
+            expect(g.render({ perspective: 1 }).legend).to.not.have.any.keys("padN", "padS");
+        });
+
+        it("pads and reverses the lists from Blue's side, so the turned strips read the same way", () => {
+            // The renderer turns the strips with the board and fills them nine to a row from the top left,
+            // so the list is filled out to whole rows and reversed: once turned, infantry is top left again.
+            const g = new SquaresGame();
+            const rep = g.render({ perspective: 2 });
+            expect(rep.board).to.deep.include({ rotate: 180 });
+            const south = strips(g, 2).find(a => a.side === "S")!;
+            expect(south.pieces).to.deep.equal(["padS", "padS", ...fill("GC", 4), ...fill("GA", 3), ...fill("GI", 9)]);
+            const north = strips(g, 2).find(a => a.side === "N")!;
+            expect(north.pieces).to.deep.equal(["padN", "padN", ...fill("BC", 4), ...fill("BA", 3), ...fill("BI", 9)]);
+            // the padding is an invisible glyph
+            expect(rep.legend!.padS).to.deep.include({ name: "piece-square", opacity: 0 });
+            expect(rep.legend!.padN).to.deep.include({ name: "piece-square", opacity: 0 });
+        });
+
+        it("does not pad a strip that already fills its rows, nor an empty one", () => {
+            const g = new SquaresGame();
+            // Nine Gray infantry on the board leave seven units in the reserve: still one short row, so padded to nine.
+            for (let i = 1; i <= 9; i++) {
+                place(g, `1I${i}`, BOARD_CELLS[i - 1]);
+            }
+            expect(strips(g, 2).find(a => a.side === "S")!.pieces).to.deep.equal(["padS", "padS", ...fill("GC", 4), ...fill("GA", 3)]);
+            // Four more out leaves three: padded to one row of nine.
+            for (let i = 1; i <= 4; i++) {
+                place(g, `1C${i}`, BOARD_CELLS[8 + i]);
+            }
+            expect(strips(g, 2).find(a => a.side === "S")!.pieces).to.deep.equal([...fill("padS", 6), ...fill("GA", 3)]);
+            // All out: nothing to pad.
+            for (let i = 1; i <= 3; i++) {
+                place(g, `1A${i}`, BOARD_CELLS[12 + i]);
+            }
+            expect(strips(g, 2).find(a => a.side === "S")!.pieces).to.deep.equal([]);
+            expect(g.render({ perspective: 2 }).legend).to.not.have.any.keys("padS");
+        });
+
+        it("treats a click on the padding as a click on the strip", () => {
+            const g = new SquaresGame();
+            expect(g.handleClick("", -1, -1, "padS")).to.deep.equal(g.handleClick("", -1, -1, "_reserves_S"));
+            expect(g.handleClick("", -1, -1, "padN")).to.deep.equal(g.handleClick("", -1, -1, "_reserves_N"));
         });
     });
 
