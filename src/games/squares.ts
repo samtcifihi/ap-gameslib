@@ -2574,10 +2574,11 @@ export class SquaresGame extends GameBaseSequenced {
 
     public sidebarStatuses(): IStatus[] {
         const out: IStatus[] = [];
-        const turn = this.isDouble
-            ? this.neutralAreaLabel("apgames:status.squares.DOUBLE", { count: this.actionsLeft })
-            : this.neutralAreaLabel("apgames:status.squares.SINGLE");
-        out.push({ key: this.neutralAreaLabel("apgames:status.squares.TURN"), value: [turn] });
+        // An ordinary single turn needs no mention; only a double turn and its actions left are shown.
+        if (this.isDouble) {
+            const turn = this.neutralAreaLabel("apgames:status.squares.DOUBLE", { count: this.actionsLeft });
+            out.push({ key: this.neutralAreaLabel("apgames:status.squares.TURN"), value: [turn] });
+        }
         if (this.combat !== undefined) {
             out.push({
                 key: this.neutralAreaLabel("apgames:status.squares.COMBAT"),

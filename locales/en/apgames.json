@@ -5209,7 +5209,6 @@
       "DOUBLE_one": "Double turn, {{count}} action left",
       "DOUBLE_other": "Double turn, {{count}} actions left",
       "POINTS": "Points to 10 (infantry, cavalry, artillery eliminated)",
-      "SINGLE": "Single turn",
       "STAGE_ADVANCE": "The attacker may advance",
       "STAGE_DEFEND": "The defender chooses to stand or retreat",
       "STAGE_LOSE": "The reserve's owner chooses which unit is lost",

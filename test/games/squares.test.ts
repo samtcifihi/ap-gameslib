@@ -1054,6 +1054,18 @@ describe("Squares", () => {
             expect(areas[0].pieces.length).to.equal(15);
         });
 
+        it("shows the turn row only during a double turn", () => {
+            const g = new SquaresGame();
+            expect(g.sidebarStatuses()).to.deep.equal([]);
+            g.move("pass");
+            g.move("pass");
+            // Gray passed, so Gray now has a double turn of two actions
+            expect(g.currplayer).to.equal(1);
+            const turnRow = (): unknown => g.sidebarStatuses().find(row => JSON.stringify(row.key).includes("status.squares.TURN"))?.value;
+            expect(turnRow()).to.deep.equal([{ textKey: "apgames:status.squares.DOUBLE", actor: { kind: "none" }, textParams: { count: 2 } }]);
+            expect(i18next.t("apgames:status.squares.DOUBLE", { count: 2 })).to.equal("Double turn, 2 actions left");
+        });
+
         it("reports points with the infantry, cavalry and artillery eliminated", () => {
             const g = setup({ "1I1": "G1C", "2I1": "B1C", "1A1": "G1CL", "2C1": "B1CL" });
             g.move("IG1C>IB1C");
