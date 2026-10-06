@@ -291,7 +291,6 @@ export class ThueMorseGoGame extends GameBase {
             { uid: "superko", group: "repetition" },
             { uid: "weak-eyes" },
             { uid: "#button" },
-            { uid: "button", group: "button" },
             { uid: "half-button", group: "button" },
             { uid: "kill-all", enabledWhen: { button: ["#button"] } },
         ],
@@ -519,14 +518,19 @@ export class ThueMorseGoGame extends GameBase {
         return !this.variants.includes("superko");
     }
 
+    /**
+     * The button's worth: half a point by variant; otherwise the evening button, a point on boards
+     * with an odd number of points and nothing on boards with an even number, so that the points at
+     * stake always add up to an even number. Kill-All games have no button.
+     */
     private get buttonValue(): number {
         if (this.killAll) {
             return 0;
         }
-        if (this.variants.includes("button")) {
-            return 1;
+        if (this.variants.includes("half-button")) {
+            return 0.5;
         }
-        return this.variants.includes("half-button") ? 0.5 : 0;
+        return this.geo.cells.length % 2 === 1 ? 1 : 0;
     }
 
     /** The period of a repeating protocol (Balanced Marseillais: ABBA), or 0 for the full sequence. */

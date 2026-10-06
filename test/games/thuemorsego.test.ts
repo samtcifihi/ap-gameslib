@@ -168,7 +168,7 @@ describe("Thue-Morse Go: moves", () => {
     });
 
     it("treats button clicks as whole-move passes or the button's move", () => {
-        const g = play(small(["button"]), ["f6"]);
+        const g = play(small(), ["f6"]);
         // Passing replaces a placement already made in the move.
         const pass = g.handleClick("e5", -1, -1, "_btn_pass");
         expect(pass.move).to.equal("pass,pass");
@@ -189,20 +189,42 @@ describe("Thue-Morse Go: moves", () => {
     });
 
     it("offers a button that passes the whole move, and one that takes the button while it lasts", () => {
-        const g = small(["button"]);
+        const g = small();
         expect(g.getButtons().map((b) => b.move)).to.deep.equal(["pass", "button"]);
         g.move("button");
         expect(g.getButtons().map((b) => b.move)).to.deep.equal(["pass,pass"]);
         expect(g.validateMove("pass,pass").complete).to.equal(0);
-        // There is no button by default.
-        expect(small().getButtons().map((b) => b.move)).to.deep.equal(["pass"]);
+        // The 16x16 board has an even number of points, so no button.
+        expect(sixteen().getButtons().map((b) => b.move)).to.deep.equal(["pass"]);
         // With one placement given away by the handicap, only the other is passed.
-        const h = play(sixteen(["handicap", "button"]), ["h8", "4", "g7", "f6,f7"]);
+        const h = play(new ThueMorseGoGame(undefined, ["size-19", "handicap"]), ["h8", "4", "g7", "f6,f7"]);
         expect(h.getButtons().map((b) => b.move)).to.deep.equal(["pass", "button"]);
     });
 
+    it("evens the count with the button: one point on boards with an odd number of points, none otherwise", () => {
+        const offered = (variants: string[]): boolean => new ThueMorseGoGame(undefined, variants).getButtons().some((b) => b.move === "button");
+        expect(offered(["size-11"])).to.be.true;
+        expect(offered([])).to.be.false;
+        expect(offered(["size-19"])).to.be.true;
+        expect(offered(["size-23"])).to.be.true;
+        expect(offered(["snub"])).to.be.false;
+        expect(offered(["size-11", "snub"])).to.be.true;
+        expect(offered(["size-11", "half-button"])).to.be.true;
+        expect(offered(["half-button"])).to.be.true;
+        expect(sixteen(["half-button"]).move("button").getPlayerScore(1)).to.equal(0.5);
+        expect(sixteen().validateMove("button").message).to.contain("no button");
+        // The sentinel is the only full-point choice: no separate 1-point variant remains.
+        const uids = small().allvariants()!.map((v) => v.uid);
+        expect(uids).to.include("#button");
+        expect(uids).to.include("half-button");
+        expect(uids).to.not.include("button");
+        expect(small().allvariants()!.find((v) => v.uid === "#button")!.name).to.equal("Evening button");
+        // A Kill-All game never has one, whatever the board.
+        expect(play(small(["kill-all"]), ["f6", "attacker"]).getButtons().some((b) => b.move === "button")).to.be.false;
+    });
+
     it("takes the button and then places a stone by clicking", () => {
-        const g = play(small(["button"]), ["f6"]);
+        const g = play(small(), ["f6"]);
         expect(g.validateMove("button").complete).to.equal(0);
         const [x, y] = g.algebraic2coords("e5");
         const click = g.handleClick("button", y, x);
@@ -308,7 +330,7 @@ describe("Thue-Morse Go: moves", () => {
     });
 
     it("hands out the button once", () => {
-        const g = small(["button"]);
+        const g = small();
         g.move("button");
         expect(g.button).to.equal(1);
         expect(g.placed).to.equal(1);
@@ -317,7 +339,7 @@ describe("Thue-Morse Go: moves", () => {
         expect(g.validateMove("e5,button").valid).to.be.false;
         expect(g.validateMove("e5,pass").complete).to.equal(1);
         expect(small(["half-button"]).move("button").getPlayerScore(1)).to.equal(0.5);
-        expect(small().validateMove("button").valid).to.be.false;
+        expect(sixteen().validateMove("button").valid).to.be.false;
     });
 
     it("ends when both players pass their whole moves in turn", () => {
@@ -331,7 +353,7 @@ describe("Thue-Morse Go: moves", () => {
         partial.move("pass");
         expect(partial.gameover).to.be.true;
 
-        const h = play(small(["button"]), ["button", "pass,pass"]);
+        const h = play(small(), ["button", "pass,pass"]);
         expect(h.gameover).to.be.false;
         h.move("pass");
         expect(h.gameover).to.be.true;
@@ -339,9 +361,9 @@ describe("Thue-Morse Go: moves", () => {
     });
 
     it("lists complete legal moves and plays random ones", () => {
-        const g = small(["button"]);
+        const g = small();
         expect(g.moves()).to.have.lengthOf(123);
-        expect(small().moves()).to.have.lengthOf(122);
+        expect(sixteen().moves()).to.have.lengthOf(257);
         g.move("f6");
         const moves = g.moves();
         expect(moves).to.include("e5,g7");
@@ -365,7 +387,7 @@ describe("Thue-Morse Go: moves", () => {
     });
 
     it("survives a round trip through serialization", () => {
-        const g = play(small(["button"]), ["f6", "e5,g7", "button"]);
+        const g = play(small(), ["f6", "e5,g7", "button"]);
         const h = new ThueMorseGoGame(g.serialize());
         expect(h.placed).to.equal(4);
         expect(h.button).to.equal(1);
@@ -718,7 +740,8 @@ describe("Thue-Morse Go: tracker and sidebar", () => {
     });
 
     it("reports the placements of the next move in hexadecimal without a prefix", () => {
-        const g = small();
+        // The 16x16 board has no button, so the status panel has just this row.
+        const g = sixteen();
         expect(g.sidebarStatuses()[0].value).to.deep.equal(["0"]);
         expect(JSON.stringify(g.sidebarStatuses()[0].key)).to.contain("NEXT_PLACEMENT");
         // A two-placement move lists both of its placements.
@@ -748,7 +771,7 @@ describe("Thue-Morse Go: tracker and sidebar", () => {
 
 describe("Thue-Morse Go: chat log", () => {
     it("matches the legacy chat log", () => {
-        const g = small(["handicap", "button"]);
+        const g = small(["handicap"]);
         setStones(g, ["a2"], ["a1"]);
         play(g, ["b1", "2", "button", "pass", "pass,pass"]);
         expect(g.gameover).to.be.true;
@@ -1158,7 +1181,7 @@ describe("Thue-Morse Go: reverse komi", () => {
         expect(g.results.slice(0, 2)).to.deep.equal([{ type: "komi", value: 28 }, { type: "place", where: "e5" }]);
         expect(g.getPlayerScore(1)).to.equal(1 + 28);
         expect(g.getPlayerScore(2)).to.equal(2);
-        expect(g.getButtons().map((b) => b.move)).to.deep.equal(["pass"]);
+        expect(g.getButtons().map((b) => b.move)).to.deep.equal(["pass", "button"]);
         // The move table stays sequential, and reloading keeps the komi.
         expect(g.getRounds()).to.deep.equal([[{ move: "f6", result: [{ type: "place", where: "f6" }] }, { move: "28p,e5,g7", result: g.results }]]);
         const again = new ThueMorseGoGame(g.serialize());
