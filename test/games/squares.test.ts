@@ -1054,21 +1054,17 @@ describe("Squares", () => {
             expect(areas[0].pieces.length).to.equal(15);
         });
 
-        it("reports losses by unit name and points with unit counts", () => {
-            const g = setup({ "1I1": "G1C", "2I1": "B1C" });
+        it("reports points with the infantry, cavalry and artillery eliminated", () => {
+            const g = setup({ "1I1": "G1C", "2I1": "B1C", "1A1": "G1CL", "2C1": "B1CL" });
             g.move("IG1C>IB1C");
             g.move("stand");
-            const losses = g.sidebarStatuses().filter(row => JSON.stringify(row.key).includes("LOSSES"));
-            expect(losses).to.have.length(2);
-            for (const row of losses) {
-                expect(row.value).to.deep.equal([{
-                    textKey: "apgames:status.squares.LOSS_COUNTS",
-                    actor: { kind: "none" },
-                    textParams: { infantry: 1, artillery: 0, cavalry: 0 },
-                }]);
-            }
-            expect(i18next.t("apgames:status.squares.LOSS_COUNTS", { infantry: 1, artillery: 0, cavalry: 0 })).to.equal("1 infantry, 0 artillery, 0 cavalry");
-            expect(g.sidebarScores()[0].scores).to.deep.equal(["1 (1)", "1 (1)"]);
+            // each side has taken one infantry
+            expect(g.sidebarScores()[0].scores).to.deep.equal(["1 (1, 0, 0)", "1 (1, 0, 0)"]);
+            expect(JSON.stringify(g.sidebarStatuses())).to.not.contain("LOSSES");
+            // artillery scores double and is listed last
+            g.unit("2A1").loc = "X";
+            expect(g.sidebarScores()[0].scores[0]).to.equal("3 (1, 0, 1)");
+            expect(i18next.t("apgames:status.squares.POINTS")).to.equal("Points to 10 (infantry, cavalry, artillery eliminated)");
         });
 
         it("draws by threefold repetition", () => {

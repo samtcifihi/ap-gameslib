@@ -2584,13 +2584,6 @@ export class SquaresGame extends GameBaseSequenced {
                 value: [this.neutralAreaLabel(`apgames:status.squares.STAGE_${this.combat.stage.toUpperCase()}`)],
             });
         }
-        for (const p of [1, 2] as playerid[]) {
-            // Counts by unit name rather than NATO symbols: the sidebar draws a glyph inside a small square, and
-            // the wide symbols come out too small to read next to the numbers.
-            const lost = this.losses(p);
-            const counts = this.neutralAreaLabel("apgames:status.squares.LOSS_COUNTS", { infantry: lost.I, artillery: lost.A, cavalry: lost.C });
-            out.push({ key: this.seatAreaLabel(p, "apgames:status.squares.LOSSES"), value: [counts] });
-        }
         return out;
     }
 
@@ -2600,10 +2593,15 @@ export class SquaresGame extends GameBaseSequenced {
         return lost.I + lost.A + lost.C;
     }
 
+    /** Points, then in brackets the enemy infantry, cavalry and artillery eliminated, in that order. */
     public sidebarScores(): IScores[] {
+        const line = (p: playerid): string => {
+            const lost = this.losses(otherPlayer(p));
+            return `${this.points(p)} (${lost.I}, ${lost.C}, ${lost.A})`;
+        };
         return [{
             name: this.neutralAreaLabel("apgames:status.squares.POINTS"),
-            scores: ([1, 2] as playerid[]).map(p => `${this.points(p)} (${this.eliminated(p)})`),
+            scores: ([1, 2] as playerid[]).map(line),
         }];
     }
 
