@@ -213,12 +213,14 @@ describe("Thue-Morse Go: moves", () => {
         expect(offered(["half-button"])).to.be.true;
         expect(sixteen(["half-button"]).move("button").getPlayerScore(1)).to.equal(0.5);
         expect(sixteen().validateMove("button").message).to.contain("no button");
-        // The sentinel is the only full-point choice: no separate 1-point variant remains.
+        // The half-point button is a lone checkbox: no group, and no separate 1-point variant.
         const uids = small().allvariants()!.map((v) => v.uid);
-        expect(uids).to.include("#button");
-        expect(uids).to.include("half-button");
+        expect(uids).to.not.include("#button");
         expect(uids).to.not.include("button");
-        expect(small().allvariants()!.find((v) => v.uid === "#button")!.name).to.equal("Evening button");
+        const half = small().allvariants()!.find((v) => v.uid === "half-button")!;
+        expect(half.group).to.be.undefined;
+        expect(half.name).to.equal("0.5 point button");
+        expect(half.description).to.contain("prevents tied scores");
         // A Kill-All game never has one, whatever the board.
         expect(play(small(["kill-all"]), ["f6", "attacker"]).getButtons().some((b) => b.move === "button")).to.be.false;
     });
@@ -523,6 +525,31 @@ describe("Thue-Morse Go: ko", () => {
         expect(g.board.has("c2")).to.be.false;
     });
 
+    it("forbids only the fourth occurrence of a position under double delayed superko", () => {
+        const g = small(["double-delayed-psk"]);
+        expect(g.allvariants()!.find((v) => v.uid === "double-delayed-psk")!.group).to.equal("repetition");
+        setStones(g, ["a2", "b1", "b3"], ["b2", "c1", "c3", "d2"]);
+        // The ko can be retaken at once, twice over; the retake that would recreate the position a fourth time cannot.
+        play(g, ["c2", "b2", "c2", "b2", "c2,pass"]);
+        expect(g.board.has("c2")).to.be.true;
+        expect(g.board.has("b2")).to.be.false;
+        const fourth = g.validateMove("b2");
+        expect(fourth.valid).to.be.false;
+        expect(fourth.message).to.contain("fourth time");
+        expect(fourth.message).to.not.contain("suicide");
+        // A threat first makes a new position, as under superko.
+        expect(g.validateMove("k11,b2").complete).to.equal(1);
+        // The same holds for a single stone removed as suicide, which never draws the game under this rule.
+        const h = small(["double-delayed-psk"]);
+        setStones(h, [], ["a2", "b1", "k11"]);
+        play(h, ["a1", "pass,pass", "a1", "pass"]);
+        expect(h.gameover).to.be.false;
+        const again = h.validateMove("a1");
+        expect(again.valid).to.be.false;
+        expect(again.message).to.contain("three times");
+        expect(again.message).to.contain("suicide");
+    });
+
     it("draws the game on the fifth repetition by default", () => {
         const g = small();
         // The repetition draw is the group's sentinel, so a game with no variant named has it; superko is the variant.
@@ -546,9 +573,12 @@ describe("Thue-Morse Go: Kill-All", () => {
         expect(g.variants).to.deep.equal(["size-11", "kill-all"]);
         play(g, ["f6", "attacker"]);
         expect(g.validateMove("button").valid).to.be.false;
-        // Kill-All needs the default button choice, so it is dropped when another is chosen with it.
+        // Kill-All and the half-point button exclude each other; the later choice wins.
         const h = new ThueMorseGoGame(undefined, ["size-11", "kill-all", "half-button"]);
         expect(h.variants).to.deep.equal(["size-11", "half-button"]);
+        const k = new ThueMorseGoGame(undefined, ["size-11", "half-button", "kill-all"]);
+        expect(k.variants).to.deep.equal(["size-11", "kill-all"]);
+        expect(play(k, ["f6", "attacker"]).getButtons().some((b) => b.move === "button")).to.be.false;
         expect(g.getFlags()).to.include("custom-colours");
         expect(g.getFlags()).to.not.include("scores");
         expect(small().getFlags()).to.include("scores");

@@ -289,10 +289,10 @@ export class ThueMorseGoGame extends GameBase {
             { uid: "reverse-komi", unrated: true, conflictsWith: ["kill-all"] },
             { uid: "#repetition" },
             { uid: "superko", group: "repetition" },
+            { uid: "double-delayed-psk", group: "repetition" },
             { uid: "weak-eyes" },
-            { uid: "#button" },
-            { uid: "half-button", group: "button" },
-            { uid: "kill-all", enabledWhen: { button: ["#button"] } },
+            { uid: "half-button" },
+            { uid: "kill-all", conflictsWith: ["half-button"] },
         ],
         categories: ["goal>area", "goal>cripple", "mechanic>place", "mechanic>capture", "mechanic>enclose", "board>shape>rect", "board>connect>rect", "board>connect>snub", "components>simple>1per"],
         flags: ["experimental", "scores", "custom-buttons", "no-moves", "custom-randomization"],
@@ -513,15 +513,25 @@ export class ThueMorseGoGame extends GameBase {
         return this.variants.includes("weak-eyes");
     }
 
-    /** The default: no ko rule, and the fifth occurrence of a position draws; the variant is positional superko. */
-    private get repetitionDraw(): boolean {
-        return !this.variants.includes("superko");
+    /**
+     * How many times a position may arise before a placement recreating it is forbidden: once
+     * under positional superko, three times under double delayed superko, and without limit by
+     * default, where the fifth occurrence draws the game instead.
+     */
+    private get repetitionLimit(): number | undefined {
+        if (this.variants.includes("superko")) {
+            return 1;
+        }
+        if (this.variants.includes("double-delayed-psk")) {
+            return 3;
+        }
+        return undefined;
     }
 
     /**
-     * The button's worth: half a point by variant; otherwise the evening button, a point on boards
-     * with an odd number of points and nothing on boards with an even number, so that the points at
-     * stake always add up to an even number. Kill-All games have no button.
+     * The button's worth: half a point under the 0.5 point button variant; otherwise a point on
+     * boards with an odd number of points and nothing on boards with an even number, so that the
+     * points at stake always add up to an even number. Kill-All games have no button.
      */
     private get buttonValue(): number {
         if (this.killAll) {
@@ -902,21 +912,24 @@ export class ThueMorseGoGame extends GameBase {
 
     /**
      * Record the position the board holds after a placement (or after the clearing a placement
-     * owed). Returns the key of the validation message when positional superko forbids it: the
+     * owed). Returns the key of the validation message when the repetition rule forbids it: the
      * suicide message when the placement left the board as it was because its own stones were
-     * removed, the plain one otherwise. Under the repetition variant, the fifth occurrence of a
-     * position ends the game instead. `step` is what the clearing removed this time.
+     * removed, the plain one otherwise, each in its superko or double delayed superko wording. By
+     * default the fifth occurrence of a position ends the game instead. `step` is what the
+     * clearing removed this time.
      */
     private recordPosition(sim: ISim, step: { captured: number; suicided: number }): string | undefined {
         const sig = signature(sim.board, this.geo);
         const seen = this.occurrences(sim, sig);
-        if (!this.repetitionDraw && seen > 0) {
+        const limit = this.repetitionLimit;
+        if (limit !== undefined && seen >= limit) {
             const previous = sim.created.length > 0 ? sim.created[sim.created.length - 1] : sim.start;
             const unchanged = step.captured === 0 && step.suicided > 0 && (sig === previous || sig === sim.start);
-            return unchanged ? "SUICIDE_REPEAT" : "KO_PSK";
+            const suffix = limit === 1 ? "" : "_DDPSK";
+            return (unchanged ? "SUICIDE_REPEAT" : "KO_PSK") + suffix;
         }
         sim.created.push(sig);
-        if (this.repetitionDraw && seen + 1 >= REPETITIONS_FOR_DRAW) {
+        if (limit === undefined && seen + 1 >= REPETITIONS_FOR_DRAW) {
             sim.over = true;
         }
         return undefined;
