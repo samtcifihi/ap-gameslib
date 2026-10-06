@@ -121,6 +121,9 @@ interface ISim {
 }
 
 const UNDECIDED_COLOUR = "#999999";
+/** The palette slots of the Kill-All roles; the Attacker's defaults to the first colour, as in Kill-All Go. */
+const ATTACKER_SLOT = 3;
+const DEFENDER_SLOT = 4;
 const CELL_RE = /^[a-z]+\d+$/;
 const TRACK_ROWS = 16;
 const MIN_TRACK_DIGITS = 3;
@@ -297,17 +300,32 @@ export class ThueMorseGoGame extends GameBase {
         ],
         categories: ["goal>area", "goal>cripple", "mechanic>place", "mechanic>capture", "mechanic>enclose", "board>shape>rect", "board>connect>rect", "board>connect>snub", "components>simple>1per"],
         flags: ["experimental", "scores", "custom-buttons", "no-moves", "custom-randomization"],
-        displays: [{ uid: "rolling" }, { uid: "digits-down" }, { uid: "swap-colours" }, { uid: "hide-territory" }],
+        displays: [{ uid: "rolling" }, { uid: "digits-down" }, { uid: "hide-territory" }],
+        // Kill-All games draw their roles from slots 3 and 4, so that the Attacker takes the first
+        // colour as in Kill-All Go by default, and a player who prefers the Defender in the first
+        // colour can set those two slots the other way round.
         customizations: [
             {
                 num: 1,
                 default: 1,
-                explanation: "Colour of the stones placed at the Thue-Morse 0 placements: Player 1, or the Defender in Kill-All games",
+                explanation: "Colour of Player 1's stones, the Thue-Morse 0 placements, outside Kill-All games",
+                player: 1,
             },
             {
                 num: 2,
                 default: 2,
-                explanation: "Colour of the stones placed at the Thue-Morse 1 placements: Player 2, or the Attacker in Kill-All games",
+                explanation: "Colour of Player 2's stones, the Thue-Morse 1 placements, outside Kill-All games",
+                player: 2,
+            },
+            {
+                num: 3,
+                default: 1,
+                explanation: "Colour of the Attacker's stones in Kill-All games, the first colour as in Kill-All Go. Exchange this with the Defender's colour to have the Defender, who makes placement 0, in the first colour instead.",
+            },
+            {
+                num: 4,
+                default: 2,
+                explanation: "Colour of the Defender's stones in Kill-All games",
             },
         ],
     };
@@ -553,12 +571,15 @@ export class ThueMorseGoGame extends GameBase {
         return seat === this.defenderSeat ? 1 : 2;
     }
 
-    /** The palette slot a stone colour is drawn in; the swap display exchanges them in Kill-All games. */
-    private paletteOfColour(colour: Stone, swap: boolean): number {
-        if (this.killAll && swap) {
-            return otherColour(colour);
+    /**
+     * The palette slot a stone colour is drawn in: the seats' own slots in the standard game, and
+     * in Kill-All games the roles' slots, which players may customize either way round.
+     */
+    private paletteOfColour(colour: Stone): number {
+        if (!this.killAll) {
+            return colour;
         }
-        return colour;
+        return colour === 1 ? DEFENDER_SLOT : ATTACKER_SLOT;
     }
 
     public getPlayerColour(p: playerid): number | string {
@@ -568,7 +589,7 @@ export class ThueMorseGoGame extends GameBase {
         if (this.defenderSeat === undefined) {
             return UNDECIDED_COLOUR;
         }
-        return this.colourOfSeat(p)!;
+        return this.paletteOfColour(this.colourOfSeat(p)!);
     }
 
     public coords2algebraic(x: number, y: number): string {
@@ -2276,13 +2297,13 @@ export class ThueMorseGoGame extends GameBase {
      * along with the cell of the value chosen so far. The stones are Attacker stones in Kill-All
      * games and neutral when they stand for passes.
      */
-    private pickerOverlay(legend: ILegend, swap: boolean): { overlay: Map<string, string>; chosen: string[] } {
+    private pickerOverlay(legend: ILegend): { overlay: Map<string, string>; chosen: string[] } {
         const overlay = new Map<string, string>();
         const picker = this.picker();
         if (picker === undefined) {
             return { overlay, chosen: [] };
         }
-        const fill = this.killAll ? this.paletteOfColour(2, swap) : UNDECIDED_COLOUR;
+        const fill = this.killAll ? this.paletteOfColour(2) : UNDECIDED_COLOUR;
         for (const btn of picker.buttons) {
             if (this.board.has(btn.cell)) {
                 // The stone shows; the point still answers to a click with this value.
@@ -2380,19 +2401,19 @@ export class ThueMorseGoGame extends GameBase {
      * separate the columns and keep the last one clear of the board's row labels. A repeating
      * protocol needs no tracker.
      */
-    private trackArea(legend: ILegend, swap: boolean, downward: boolean, rolling: boolean): AreaTrack | undefined {
+    private trackArea(legend: ILegend, downward: boolean, rolling: boolean): AreaTrack | undefined {
         if (this.period > 0) {
             return undefined;
         }
         const next = this.placed;
-        const nextFill = this.paletteOfColour(this.colourAt(next), swap);
+        const nextFill = this.paletteOfColour(this.colourAt(next));
         const tint: Glyph = { name: "piece-square", paint: { fill: nextFill }, opacity: TRACK_TINT };
         // Keys that differ only in case would be confused by a page in quirks mode, where id lookups
         // ignore case, so the small glyphs are s1/s2 and the markers m1d0 to m2df, by their digit.
         const small = (colour: Stone): string => {
             const key = `s${colour}`;
             if (!(key in legend)) {
-                legend[key] = [tint, { name: "piece", paint: { fill: this.paletteOfColour(colour, swap) }, scale: SMALL_SCALE }];
+                legend[key] = [tint, { name: "piece", paint: { fill: this.paletteOfColour(colour) }, scale: SMALL_SCALE }];
             }
             return key;
         };
@@ -2401,7 +2422,7 @@ export class ThueMorseGoGame extends GameBase {
             if (!(key in legend)) {
                 legend[key] = [
                     tint,
-                    { name: "piece", paint: { fill: this.paletteOfColour(colour, swap), border: MARKER_BORDER } },
+                    { name: "piece", paint: { fill: this.paletteOfColour(colour), border: MARKER_BORDER } },
                     { text: digit.toString(16), scale: DIGIT_SCALE, rotate: null },
                 ];
             }
@@ -2496,15 +2517,14 @@ export class ThueMorseGoGame extends GameBase {
     }
 
     public render(opts?: IRenderOpts): APRenderRep {
-        const swap = this.killAll && this.hasDisplay(opts, "swap-colours");
         const downward = this.hasDisplay(opts, "digits-down");
         const rolling = this.hasDisplay(opts, "rolling");
         const hideDots = this.hasDisplay(opts, "hide-territory");
         const legend: ILegend = {
-            A: [{ name: "piece", paint: { fill: this.paletteOfColour(1, swap) } }],
-            B: [{ name: "piece", paint: { fill: this.paletteOfColour(2, swap) } }],
+            A: [{ name: "piece", paint: { fill: this.paletteOfColour(1) } }],
+            B: [{ name: "piece", paint: { fill: this.paletteOfColour(2) } }],
         };
-        const { overlay, chosen } = this.pickerOverlay(legend, swap);
+        const { overlay, chosen } = this.pickerOverlay(legend);
         const { dead, dots } = this.territoryOverlay(legend, hideDots);
 
         const rows: string[] = [];
@@ -2546,7 +2566,7 @@ export class ThueMorseGoGame extends GameBase {
         if (!snub && this.boardSize === 11) {
             rep.options = ["hide-star-points"];
         }
-        const track = this.trackArea(legend, swap, downward, rolling);
+        const track = this.trackArea(legend, downward, rolling);
         if (track !== undefined) {
             rep.areas = [track];
         }
@@ -2584,7 +2604,7 @@ export class ThueMorseGoGame extends GameBase {
         });
         const upcoming = [];
         for (let i = 0; i < 8; i++) {
-            upcoming.push(this.statusSheetGlyph("piece", this.colourAt(this.placed + i)));
+            upcoming.push(this.statusSheetGlyph("piece", this.paletteOfColour(this.colourAt(this.placed + i))));
         }
         statuses.push({
             key: this.neutralAreaLabel("apgames:status.thuemorsego.UPCOMING"),

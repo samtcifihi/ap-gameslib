@@ -541,8 +541,9 @@ describe("Thue-Morse Go: Kill-All", () => {
         expect(g.phase).to.equal("play");
         expect(g.currplayer).to.equal(1);
         expect(g.placed).to.equal(0);
-        expect(g.getPlayerColour(1)).to.equal(1);
-        expect(g.getPlayerColour(2)).to.equal(2);
+        // The Defender draws from slot 4 and the Attacker from slot 3.
+        expect(g.getPlayerColour(1)).to.equal(4);
+        expect(g.getPlayerColour(2)).to.equal(3);
         g.move("e5");
         expect(g.board.get("e5")).to.equal(1);
         expect(g.validateMove("pass").valid).to.be.false;
@@ -593,11 +594,26 @@ describe("Thue-Morse Go: Kill-All", () => {
         expect(g.currplayer).to.equal(1);
     });
 
-    it("can swap the colours on the board", () => {
-        const g = play(small(["kill-all"]), ["f6", "attacker"]);
-        expect((layers(g, "A")[0] as { paint: { fill: number } }).paint.fill).to.equal(1);
-        expect((layers(g, "A", { altDisplays: ["swap-colours"] })[0] as { paint: { fill: number } }).paint.fill).to.equal(2);
-        expect((layers(small(), "A", { altDisplays: ["swap-colours"] })[0] as { paint: { fill: number } }).paint.fill).to.equal(1);
+    it("draws the Attacker from palette slot 3 and the Defender from slot 4, chips included", () => {
+        const g = play(small(["kill-all"]), ["f6"]);
+        // Undecided roles: neutral chips, Attacker stones already in slot 3.
+        expect(g.getPlayerColour(1)).to.equal("#999999");
+        expect((layers(g, "B")[0] as { paint: { fill: number } }).paint.fill).to.equal(3);
+        g.move("attacker");
+        // Player 2 is the Attacker (slot 3) and Player 1 the Defender (slot 4), on the board, tracker and chips alike.
+        expect(g.getPlayerColour(2)).to.equal(3);
+        expect(g.getPlayerColour(1)).to.equal(4);
+        expect((layers(g, "A")[0] as { paint: { fill: number } }).paint.fill).to.equal(4);
+        expect((layers(g, "B")[0] as { paint: { fill: number } }).paint.fill).to.equal(3);
+        expect((layers(g, "s1")[1] as { paint: { fill: number } }).paint.fill).to.equal(4);
+        expect(glyphColours(g.sidebarStatuses()[1].value)).to.deep.equal([4, 3, 3, 4, 3, 4, 4, 3]);
+        const slots = ThueMorseGoGame.gameinfo.customizations!.map((c) => ("num" in c ? [c.num, c.default] : []));
+        expect(slots).to.deep.equal([[1, 1], [2, 2], [3, 1], [4, 2]]);
+        // Standard games keep the seats' own slots, and there is no swap display any more.
+        const h = play(small(), ["f6"]);
+        expect(h.getPlayerColour(1)).to.equal(1);
+        expect((layers(h, "B")[0] as { paint: { fill: number } }).paint.fill).to.equal(2);
+        expect(ThueMorseGoGame.gameinfo.displays!.map((d) => d.uid)).to.deep.equal(["rolling", "digits-down", "hide-territory"]);
     });
 });
 
