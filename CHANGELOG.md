@@ -15,6 +15,10 @@ Since the `1.0.0-beta` release, the version in `package.json` has stayed at `1.0
 
 - **New games (dev / experimental only):** Agents of MARS, Bagh Chal, Bashni, Clearpath, Croda, Dama, Ice Palace, Kill-All Go, Neutron, Thricewise, Yodd.
 
+### Changed
+
+- **Crosshairs:** a turn of two or more actions renders as frames, one per action showing only that action's arrows and markers, then the whole turn on the final board.
+
 ## [1.0.0-ci] - 2026-10-07
 
 ### Fixed

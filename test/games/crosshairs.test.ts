@@ -5,6 +5,7 @@ import { expect } from "chai";
 import { CrosshairsGame } from '../../src/games';
 import { addResource } from '../../src';
 import i18next from "i18next";
+import type { APRenderRep } from "@abstractplay/renderer/build/schemas/schema";
 
 describe("Crosshairs", () => {
     // Initialize i18next for this suite, clean up after to avoid polluting other tests
@@ -1669,7 +1670,7 @@ describe("Crosshairs", () => {
 
             // Test dive waiting for direction (g6vf6/)
             g.move('g6vf6/', { partial: true, trusted: true });
-            const render = g.render();
+            const render = g.render() as APRenderRep;
 
             expect(render.annotations).to.not.be.undefined;
             const dotsAnnotation = render.annotations!.find(a => (a as { type?: string }).type === 'dots');
@@ -1695,7 +1696,7 @@ describe("Crosshairs", () => {
             // Complete power dive with direction change: g6vP/SW
             // After this: plane still at g6, height=2, facing SW
             g.move('g6vP/SW', { partial: true, trusted: true });
-            const render = g.render();
+            const render = g.render() as APRenderRep;
 
             expect(render.annotations).to.not.be.undefined;
 
@@ -1744,7 +1745,7 @@ describe("Crosshairs", () => {
             g.move(partialMove, { partial: true, trusted: true });
 
             // Should show direction hints from e6
-            const render = g.render();
+            const render = g.render() as APRenderRep;
             expect(render.annotations).to.not.be.undefined;
             const dotsAnnotation = render.annotations!.find(a => (a as { type?: string }).type === 'dots');
             expect(dotsAnnotation, "Should have dots annotation for direction hints").to.not.be.undefined;
@@ -1776,7 +1777,7 @@ describe("Crosshairs", () => {
             g.move(partialMove, { partial: true, trusted: true });
 
             // Should show direction hints from e6
-            const render = g.render();
+            const render = g.render() as APRenderRep;
             expect(render.annotations).to.not.be.undefined;
             const dotsAnnotation = render.annotations!.find(a => (a as { type?: string }).type === 'dots');
             expect(dotsAnnotation, "Should have dots annotation for direction hints").to.not.be.undefined;
@@ -1797,7 +1798,7 @@ describe("Crosshairs", () => {
             (g as unknown as { saveState: () => void }).saveState();
 
             g.move('f5+f6/', { partial: true, trusted: true });
-            const render = g.render();
+            const render = g.render() as APRenderRep;
             expect(render.annotations).to.not.be.undefined;
             const dotsAnnotation = render.annotations!.find(a => (a as { type?: string }).type === 'dots');
             expect(dotsAnnotation).to.not.be.undefined;
@@ -1818,7 +1819,7 @@ describe("Crosshairs", () => {
             (g as unknown as { saveState: () => void }).saveState();
 
             g.move('enter:f6/', { partial: true, trusted: true });
-            const render = g.render();
+            const render = g.render() as APRenderRep;
             expect(render.annotations).to.not.be.undefined;
             const dotsAnnotation = render.annotations!.find(a => (a as { type?: string }).type === 'dots');
             expect(dotsAnnotation).to.not.be.undefined;
@@ -1861,7 +1862,7 @@ describe("Crosshairs", () => {
             g.move(partialMove, { partial: true, trusted: true });
 
             // Render and check dots annotation includes f5
-            const render = g.render();
+            const render = g.render() as APRenderRep;
             expect(render.annotations).to.not.be.undefined;
             const dotsAnnotation = render.annotations!.find(a => (a as { type?: string }).type === 'dots');
             expect(dotsAnnotation).to.not.be.undefined;
@@ -1877,7 +1878,7 @@ describe("Crosshairs", () => {
             g.board.set('d5', [1, 'S', 3]);
             g.board.set('e5', [2, 'N', 6]);
 
-            const render = g.render();
+            const render = g.render() as APRenderRep;
 
             // Check legend has altitude variations
             expect(render.legend).to.have.property('P1S_3');
@@ -1896,7 +1897,7 @@ describe("Crosshairs", () => {
             g.board.set('d5', [1, 'S', 3]);
             g.board.set('e5', [2, 'N', 0]);
 
-            const render = g.render();
+            const render = g.render() as APRenderRep;
             const glyphs = Object.values(render.legend!).flat() as Record<string, unknown>[];
             const named = glyphs.filter(glyph => "name" in glyph);
             expect(named.map(glyph => glyph.name)).to.include.members(["wedge", "plane", "cloud"]);
@@ -1935,6 +1936,144 @@ describe("Crosshairs", () => {
             // P2 reduced to 0 planes (shot down)
             expect(g.gameover).to.be.true;
             expect(g.winner).to.include(1);
+        });
+    });
+
+    describe("Frames", () => {
+        type Target = { row: number; col: number };
+        let g: CrosshairsGame;
+
+        // Clouds parked in the a-c rows, past the entry phase, every plane on board.
+        beforeEach(() => {
+            g = new CrosshairsGame();
+            const cloudCells = ['a1', 'a2', 'a3', 'a4', 'a5', 'a6',
+                                'b1', 'b2', 'b3', 'b4', 'b5', 'b6', 'b7',
+                                'c1', 'c2', 'c3'];
+            for (const cell of cloudCells) {
+                g.clouds.add(cell);
+            }
+            g.turnNumber = 8;
+            g.planesRemaining = [0, 0];
+        });
+
+        const pieceAt = (rep: APRenderRep, cell: string): string => {
+            const [x, y] = g.graph.algebraic2coords(cell);
+            return (rep.pieces as string).split("\n")[y].split(",")[x];
+        };
+        // The cells of each annotation of the given type, e.g. [["f3", "f4"]] for one arrow.
+        const annotated = (rep: APRenderRep, type: string): string[][] =>
+            (rep.annotations ?? [])
+                .filter(a => a.type === type)
+                .map(a => (a as { targets: Target[] }).targets.map(t => g.graph.coords2algebraic(t.col, t.row)));
+
+        it("renders a multi-action turn one action at a time, then the whole turn", () => {
+            g.board.set('f3', [1, 'S', 0]);
+            g.board.set('f9', [1, 'N', 0]);
+            g.board.set('f6', [2, 'NE', 0]);  // in the crosshairs of f3 and f9
+            g.board.set('h2', [2, 'S', 1]);
+            g.board.set('h9', [2, 'N', 2]);
+            g.currplayer = 1;
+            (g as unknown as { saveState: () => void }).saveState();
+            expect(Array.isArray(g.render())).to.be.false;
+
+            // Shoot f6 and fly f3 to f4, then fly f9 to f8.
+            g.move('(f6)f3-f4,f9-f8');
+            const reps = g.render() as APRenderRep[];
+            expect(reps).to.have.length(3);
+
+            // Frame 1: the first plane's shot and flight only.
+            expect(pieceAt(reps[0], 'f6')).to.equal('-');
+            expect(pieceAt(reps[0], 'f3')).to.equal('-');
+            expect(pieceAt(reps[0], 'f4')).to.equal('P1S_0');
+            expect(pieceAt(reps[0], 'f9')).to.equal('P1N_0');
+            expect(annotated(reps[0], 'exit')).to.deep.equal([['f6']]);
+            expect(annotated(reps[0], 'move')).to.deep.equal([['f3', 'f4']]);
+
+            // Frame 2: the second plane's flight only.
+            expect(pieceAt(reps[1], 'f9')).to.equal('-');
+            expect(pieceAt(reps[1], 'f8')).to.equal('P1N_0');
+            expect(annotated(reps[1], 'exit')).to.deep.equal([]);
+            expect(annotated(reps[1], 'move')).to.deep.equal([['f9', 'f8']]);
+
+            // Last frame: the final board with every arrow and marker of the turn.
+            expect(reps[2].pieces).to.deep.equal(reps[1].pieces);
+            expect(annotated(reps[2], 'exit')).to.deep.equal([['f6']]);
+            expect(annotated(reps[2], 'move')).to.deep.equal([['f3', 'f4'], ['f9', 'f8']]);
+
+            // The enemy planes stand still throughout.
+            for (const rep of reps) {
+                expect(pieceAt(rep, 'h2')).to.equal('P2S_1');
+                expect(pieceAt(rep, 'h9')).to.equal('P2N_2');
+            }
+        });
+
+        it("gives a shot fired on its own a frame of its own", () => {
+            g.board.set('f3', [1, 'S', 0]);
+            g.board.set('f9', [1, 'N', 0]);
+            g.board.set('f6', [2, 'NE', 0]);
+            g.board.set('h2', [2, 'S', 1]);
+            g.board.set('h9', [2, 'N', 2]);
+            g.currplayer = 1;
+            (g as unknown as { saveState: () => void }).saveState();
+
+            g.move('(f6),f3-f4,f9-f8');
+            const reps = g.render() as APRenderRep[];
+            expect(reps).to.have.length(4);
+            expect(pieceAt(reps[0], 'f6')).to.equal('-');
+            expect(pieceAt(reps[0], 'f3')).to.equal('P1S_0');
+            expect(annotated(reps[0], 'exit')).to.deep.equal([['f6']]);
+            expect(annotated(reps[0], 'move')).to.deep.equal([]);
+            expect(annotated(reps[1], 'exit')).to.deep.equal([]);
+            expect(annotated(reps[1], 'move')).to.deep.equal([['f3', 'f4']]);
+            expect(annotated(reps[3], 'move')).to.deep.equal([['f3', 'f4'], ['f9', 'f8']]);
+        });
+
+        it("keeps every swoop of a dive on that plane's frame", () => {
+            g.board.set('g6', [2, 'NW', 6]);
+            g.board.set('f9', [2, 'N', 0]);
+            g.board.set('k5', [1, 'S', 0]);
+            g.board.set('k6', [1, 'S', 0]);
+            g.currplayer = 2;
+            (g as unknown as { saveState: () => void }).saveState();
+
+            g.move('g6vf6>e5,f9-f8');
+            const reps = g.render() as APRenderRep[];
+            expect(reps).to.have.length(3);
+            expect(pieceAt(reps[0], 'g6')).to.equal('-');
+            expect(pieceAt(reps[0], 'f6')).to.equal('-');
+            expect(pieceAt(reps[0], 'e5')).to.equal('P2NW_4');
+            expect(pieceAt(reps[0], 'f9')).to.equal('P2N_0');
+            expect(annotated(reps[0], 'move')).to.deep.equal([['g6', 'f6'], ['f6', 'e5']]);
+            expect(annotated(reps[1], 'move')).to.deep.equal([['f9', 'f8']]);
+            expect(annotated(reps[2], 'move')).to.deep.equal([['g6', 'f6'], ['f6', 'e5'], ['f9', 'f8']]);
+        });
+
+        it("renders single-action and partial turns as one board and survives a round trip", () => {
+            const game = new CrosshairsGame(undefined, ['random-start']);
+            // Turn 1: player 1 enters one plane.
+            game.move(game.moves()[0]);
+            expect(Array.isArray(game.render())).to.be.false;
+
+            // Turn 2: player 2 enters two planes.
+            const entries: string[] = [];
+            for (let i = 0; i < 2; i++) {
+                entries.push(game.actions(game.currplayer, entries.join(','))[0]);
+            }
+            const partial = game.clone();
+            partial.move(entries[0], { partial: true });
+            expect(Array.isArray(partial.render())).to.be.false;
+            game.move(entries.join(','));
+            expect((game.render() as APRenderRep[]).length).to.equal(3);
+
+            // The frames survive a round trip and belong to their own turn.
+            expect((game.clone().render() as APRenderRep[]).length).to.equal(3);
+            expect(Array.isArray(game.load(1).render())).to.be.false;
+            expect(Array.isArray(game.load(-1).render())).to.be.true;
+
+            // A game saved before frames existed renders its final board alone.
+            const legacy = new CrosshairsGame(game.serialize());
+            delete legacy.stack[legacy.stack.length - 1].frames;
+            expect(Array.isArray(legacy.load().render())).to.be.false;
         });
     });
 });
