@@ -1143,6 +1143,34 @@ describe("Squares", () => {
             expect(g.render({ perspective: 2 }).legend).to.not.have.any.keys("padS");
         });
 
+        it("frames a unit picked out of a reserve until it is given a square", () => {
+            const g = new SquaresGame();
+            const south = (x: SquaresGame, perspective: number): string[] => strips(x, perspective).find(a => a.side === "S")!.pieces;
+            // Clicking a reserve unit picks it; the strip frames it, first within its type, as a board square would be outlined.
+            const picked = g.handleClick("", -1, -1, "GI").move;
+            expect(picked).to.equal("IGR");
+            const preview = g.clone();
+            preview.move(picked, { partial: true });
+            expect(south(preview, 1)).to.deep.equal(["GIe", ...fill("GI", 8), ...fill("GA", 3), ...fill("GC", 4)]);
+            expect(preview.render({ perspective: 1 }).legend!.GIe).to.be.an("array");
+            // From Blue's side the list is reversed, so the frame still lands top left once the board is turned.
+            expect(south(preview, 2)).to.deep.equal(["padS", "padS", ...fill("GC", 4), ...fill("GA", 3), ...fill("GI", 8), "GIe"]);
+            // Every type is framed the same way.
+            for (const [m, framedKey] of [["AGR", "GAe"], ["CGR", "GCe"]]) {
+                const other = g.clone();
+                other.move(m, { partial: true });
+                expect(south(other, 1).filter(k => k.endsWith("e"))).to.deep.equal([framedKey]);
+            }
+            // Once the unit has a square it is on the board, outlined there, and the strip is plain again.
+            const placed = g.clone();
+            placed.move("IGR-G3C", { partial: true });
+            expect(south(placed, 1).some(k => k.endsWith("e"))).to.be.false;
+            // Clicking the framed unit drops the selection, as clicking the plain one did.
+            expect(g.handleClick(picked, -1, -1, "GIe").move).to.equal("");
+            // Nothing is framed outside a preview.
+            expect(south(g, 1).some(k => k.endsWith("e"))).to.be.false;
+        });
+
         it("treats a click on the padding as a click on the strip", () => {
             const g = new SquaresGame();
             expect(g.handleClick("", -1, -1, "padS")).to.deep.equal(g.handleClick("", -1, -1, "_reserves_S"));

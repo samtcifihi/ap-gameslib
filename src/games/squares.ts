@@ -210,6 +210,11 @@ interface IPreview {
     /** Units the ply would eliminate, as they were before it, so that they can still be drawn (faded). */
     ghosts?: IUnit[];
     /**
+     * Units picked out of a reserve that have not been given a square yet. A reserve has no cell to outline, so
+     * `render` frames them in their strip instead, the way a unit that has just arrived in a reserve is framed.
+     */
+    selected?: string[];
+    /**
      * Who decides next in the previewed position, while a combat is pending there. Playing the ply out hands
      * `currplayer` over as a real move would, but a preview puts it back: the front end treats the current
      * player of a partially entered move as the one entering it (the Playground, for one, takes its
@@ -1373,6 +1378,10 @@ export class SquaresGame extends GameBaseSequenced {
                 this.outlineCell(to);
                 this.results.push({ type: "move", from: m[2], to, what: UNIT_NAMES[u.type], how: "move", by: `${u.owner}` });
             }
+            if (isReserve(u.loc)) {
+                // Still waiting in its reserve for a square: the strip shows which unit was picked.
+                preview.selected = [...(preview.selected ?? []), u.id];
+            }
         }
     }
 
@@ -2384,10 +2393,13 @@ export class SquaresGame extends GameBaseSequenced {
             ];
             return k;
         };
+        // A unit picked out of a reserve, but not yet moved, is framed there too: the strip's equivalent of the
+        // outline a unit picked on the board gets.
+        const selected = new Set(this.preview?.selected ?? []);
         const reserves = (p: playerid): AreaReserves => {
             const inside = [...this.units.values()].filter(u => u.loc === RESERVES[p]);
             const group = (units: IUnit[]): string[] => {
-                const out = units.map(u => key(u.owner, u.type));
+                const out = units.map(u => selected.has(u.id) ? framed(u.owner, u.type) : key(u.owner, u.type));
                 for (let i = out.length - 1; i >= 0; i--) {
                     const k = `${RESERVES[p]}${units[i].owner}${units[i].type}`;
                     const n = arrivals.get(k) ?? 0;
@@ -2398,7 +2410,9 @@ export class SquaresGame extends GameBaseSequenced {
                 }
                 return out;
             };
-            const own = UNIT_TYPES.flatMap(t => group(inside.filter(u => u.owner === p && u.type === t)));
+            // Within each type, a picked unit is listed first, so its frame shows at the start of that type's run.
+            const picked = (u: IUnit): number => (selected.has(u.id) ? 0 : 1);
+            const own = UNIT_TYPES.flatMap(t => group(inside.filter(u => u.owner === p && u.type === t).sort((a, b) => picked(a) - picked(b))));
             // An enemy unit that has entered this reserve is shown in it: that is how the game was won.
             const intruders = group(inside.filter(u => u.owner !== p));
             const lost = ghosts.filter(u => u.loc === RESERVES[p]).map(u => faded(u.owner, u.type));
