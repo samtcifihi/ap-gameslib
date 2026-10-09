@@ -1574,6 +1574,19 @@ describe("Crosshairs", () => {
             expect(g.results).to.deep.include({ type: "destroy", what: "plane", where: "f6" });
         });
 
+        it("should mark a turbulence crash with an exit annotation", () => {
+            const g = makeFlightGame(0, ["f6"]);
+
+            g.move("f5-f7");
+
+            const rep = g.render() as APRenderRep;
+            const cells = (rep.annotations ?? [])
+                .filter(a => a.type === "exit")
+                .map(a => (a as { targets: { row: number; col: number }[] }).targets
+                    .map(t => g.graph.coords2algebraic(t.col, t.row)));
+            expect(cells).to.deep.equal([["f6"]]);
+        });
+
         it("should not apply turbulence to swoops that stay within a cloud bank", () => {
             const g = makeFlightGame(3, ["f5", "f6", "f7"]);
 
@@ -2046,6 +2059,41 @@ describe("Crosshairs", () => {
             expect(annotated(reps[0], 'move')).to.deep.equal([['g6', 'f6'], ['f6', 'e5']]);
             expect(annotated(reps[1], 'move')).to.deep.equal([['f9', 'f8']]);
             expect(annotated(reps[2], 'move')).to.deep.equal([['g6', 'f6'], ['f6', 'e5'], ['f9', 'f8']]);
+        });
+
+        it("marks a crashed plane's cell with an exit annotation, in its frame and in the whole turn", () => {
+            // From a played game: player 2 climbs twice, crashes k4, then flies k5 to k3.
+            g.clouds.clear();
+            for (const cell of ['f7', 'b4', 'f4', 'd9', 'j4', 'd2', 'h8', 'b2', 'i6', 'i2', 'g5', 'e5', 'c6', 'g2',
+                                'h6', 'e8', 'e4', 'd1', 'b7', 'c3', 'g10', 'c7', 'g7', 'd3', 'c4', 'd4', 'c5', 'a3']) {
+                g.clouds.add(cell);
+            }
+            g.board.set('i2', [2, 'SW', 1]);
+            g.board.set('k4', [2, 'S', 0]);
+            g.board.set('k2', [2, 'N', 0]);
+            g.board.set('k5', [2, 'N', 1]);
+            g.board.set('b1', [1, 'SE', 2]);
+            g.board.set('b2', [1, 'SE', 1]);
+            g.board.set('c6', [1, 'SE', 1]);
+            g.board.set('b4', [1, 'NE', 2]);
+            g.board.set('a5', [1, 'SE', 1]);
+            g.board.set('b6', [1, 'SE', 1]);
+            g.currplayer = 2;
+            (g as unknown as { saveState: () => void }).saveState();
+
+            // A crash in a move still being entered is marked on the single board too.
+            const partial = g.clone();
+            partial.move('i2+h3/nw, k4x', { partial: true });
+            expect(annotated(partial.render() as APRenderRep, 'exit')).to.deep.equal([['k4']]);
+
+            g.move('i2+h3/nw, k2+k1/nw, k4x, k5-k3/nw');
+            const reps = g.render() as APRenderRep[];
+            expect(reps).to.have.length(5);
+            expect(pieceAt(reps[2], 'k4')).to.equal('-');
+            expect(annotated(reps[2], 'exit')).to.deep.equal([['k4']]);
+            expect(annotated(reps[2], 'move')).to.deep.equal([]);
+            expect(annotated(reps[4], 'exit')).to.deep.equal([['k4']]);
+            expect(annotated(reps[4], 'move')).to.deep.equal([['i2', 'h3'], ['k2', 'k1'], ['k5', 'k3']]);
         });
 
         it("renders single-action and partial turns as one board and survives a round trip", () => {

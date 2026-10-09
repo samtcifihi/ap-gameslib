@@ -19,6 +19,10 @@ Since the `1.0.0-beta` release, the version in `package.json` has stayed at `1.0
 
 - **Crosshairs:** a turn of two or more actions renders as frames, one per action showing only that action's arrows and markers, then the whole turn on the final board.
 
+### Fixed
+
+- **Crosshairs:** crashed planes (a crash action or a turbulence crash) now leave the same exit marker on their cell as shot-down planes; previously they simply vanished from the board.
+
 ## [1.0.0-ci] - 2026-10-07
 
 ### Fixed

@@ -3678,7 +3678,8 @@ export class CrosshairsGame extends GameBase {
                             targets: [{ row: fromY, col: fromX }, { row: toY, col: toX }],
                         });
                     }
-                } else if (result.type === "capture") {
+                } else if (result.type === "capture" || result.type === "destroy") {
+                    // A plane shot down or crashed leaves an exit marker on its cell.
                     const [x, y] = this.graph.algebraic2coords(result.where!);
                     rep.annotations.push({
                         type: "exit",
