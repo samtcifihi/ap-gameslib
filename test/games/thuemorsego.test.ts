@@ -23,6 +23,13 @@ const small = (variants: string[] = []): ThueMorseGoGame => new ThueMorseGoGame(
 
 /** A fresh game on the default 16x16 board, whose handicap limit is 6. */
 const sixteen = (variants: string[] = []): ThueMorseGoGame => new ThueMorseGoGame(undefined, variants);
+/** The fill of a Kill-All role: its slot (3 Attacker, 4 Defender) when customized for this game, else the first or second colour. */
+const role = (slot: 3 | 4) => ({ func: "custom", default: slot === 3 ? 1 : 2, palette: slot });
+/** The paint of a Kill-All role's stones: like `stonePaint`, with the role's fill. */
+const rolePaint = (slot: 3 | 4, fromPalette = false) => ({
+    fill: role(slot),
+    border: fromPalette ? slot + 4 : { func: "bestContrast", bg: role(slot), fg: ["#000", "#fff"] },
+});
 /** The paint of a stone in palette slot `slot`: its border is black or white by contrast, or slot `slot + 4` under the display option. */
 const stonePaint = (slot: number, fromPalette = false) => ({
     fill: slot,
@@ -398,6 +405,20 @@ describe("Thue-Morse Go: moves", () => {
 });
 
 describe("Thue-Morse Go: handicap", () => {
+    it("offers the button after a one-stone handicap only when there is one to take", () => {
+        // 16x16 has no button.
+        const even = play(sixteen(["handicap"]), ["h8"]);
+        const plain = even.validateMove("1s");
+        expect(plain.complete).to.equal(0);
+        expect(plain.message).to.contain("Handicap of one stone");
+        expect(plain.message).to.not.contain("button");
+        // 11x11 has one while nobody holds it.
+        expect(play(small(["handicap"]), ["f6"]).validateMove("1s").message).to.contain("take the button");
+        expect(play(small(["handicap"]), ["button"]).validateMove("1s").message).to.not.contain("button");
+        // The same holds when the declaration follows a reverse komi.
+        expect(play(sixteen(["handicap", "reverse-komi"]), ["h8"]).validateMove("14p,1s").message).to.not.contain("button");
+    });
+
     it("serves the declared passes, the declaration first", () => {
         const g = small(["handicap"]);
         g.move("f6");
@@ -595,9 +616,9 @@ describe("Thue-Morse Go: Kill-All", () => {
         expect(g.phase).to.equal("play");
         expect(g.currplayer).to.equal(1);
         expect(g.placed).to.equal(0);
-        // The Defender draws from slot 4 and the Attacker from slot 3.
-        expect(g.getPlayerColour(1)).to.equal(4);
-        expect(g.getPlayerColour(2)).to.equal(3);
+        // The Defender draws from slot 4 and the Attacker from slot 3, falling back to the second and first colours.
+        expect(g.getPlayerColour(1)).to.deep.equal(role(4));
+        expect(g.getPlayerColour(2)).to.deep.equal(role(3));
         g.move("e5");
         expect(g.board.get("e5")).to.equal(1);
         expect(g.validateMove("pass").valid).to.be.false;
@@ -648,26 +669,29 @@ describe("Thue-Morse Go: Kill-All", () => {
         expect(g.currplayer).to.equal(1);
     });
 
-    it("draws the Attacker from palette slot 3 and the Defender from slot 4, chips included", () => {
+    it("draws the Attacker in the first colour and the Defender in the second unless slots 3 and 4 are set, chips included", () => {
         const g = play(small(["kill-all"]), ["f6"]);
-        // Undecided roles: neutral chips, Attacker stones already in slot 3.
+        // Undecided roles: neutral chips, Attacker stones already in the Attacker's fill.
         expect(g.getPlayerColour(1)).to.equal("#999999");
-        expect((layers(g, "B")[0] as { paint: { fill: number } }).paint.fill).to.equal(3);
+        expect((layers(g, "B")[0] as { paint: { fill: unknown } }).paint.fill).to.deep.equal(role(3));
         g.move("attacker");
-        // Player 2 is the Attacker (slot 3) and Player 1 the Defender (slot 4), on the board, tracker and chips alike.
-        expect(g.getPlayerColour(2)).to.equal(3);
-        expect(g.getPlayerColour(1)).to.equal(4);
-        expect((layers(g, "A")[0] as { paint: { fill: number } }).paint.fill).to.equal(4);
-        expect((layers(g, "B")[0] as { paint: { fill: number } }).paint.fill).to.equal(3);
-        expect((layers(g, "s1")[1] as { paint: { fill: number } }).paint.fill).to.equal(4);
+        // Player 2 is the Attacker and Player 1 the Defender, on the board, tracker and chips alike.
+        expect(g.getPlayerColour(2)).to.deep.equal(role(3));
+        expect(g.getPlayerColour(1)).to.deep.equal(role(4));
+        expect((layers(g, "A")[0] as { paint: { fill: unknown } }).paint.fill).to.deep.equal(role(4));
+        expect((layers(g, "B")[0] as { paint: { fill: unknown } }).paint.fill).to.deep.equal(role(3));
+        expect((layers(g, "s1")[1] as { paint: { fill: unknown } }).paint.fill).to.deep.equal(role(4));
+        // The tracker's tint and border follow the next placement's role too.
+        const track = g.render().areas![0] as AreaTrack;
+        expect((track.board.markers as MarkerLine[])[0].colour).to.deep.equal(role(4));
         const slots = ThueMorseGoGame.gameinfo.customizations!.map((c) => ("num" in c ? [c.num, c.default] : []));
         expect(slots).to.deep.equal([[1, 1], [2, 2], [3, 1], [4, 2], [5, "#000000"], [6, "#000000"], [7, "#000000"], [8, "#000000"]]);
         // Every stone's border is black or white by contrast, or the slot four above its fill under the display option.
-        expect((layers(g, "A")[0] as { paint: unknown }).paint).to.deep.equal(stonePaint(4));
-        expect((layers(g, "B")[0] as { paint: unknown }).paint).to.deep.equal(stonePaint(3));
+        expect((layers(g, "A")[0] as { paint: unknown }).paint).to.deep.equal(rolePaint(4));
+        expect((layers(g, "B")[0] as { paint: unknown }).paint).to.deep.equal(rolePaint(3));
         const fromPalette = g.render({ altDisplays: ["palette-borders"] }).legend as Record<string, Glyph[]>;
-        expect((fromPalette.A[0] as { paint: unknown }).paint).to.deep.equal(stonePaint(4, true));
-        expect((fromPalette.B[0] as { paint: unknown }).paint).to.deep.equal(stonePaint(3, true));
+        expect((fromPalette.A[0] as { paint: unknown }).paint).to.deep.equal(rolePaint(4, true));
+        expect((fromPalette.B[0] as { paint: unknown }).paint).to.deep.equal(rolePaint(3, true));
         // Standard games keep the seats' own slots, and there is no swap display any more.
         const h = play(small(), ["f6"]);
         expect(h.getPlayerColour(1)).to.equal(1);

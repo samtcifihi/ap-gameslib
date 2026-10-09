@@ -1,6 +1,6 @@
 import { GameBase, IAPGameState, IClickResult, ICustomButton, IIndividualState, IRenderOpts, IScores, IStatus, IValidationResult, type ChatLogCollectContext, type ChatLogLine } from "./_base.js";
 import type { APGamesInformation } from "../schemas/gameinfo.js";
-import type { APRenderRep, AreaTrack, BoardBasic, ColourResolvable, Glyph, MarkerDots, MarkerLine, RowCol } from "@abstractplay/renderer/build/schemas/schema";
+import type { APRenderRep, AreaTrack, BoardBasic, ColourResolvable, Colourfuncs, Glyph, MarkerDots, MarkerLine, RowCol } from "@abstractplay/renderer/build/schemas/schema";
 import type { APMoveResult } from "../schemas/moveresults.js";
 import { reviver, shuffle, SnubSquareGraph, UserFacingError } from "../common/index.js";
 import type { FlagContext, GameFlag } from "../common/flags.js";
@@ -121,9 +121,12 @@ interface ISim {
 }
 
 const UNDECIDED_COLOUR = "#999999";
-/** The palette slots of the Kill-All roles; the Attacker's defaults to the first colour, as in Kill-All Go. */
+/** The palette slots of the Kill-All roles, used when a palette for this game sets them. */
 const ATTACKER_SLOT = 3;
 const DEFENDER_SLOT = 4;
+/** The colours the Kill-All roles take otherwise: the Attacker the first, as in Kill-All Go. */
+const ATTACKER_DEFAULT = 1;
+const DEFENDER_DEFAULT = 2;
 const CELL_RE = /^[a-z]+\d+$/;
 const TRACK_ROWS = 16;
 const TRACK_DIGITS = 3;
@@ -319,12 +322,12 @@ export class ThueMorseGoGame extends GameBase {
             {
                 num: 3,
                 default: 1,
-                explanation: "Colour of the Attacker's stones in Kill-All games, the first colour as in Kill-All Go. Exchange this with the Defender's colour to have the Defender, who makes placement 0, in the first colour instead.",
+                explanation: "Colour of the Attacker's stones in Kill-All games. Unless a palette for this game sets it, the Attacker takes the first colour, as in Kill-All Go; set slots 3 and 4 the other way round to give the Defender, who makes placement 0, the first colour.",
             },
             {
                 num: 4,
                 default: 2,
-                explanation: "Colour of the Defender's stones in Kill-All games",
+                explanation: "Colour of the Defender's stones in Kill-All games. Unless a palette for this game sets it, the Defender takes the second colour.",
             },
             {
                 num: 5,
@@ -606,10 +609,10 @@ export class ThueMorseGoGame extends GameBase {
     }
 
     /**
-     * The palette slot a stone colour is drawn in: the seats' own slots in the standard game, and
-     * in Kill-All games the roles' slots, which players may customize either way round.
+     * The palette slot a stone colour is customized in: the seats' own slots in the standard game,
+     * and in Kill-All games the roles' slots.
      */
-    private paletteOfColour(colour: Stone): number {
+    private slotOfColour(colour: Stone): number {
         if (!this.killAll) {
             return colour;
         }
@@ -617,26 +620,42 @@ export class ThueMorseGoGame extends GameBase {
     }
 
     /**
-     * The paint of a stone whose fill is palette slot `slot`: its border is black or white,
-     * whichever contrasts better with the fill, or under the display option the palette slot four
-     * above, 5 to 8 for fills 1 to 4. The option is opt-in because the renderer rejects a palette
-     * that lacks a slot the game names, and the engine cannot see how many colours a palette has.
+     * The fill of a stone colour. In the standard game it is the seat's own slot. In Kill-All games
+     * it is the role's slot when a palette for this game sets it, and otherwise the first colour for
+     * the Attacker and the second for the Defender. The renderer's custom function makes that
+     * choice: without it, players with no palette for this game would get the renderer's own third
+     * and fourth colours.
      */
-    private stonePaint(slot: number, fromPalette: boolean): { fill: number; border: ColourResolvable } {
-        const border: ColourResolvable = fromPalette
-            ? slot + BORDER_SLOT_OFFSET
-            : { func: "bestContrast", bg: slot, fg: ["#000", "#fff"] };
-        return { fill: slot, border };
+    private fillOfColour(colour: Stone): number | Colourfuncs {
+        const slot = this.slotOfColour(colour);
+        if (!this.killAll) {
+            return slot;
+        }
+        return { func: "custom", default: slot === ATTACKER_SLOT ? ATTACKER_DEFAULT : DEFENDER_DEFAULT, palette: slot };
     }
 
-    public getPlayerColour(p: playerid): number | string {
+    /**
+     * The paint of a stone of `colour`: its border is black or white, whichever contrasts better
+     * with the fill, or under the display option the palette slot four above the colour's slot, 5
+     * to 8 for slots 1 to 4. The option is opt-in because the renderer rejects a palette that lacks
+     * a slot the game names, and the engine cannot see how many colours a palette has.
+     */
+    private stonePaint(colour: Stone, fromPalette: boolean): { fill: number | Colourfuncs; border: ColourResolvable } {
+        const fill = this.fillOfColour(colour);
+        const border: ColourResolvable = fromPalette
+            ? this.slotOfColour(colour) + BORDER_SLOT_OFFSET
+            : { func: "bestContrast", bg: fill, fg: ["#000", "#fff"] };
+        return { fill, border };
+    }
+
+    public getPlayerColour(p: playerid): number | string | Colourfuncs {
         if (!this.killAll) {
             return p;
         }
         if (this.defenderSeat === undefined) {
             return UNDECIDED_COLOUR;
         }
-        return this.paletteOfColour(this.colourOfSeat(p)!);
+        return this.fillOfColour(this.colourOfSeat(p)!);
     }
 
     public coords2algebraic(x: number, y: number): string {
@@ -1797,7 +1816,8 @@ export class ThueMorseGoGame extends GameBase {
         const err = this.applyTokens(sim, rest, colour, result);
         if (err !== undefined) { return err; }
         if (rest.length === 0) {
-            return this.ok(result, 0, i18next.t("apgames:validation.thuemorsego.DECLARE_ONE"), true);
+            const button = this.buttonValue > 0 && this.button === undefined;
+            return this.ok(result, 0, i18next.t(`apgames:validation.thuemorsego.${button ? "DECLARE_ONE_BUTTON" : "DECLARE_ONE"}`), true);
         }
         return this.completeness(sim, colour, result);
     }
@@ -2360,7 +2380,7 @@ export class ThueMorseGoGame extends GameBase {
         if (picker === undefined) {
             return { overlay, chosen: [] };
         }
-        const paint = this.killAll ? this.stonePaint(this.paletteOfColour(2), paletteBorders) : { fill: UNDECIDED_COLOUR };
+        const paint = this.killAll ? this.stonePaint(2, paletteBorders) : { fill: UNDECIDED_COLOUR };
         for (const btn of picker.buttons) {
             if (this.board.has(btn.cell)) {
                 // The stone shows; the point still answers to a click with this value.
@@ -2465,7 +2485,7 @@ export class ThueMorseGoGame extends GameBase {
         }
         const next = this.placed;
         const overflow = !rolling && next > MAX_TRACK_INDEX;
-        const nextFill = this.paletteOfColour(this.colourAt(next));
+        const nextFill = this.fillOfColour(this.colourAt(next));
         const tint: Glyph = { name: "piece-square", paint: { fill: overflow ? UNDECIDED_COLOUR : nextFill }, opacity: TRACK_TINT };
         // Keys that differ only in case would be confused by a page in quirks mode, where id lookups
         // ignore case, so the small glyphs are s1/s2, the plain markers m1/m2, and the digit
@@ -2473,7 +2493,7 @@ export class ThueMorseGoGame extends GameBase {
         const small = (colour: Stone): string => {
             const key = `s${colour}`;
             if (!(key in legend)) {
-                legend[key] = [tint, { name: "piece", paint: this.stonePaint(this.paletteOfColour(colour), paletteBorders), scale: SMALL_SCALE }];
+                legend[key] = [tint, { name: "piece", paint: this.stonePaint(colour, paletteBorders), scale: SMALL_SCALE }];
             }
             return key;
         };
@@ -2481,7 +2501,7 @@ export class ThueMorseGoGame extends GameBase {
         const marker = (colour: Stone, digit?: number): string => {
             const key = digit === undefined ? `m${colour}` : `m${colour}d${digit.toString(16)}`;
             if (!(key in legend)) {
-                const stone: Glyph = { name: "piece", paint: this.stonePaint(this.paletteOfColour(colour), paletteBorders) };
+                const stone: Glyph = { name: "piece", paint: this.stonePaint(colour, paletteBorders) };
                 legend[key] = digit === undefined
                     ? [tint, stone]
                     : [tint, stone, { text: digit.toString(16), scale: DIGIT_SCALE, rotate: null }];
@@ -2588,8 +2608,8 @@ export class ThueMorseGoGame extends GameBase {
         const hideDots = this.hasDisplay(opts, "hide-territory");
         const paletteBorders = this.hasDisplay(opts, "palette-borders");
         const legend: ILegend = {
-            A: [{ name: "piece", paint: this.stonePaint(this.paletteOfColour(1), paletteBorders) }],
-            B: [{ name: "piece", paint: this.stonePaint(this.paletteOfColour(2), paletteBorders) }],
+            A: [{ name: "piece", paint: this.stonePaint(1, paletteBorders) }],
+            B: [{ name: "piece", paint: this.stonePaint(2, paletteBorders) }],
         };
         const { overlay, chosen } = this.pickerOverlay(legend, paletteBorders);
         const { dead, dots } = this.territoryOverlay(legend, hideDots, paletteBorders);
