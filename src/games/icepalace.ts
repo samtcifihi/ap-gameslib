@@ -571,6 +571,13 @@ const BLACK: Colourfuncs = { func: "custom", default: "#000000", palette: 7 };
 const WHITE: Colourfuncs = { func: "custom", default: "#ffffff", palette: 8 };
 /** Legend key of an invisible spacer, used to lay the Pool out in columns with gaps. */
 const GAP_KEY = "gap";
+/**
+ * A stash column's width as a fraction of a board cell. Left to itself the renderer wraps a
+ * stash after as many columns as the board has cells, so a row would stop a quarter short
+ * of the board's edge and spill onto another row, and a narrow board would turn into a tall
+ * one; each stash is given the number of columns that fills the board's width instead.
+ */
+const STASH_COLUMN = 0.75;
 /** An invisible cell-sized square: a spacer, and a larger click target behind a pyramid. */
 const BLANK: Glyph = { name: "piece-square-borderless", paint: { fill: { colour: "_context_background", opacity: 0 } } };
 /** Seen from above, a stack's pyramids overlap; this lets the lower ones show through. */
@@ -1725,7 +1732,7 @@ export class IcePalaceGame extends GameBaseSequenced {
         const areas3D = this.hasDisplay(opts, "perspective-areas");
         const legend: Legend = {};
         const pieces = this.boardPieces(layout, view, legend, expanding);
-        const areas = this.areasBelow(view, legend, areas3D);
+        const areas = this.areasBelow(view, legend, areas3D, Math.floor(layout.width / STASH_COLUMN));
         const blocked = IcePalaceGame.unreachable(layout, view.palace, view.yard);
         const rep: APRenderRep = {
             renderer: expanding ? "stacking-expanding" : "stacking-3D",
@@ -1778,9 +1785,9 @@ export class IcePalaceGame extends GameBaseSequenced {
     /**
      * The areas below the board: what can be placed from, then the Pool. Stashes rather
      * than pieces areas: the renderer puts both directly under the board, so the hand
-     * must be a stash once the Pool is one.
+     * must be a stash once the Pool is one. Each wraps after `columns` columns.
      */
-    private areasBelow(view: IBoardView, legend: Legend, areas3D: boolean): AreaVolcanoStash[] {
+    private areasBelow(view: IBoardView, legend: Legend, areas3D: boolean, columns: number): AreaVolcanoStash[] {
         const areas: AreaVolcanoStash[] = [];
         const offered = view.phase === "build" ? view.stock : this.handOf(this.currplayer);
         if (offered.length > 0) {
@@ -1789,14 +1796,14 @@ export class IcePalaceGame extends GameBaseSequenced {
             const label = view.phase === "build"
                 ? this.neutralAreaLabel("apgames:icepalace.STOCK")
                 : this.seatAreaLabel(this.currplayer, "apgames:icepalace.HAND");
-            areas.push({ type: "localStash", label, stash: this.handStash(offered, legend, areas3D) });
+            areas.push({ type: "localStash", label, width: columns, stash: this.handStash(offered, legend, areas3D) });
         }
         // Everything still in the Pool, for reference. Draws are made at random when hands
         // are refilled, so showing the contents gives nothing away.
         if (this.pool.length > 0) {
             // i18next.t("apgames:icepalace.POOL")
             const label = this.neutralAreaLabel("apgames:icepalace.POOL");
-            areas.push({ type: "localStash", label, stash: this.poolStash(legend, areas3D) });
+            areas.push({ type: "localStash", label, width: columns, stash: this.poolStash(legend, areas3D) });
         }
         return areas;
     }

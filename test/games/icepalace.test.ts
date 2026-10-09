@@ -688,7 +688,7 @@ describe("Ice Palace: top-down display", () => {
         board?: { width: number; height: number; stackOffset?: number } | null;
         legend?: { [k: string]: { name?: string; opacity?: number } };
         pieces: string[][][] | null;
-        areas?: { type?: string; pieces?: string[]; stash?: string[][]; stack?: string[] }[];
+        areas?: { type?: string; pieces?: string[]; stash?: string[][]; stack?: string[]; width?: number }[];
     };
     const expanding = (g: IcePalaceGame): Rep => g.render() as unknown as Rep;
 
@@ -802,6 +802,23 @@ describe("Ice Palace: top-down display", () => {
         expect(pool.stash).to.deep.equal([["b1L", "b1L", "gap", "b1S"], ["gap"], ["b2S"], ["gap"], ["bWM"]]);
         // Pool pyramids are seen from above, as opaque diamonds.
         expect(rep.legend!.b1L).to.deep.equal({ name: "pyramid-up-large-upscaled", paint: { fill: 1 }, rotate: 45 });
+    });
+
+    it("wraps the hand and Pool at the board's width, not three quarters of it", () => {
+        const g = rig(new IcePalaceGame(3), [["1M"], ["2S"], ["3S"]], ["1L", "2L", "3L", "BL", "WL"]);
+        let rep = expanding(g);
+        // A stash column is three quarters of a cell, so the 7-cell Yard takes 9 of them:
+        // five colours and the spacers between them make one row.
+        expect(rep.board!.width).to.equal(7);
+        expect(rep.areas!.map(a => a.width)).to.deep.equal([9, 9]);
+        expect(rep.areas![1].stash).to.have.length(9);
+        const persp = g.render({ altDisplays: ["perspective", "perspective-areas"] }) as unknown as Rep;
+        expect(persp.areas!.map(a => a.width)).to.deep.equal([9, 9]);
+        // With the Palace beside the Yard there is room for more.
+        g.palace = new Map([["0.0", ["2L"]]]);
+        rep = expanding(g);
+        expect(rep.board!.width).to.equal(15);
+        expect(rep.areas!.map(a => a.width)).to.deep.equal([20, 20]);
     });
 
     it("still dots the legal cells once a pyramid is picked", () => {
