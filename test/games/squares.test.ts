@@ -797,6 +797,23 @@ describe("Squares", () => {
             expect(h.getButtons()).to.deep.equal([{ label: "apgames:buttons.pass", move: "pass" }]);
         });
 
+        it("validates from the saved position even when asked by a previewed engine", () => {
+            // Reported from the Playground: after an attack was entered and the entry cleared, the attacker was told
+            // their unit was under attack, because the instructions came from the engine the attack was previewed on.
+            const g = new SquaresGame();
+            for (const m of ["IGR-G3C", "IBR-B3C", "IG3C-G2CL", "IB3C-B2CR", "IGR-G3C", "IBR-B3C", "IG3C-G2CR", "IB3C-B2CL", "IG2CL-G1CL", "IB2CR-B1CR", "IG2CR-G1C", "IB2CL-B1C"]) {
+                g.move(m);
+            }
+            const preview = g.clone();
+            preview.move("IG1C>IB1C", { partial: true });
+            // the preview itself still shows the combat the attack leads to
+            expect(preview.render().annotations!.some(a => a.type === "move")).to.be.true;
+            expect(preview.validateMove("")).to.deep.equal(g.validateMove(""));
+            expect(preview.validateMove("").message).to.contain("Move a unit, declare an attack, or pass");
+            expect(preview.validateMove("IG1C>IB1C")).to.deep.equal(g.validateMove("IG1C>IB1C"));
+            expect(preview.validateMove("stand").valid).to.be.false;
+        });
+
         it("keeps the ply's author as the current player while a preview waits on the opponent", () => {
             const g = setup({ "1I1": "G1C", "1C1": "G1CL", "2I1": "B1C" });
             // The attack is played out for the preview and the defender decides next, but the ply is still Gray's

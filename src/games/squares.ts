@@ -1569,6 +1569,12 @@ export class SquaresGame extends GameBaseSequenced {
     }
 
     public validateMove(m: string): IValidationResult {
+        if (this.preview !== undefined) {
+            // A previewed engine has the ply being entered played out on it, so after an attack it holds a combat
+            // waiting on the defender. Moves are always entered from the saved position, and the front end may ask a
+            // previewed engine anyway (for the instructions after the entry is cleared), so answer from that position.
+            return this.clone().validateMove(m);
+        }
         const move = SquaresGame.normalise(m);
         if (this.gameover) {
             return { valid: false, message: i18next.t("apgames:MOVES_GAMEOVER") };
