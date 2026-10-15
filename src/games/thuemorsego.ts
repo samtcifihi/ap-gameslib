@@ -42,7 +42,6 @@ interface IMoveState extends IIndividualState {
     /** Stones of the strings marked dead by the pending whole-move pass, in board order. */
     marks: string[];
     /** Whether this move was a whole-move pass that changed the marking it answered. */
-    dispute: boolean;
     /** Whether both players have changed the marking in turn, after which passes carry none. */
     locked: boolean;
     /** The seat holding the button. */
@@ -371,7 +370,6 @@ export class ThueMorseGoGame extends GameBase {
     public interim: string[] = [];
     public novel = false;
     public marks: string[] = [];
-    public dispute = false;
     public locked = false;
     public button?: playerid;
     public handicap?: number;
@@ -409,7 +407,6 @@ export class ThueMorseGoGame extends GameBase {
                 interim: [],
                 novel: false,
                 marks: [],
-                dispute: false,
                 locked: false,
             };
             this.stack = [fresh];
@@ -449,7 +446,6 @@ export class ThueMorseGoGame extends GameBase {
         this.interim = [...state.interim];
         this.novel = state.novel;
         this.marks = [...state.marks];
-        this.dispute = state.dispute;
         this.locked = state.locked;
         this.button = state.button;
         this.handicap = state.handicap;
@@ -848,8 +844,7 @@ export class ThueMorseGoGame extends GameBase {
 
     /**
      * The marking a whole-move pass by the current player answers: the pending one when the
-     * opponent's last move was a whole-move pass, so that keeping it ends the game. Dropping the
-     * marking empties the run of passes, so the pass that dropped it is never answered.
+     * opponent's last move was a whole-move pass, so that keeping it ends the game.
      */
     private inheritedMarks(): string[] | undefined {
         const n = this.passes.length;
@@ -870,7 +865,30 @@ export class ThueMorseGoGame extends GameBase {
 
     private clearMarks(): void {
         this.marks = [];
-        this.dispute = false;
+    }
+
+    /**
+     * End dead-stone marking for the rest of the game: a placement or a pass that marks nothing
+     * dead has followed a marking, so the players must capture dead stones for real, and the game
+     * ends when both pass their whole moves in turn, every stone on the board counting as alive.
+     */
+    private endMarking(): void {
+        this.results.push({ type: "select", what: "dead", how: "locked" });
+        this.locked = true;
+        this.marks = [];
+    }
+
+    /** Whether a marking is pending that the current move answers, so that a placement would end marking. */
+    private markingPending(): boolean {
+        return this.marks.length > 0 && !this.locked;
+    }
+
+    /** Append to a valid verdict the warning that a placement now ends dead-stone marking. */
+    private warnMarkingEnds(result: IValidationResult): IValidationResult {
+        if (result.valid && this.markingPending()) {
+            result.message = `${result.message} ${i18next.t("apgames:validation.thuemorsego.PLACING_ENDS_MARKING")}`;
+        }
+        return result;
     }
 
     // -----------------------------------------------------------------------
@@ -1529,13 +1547,20 @@ export class ThueMorseGoGame extends GameBase {
             return [...passes, ...this.markTokens(this.geo.cells.filter((c) => marks.has(c)))].join(",");
         }
         // A placement, which drops any marking; a click on a stone is left to fail as occupied.
-        if (placements.length > 0 && placements[placements.length - 1] === cell) {
-            return placements.slice(0, -1).join(",");
+        // The placements come first and the passes that fill the rest of the move after them, so
+        // a stone placed after passing the move gives "e5,pass" rather than "pass,e5". Clicking a
+        // placement again takes it back, restoring the passes if the move had any.
+        const passing = placements.includes("pass");
+        let placed = placements.filter((token) => token !== "pass");
+        if (placed.includes(cell)) {
+            placed = placed.filter((token) => token !== cell);
+        } else if (placed.length < free) {
+            placed = [...placed, cell];
+        } else {
+            placed = [...placed.slice(0, -1), cell];
         }
-        if (placements.length < free) {
-            return [...placements, cell].join(",");
-        }
-        return [...placements.slice(0, -1), cell].join(",");
+        const passes = passing ? Array<string>(free - placed.length).fill("pass") : [];
+        return [...placed, ...passes].join(",");
     }
 
     // -----------------------------------------------------------------------
@@ -1726,7 +1751,8 @@ export class ThueMorseGoGame extends GameBase {
         const forced = this.forcedPasses();
         const free = length - forced;
         if (m.length === 0) {
-            return this.ok(result, -1, this.instructions(length, free));
+            const note = this.markingPending() ? ` ${i18next.t("apgames:validation.thuemorsego.MARKING_PENDING", { count: this.marks.length })}` : "";
+            return this.ok(result, -1, `${this.instructions(length, free)}${note}`);
         }
         const { placements: tokens, marked } = this.splitMarks(m.split(","));
         if (free === 0) {
@@ -1752,7 +1778,7 @@ export class ThueMorseGoGame extends GameBase {
         if (this.passesWholeMove(tokens) && (marked.length > 0 || tokens.length === free || this.marks.length > 0)) {
             return this.passVerdict(marked, result);
         }
-        return this.completeness(sim, colour, result);
+        return this.warnMarkingEnds(this.completeness(sim, colour, result));
     }
 
     /** The validation message when the mark tokens of a move are not allowed, if they are not. */
@@ -1786,14 +1812,16 @@ export class ThueMorseGoGame extends GameBase {
             const key = inherited === undefined ? "PASS_LOCKED" : "PASS_LOCKED_ENDS";
             return this.ok(result, 1, i18next.t(`apgames:validation.thuemorsego.${key}`), true);
         }
-        const unchanged = this.sameMarks(marks, this.marks);
         let key: string;
-        if (inherited === undefined) {
+        if (this.marks.length > 0 && count === 0) {
+            // A pass that marks nothing dead after a marking ends marking for the rest of the game.
+            key = "PASS_CLEARS";
+        } else if (inherited === undefined) {
             key = "PASS_OPEN";
-        } else if (unchanged) {
+        } else if (this.sameMarks(marks, this.marks)) {
             key = "PASS_AGREE";
         } else {
-            key = this.dispute ? "PASS_DISPUTE_LAST" : "PASS_DISPUTE";
+            key = "PASS_DISPUTE";
         }
         return this.ok(result, 0, i18next.t(`apgames:validation.thuemorsego.${key}`, { count }), true);
     }
@@ -2025,6 +2053,9 @@ export class ThueMorseGoGame extends GameBase {
         if (declared !== undefined) {
             this.lastmove = [`${declared}s`, ...spelled].join(",");
             this.passes = [];
+            if (this.markingPending()) {
+                this.endMarking();
+            }
             this.clearMarks();
         } else if (forced === length) {
             // Automatic passes neither count towards ending the game nor interrupt a run of
@@ -2035,6 +2066,9 @@ export class ThueMorseGoGame extends GameBase {
         } else {
             this.lastmove = spelled.join(",");
             this.passes = [];
+            if (this.markingPending()) {
+                this.endMarking();
+            }
             this.clearMarks();
         }
         if (prefix.length > 0) {
@@ -2053,9 +2087,10 @@ export class ThueMorseGoGame extends GameBase {
     /**
      * Record a whole-move pass and the marking it carries. When the opponent's last move was a
      * whole-move pass, this pass answers its marking: keeping it ends the game, which is what
-     * the result reports, and changing it never does. Changing a marking the opponent's pass had
-     * itself changed drops the marking for the rest of the game, and the run of passes that can
-     * end the game starts afresh, so that the dropped marking is never taken as accepted.
+     * the result reports, and changing it never does; the players may change it back and forth
+     * for as long as their passes follow one another. A pass that marks nothing dead after a
+     * marking ends marking for the rest of the game; it still counts as a pass, so the opponent's
+     * next whole-move pass ends the game with every stone alive.
      */
     private recordPass(seat: playerid, spelled: string[], marked: string[]): boolean {
         const marks = this.canonicalMarks(marked);
@@ -2066,14 +2101,9 @@ export class ThueMorseGoGame extends GameBase {
             this.results.push({ type: "select", what: "dead", how, ...(marks.length > 0 ? { where: marks.join(",") } : {}) });
         }
         this.lastmove = [...spelled, ...this.markTokens(marks)].join(",");
-        if (changed && this.dispute) {
-            this.results.push({ type: "select", what: "dead", how: "locked" });
-            this.locked = true;
-            this.clearMarks();
-            this.passes = [];
-            return false;
+        if (this.markingPending() && marks.length === 0) {
+            this.endMarking();
         }
-        this.dispute = changed;
         this.marks = marks;
         this.passes = [...this.passes, seat];
         return inherited !== undefined && !changed;
@@ -2353,7 +2383,6 @@ export class ThueMorseGoGame extends GameBase {
             interim: [...this.interim],
             novel: this.novel,
             marks: [...this.marks],
-            dispute: this.dispute,
             locked: this.locked,
         };
         if (this.button !== undefined) { state.button = this.button; }

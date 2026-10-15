@@ -913,6 +913,20 @@ describe("Thue-Morse Go: territory and dead strings", () => {
         const h = play(scene(), ["f7"]);
         expect(click(h, h.handleClick("", -1, -1, "_btn_pass").move, "j11").move).to.equal("pass,pass,-j11");
         expect(click(h, "pass", "j11").move).to.equal("pass,pass,-j11");
+        // A stone placed after passing the move comes first, the pass after it, and the marking goes.
+        expect(click(h, "pass,pass", "e5").move).to.equal("e5,pass");
+        expect(click(h, "pass,pass,-j11", "e5").move).to.equal("e5,pass");
+        expect(click(h, "e5,pass", "e5").move).to.equal("pass,pass");
+        expect(click(h, "e5,pass", "g7").move).to.equal("e5,g7");
+        expect(click(h, "e5,pass", "g7").complete).to.equal(1);
+        const occupiedAfter = click(h, "e5,pass", "j11");
+        expect(occupiedAfter.valid).to.be.false;
+        expect(occupiedAfter.message).to.contain("pass the whole move");
+        // Without a pass in the move, clicks behave as before.
+        expect(click(h, "", "e5").move).to.equal("e5");
+        expect(click(h, "e5", "g7").move).to.equal("e5,g7");
+        expect(click(h, "e5,g7", "e5").move).to.equal("g7");
+        expect(click(h, "e5,g7", "d4").move).to.equal("e5,d4");
     });
 
     it("refuses marks that do not belong to a whole-move pass", () => {
@@ -1004,102 +1018,108 @@ describe("Thue-Morse Go: territory and dead strings", () => {
         expect(again.render()).to.deep.equal(play(scene(), ["pass,-j11,-k10"]).render());
     });
 
-    it("lets a changed marking resume the game, and drops the marking once both players have changed it in turn", () => {
+    it("lets players change the marking back and forth until a placement or a plain pass ends marking", () => {
+        // Player 1 marks Player 2's stones; the players then change the marking in turn as often as they like.
         const g = play(scene(), ["pass,-j11,-k10"]);
-        const change = g.validateMove("pass,pass");
-        expect(change.valid).to.be.true;
+        const change = g.validateMove("pass,pass,-k10");
+        expect(change.complete).to.equal(0);
         expect(change.message).to.contain("game goes on");
-        g.move("pass,pass");
-        expect(g.gameover).to.be.false;
-        expect(g.dispute).to.be.true;
-        expect(g.marks).to.deep.equal([]);
+        expect(change.message).to.contain("change it again");
+        play(g, ["pass,pass,-k10", "pass,-j11,-k10", "pass,-k10", "pass,pass,-j11,-k10"]);
         expect(g.locked).to.be.false;
-        // The first player may play on, which drops the marking, or pass: keeping it ends the game.
-        const resumed = g.clone().move("f7");
-        expect(resumed.marks).to.deep.equal([]);
-        expect(resumed.dispute).to.be.false;
-        expect(resumed.gameover).to.be.false;
-        expect(g.clone().move("pass").gameover).to.be.true;
-        // Changing it back is the second change in a row: the marking is dropped for good, and the
-        // pass that dropped it is not one the opponent can accept.
-        const counter = g.validateMove("pass,-k10");
-        expect(counter.complete).to.equal(0);
-        expect(counter.message).to.contain("drops it");
-        g.move("pass,-k10");
-        expect(g.lastmove).to.equal("pass,-k10");
-        expect(g.locked).to.be.true;
-        expect(g.dispute).to.be.false;
-        expect(g.marks).to.deep.equal([]);
-        expect(g.passes).to.deep.equal([]);
         expect(g.gameover).to.be.false;
-        expect(g.results).to.deep.include({ type: "select", what: "dead", how: "locked" });
-        expect(g.sidebarStatuses().some((s) => JSON.stringify(s.value).includes("MARKING_LOCKED"))).to.be.true;
-        expect(g.validateMove("pass,pass,-j11").valid).to.be.false;
-        expect(g.validateMove("pass,-k10").valid).to.be.false;
-        const lockedClick = click(g, "pass", "j11");
+        expect(g.marks).to.deep.equal(["j11", "k10"]);
+        // Keeping the marking ends the game with the marked strings removed.
+        const kept = g.clone().move("pass,pass,-j11,-k10");
+        expect(kept.gameover).to.be.true;
+        expect(kept.board.has("j11")).to.be.false;
+        expect(kept.board.has("k10")).to.be.false;
+        // A plain pass instead ends marking: the game goes on, and the opponent's next pass ends it with every stone alive.
+        expect(g.validateMove("").message).to.contain("2 stones are marked dead");
+        const clears = g.validateMove("pass,pass");
+        expect(clears.complete).to.equal(0);
+        expect(clears.message).to.contain("ends dead-stone marking");
+        const p = g.clone().move("pass,pass");
+        expect(p.gameover).to.be.false;
+        expect(p.locked).to.be.true;
+        expect(p.marks).to.deep.equal([]);
+        expect(p.results).to.deep.include({ type: "select", what: "dead", how: "cleared" });
+        expect(p.results).to.deep.include({ type: "select", what: "dead", how: "locked" });
+        expect(p.sidebarStatuses().some((s) => JSON.stringify(s.value).includes("MARKING_LOCKED"))).to.be.true;
+        expect(p.validateMove("pass,-k10").valid).to.be.false;
+        const lockedClick = click(p, "pass", "j11");
         expect(lockedClick.valid).to.be.false;
-        expect(lockedClick.message).to.contain("the game resumed");
         expect(lockedClick.message).to.contain("Capture any dead stones");
-        expect(g.getButtons()[0].move).to.equal("pass");
-        const plain = g.validateMove("pass");
-        expect(plain.complete).to.equal(1);
-        expect(plain.message).to.contain("if your opponent then passes");
-        g.move("pass");
-        expect(g.gameover).to.be.false;
-        expect(g.passes).to.deep.equal([2]);
-        // The next pass is the second in a row: the game ends with every stone alive.
-        expect(g.getButtons()[0].move).to.equal("pass,pass");
-        const ends = g.validateMove("pass,pass");
+        expect(p.getButtons()[0].move).to.equal("pass,pass");
+        const ends = p.validateMove("pass,pass");
         expect(ends.complete).to.equal(1);
         expect(ends.message).to.contain("end the game");
-        expect(g.clone().move("f7").gameover).to.be.false;
-        g.move("pass,pass");
-        expect(g.gameover).to.be.true;
-        expect(g.board.has("k10")).to.be.true;
-        expect(g.board.has("j11")).to.be.true;
-        expect(g.results.some((r) => r.type === "remove")).to.be.false;
-        // Once dropped, even after play resumes, passes carry no marking.
-        const h = play(scene(), ["pass,-j11,-k10", "pass,pass", "pass,-k10", "f7"]);
+        expect(p.clone().move("e5").gameover).to.be.false;
+        p.move("pass,pass");
+        expect(p.gameover).to.be.true;
+        expect(p.board.has("j11")).to.be.true;
+        expect(p.results.some((r) => r.type === "remove")).to.be.false;
+        // A placement ends marking too, whether or not the move also passes.
+        const placing = g.validateMove("e5");
+        expect(placing.valid).to.be.true;
+        expect(placing.message).to.contain("ends dead-stone marking");
+        expect(g.validateMove("e5,pass").message).to.contain("ends dead-stone marking");
+        const q = g.clone().move("e5,pass");
+        expect(q.locked).to.be.true;
+        expect(q.marks).to.deep.equal([]);
+        expect(q.passes).to.deep.equal([]);
+        expect(q.results).to.deep.include({ type: "select", what: "dead", how: "locked" });
+        expect(q.validateMove("pass,pass").complete).to.equal(1);
+        expect(q.validateMove("pass,pass").message).to.contain("if your opponent then passes");
+        q.move("pass,pass");
+        expect(q.gameover).to.be.false;
+        q.move("pass");
+        expect(q.gameover).to.be.true;
+        expect(q.board.has("e5")).to.be.true;
+        expect(q.board.has("j11")).to.be.true;
+        // Taking the button counts as a placement.
+        const b = g.clone().move("button,pass");
+        expect(b.locked).to.be.true;
+        // Once ended, even after play resumes, passes carry no marking.
+        const h = play(scene(), ["pass,-j11,-k10", "pass,e5", "f7"]);
         expect(h.locked).to.be.true;
-        expect(h.validateMove("pass,pass,-j11").valid).to.be.false;
-        expect(h.validateMove("pass,pass").complete).to.equal(1);
-        expect(click(h, "pass,pass", "j11").valid).to.be.false;
-        h.move("pass,pass");
-        expect(h.gameover).to.be.false;
-        h.move("pass");
-        expect(h.gameover).to.be.true;
-        expect(h.board.has("j11")).to.be.true;
+        expect(h.validateMove("pass,-j11").valid).to.be.false;
+        expect(click(h, "pass", "j11").valid).to.be.false;
     });
 
-    it("only drops the marking when the changes follow each other", () => {
-        const g = play(scene(), ["pass,-j11,-k10", "pass,pass", "f7", "pass,-f6", "pass,pass"]);
-        expect(g.dispute).to.be.true;
+    it("keeps marking available while no marking has been answered by a placement or a plain pass", () => {
+        // A plain pass before any marking does not end marking: the opponent may still mark.
+        const g = play(scene(), ["pass", "pass,pass,-k10"]);
         expect(g.locked).to.be.false;
-        g.move("pass,-f6");
-        expect(g.locked).to.be.true;
-        expect(g.marks).to.deep.equal([]);
-        expect(g.gameover).to.be.false;
+        expect(g.marks).to.deep.equal(["k10"]);
+        expect(g.validateMove("pass,-k10").message).to.contain("end the game");
+        // Neither does a placement before any marking.
+        const h = play(scene(), ["pass", "e5,pass", "pass,-k10"]);
+        expect(h.locked).to.be.false;
+        expect(h.marks).to.deep.equal(["k10"]);
+        expect(h.validateMove("").message).to.contain("One stone is marked dead");
+        // Two plain passes in a row end the game as they always did.
+        expect(play(scene(), ["pass", "pass,pass"]).gameover).to.be.true;
     });
 
-    it("never ends the game on the pass that drops the marking, nor on the plain pass answering it", () => {
-        // A reported game: each player changed the other's marking in turn, and the following plain
-        // pass used to be taken as accepting the second change.
-        const g = play(sixteen(), ["j13", "h8,g6", "e11", "d12", "pass,pass,-j13,-e11", "pass,pass,-j13"]);
-        expect(g.dispute).to.be.true;
-        expect(g.marks).to.deep.equal(["j13"]);
-        g.move("pass,pass,-j13,-e11");
-        expect(g.gameover).to.be.false;
-        expect(g.locked).to.be.true;
-        expect(g.marks).to.deep.equal([]);
-        expect(g.getButtons()[0].move).to.equal("pass");
-        expect(g.validateMove("pass,-j13,-e11").valid).to.be.false;
-        g.move("pass");
-        expect(g.gameover).to.be.false;
-        expect(g.currplayer).to.equal(1);
-        g.move("pass");
-        expect(g.gameover).to.be.true;
-        expect([...g.board.keys()].sort()).to.deep.equal(["d12", "e11", "g6", "h8", "j13"]);
-        expect(g.results.some((r) => r.type === "remove")).to.be.false;
+    it("ends the reported game only when a pass keeps the marking", () => {
+        // Each player changed the other's marking in turn; the fourth pass is answered on its merits.
+        const g = play(sixteen(), ["j13", "h8,g6", "e11", "d12", "pass,pass,-j13,-e11", "pass,pass,-j13", "pass,pass,-j13,-e11"]);
+        expect(g.locked).to.be.false;
+        expect(g.marks).to.deep.equal(["j13", "e11"]);
+        expect(g.getButtons()[0].move).to.equal("pass,-j13,-e11");
+        // Keeping it ends the game with both stones removed.
+        const kept = g.clone().move("pass,-j13,-e11");
+        expect(kept.gameover).to.be.true;
+        expect([...kept.board.keys()].sort()).to.deep.equal(["d12", "g6", "h8"]);
+        // Changing it goes on; clearing it ends marking, and the next pass ends the game with every stone alive.
+        expect(g.clone().move("pass,-j13").gameover).to.be.false;
+        const cleared = g.clone().move("pass");
+        expect(cleared.gameover).to.be.false;
+        expect(cleared.locked).to.be.true;
+        cleared.move("pass");
+        expect(cleared.gameover).to.be.true;
+        expect([...cleared.board.keys()].sort()).to.deep.equal(["d12", "e11", "g6", "h8", "j13"]);
     });
 
     it("carries the marking across served handicap passes, which never answer it", () => {
@@ -1109,7 +1129,7 @@ describe("Thue-Morse Go: territory and dead strings", () => {
         expect(g.getButtons()[0].move).to.equal("pass,pass,-f6");
         g.move("pass,pass,-f6");
         expect(g.gameover).to.be.false;
-        expect(g.dispute).to.be.false;
+        expect(g.locked).to.be.false;
         g.move("pass,-f6");
         expect(g.gameover).to.be.true;
         expect(g.board.size).to.equal(0);
@@ -1118,14 +1138,15 @@ describe("Thue-Morse Go: territory and dead strings", () => {
 
     it("reports markings in the chat log", () => {
         const g = scene();
-        play(g, ["pass,-j11,-k10", "pass,pass", "pass,-k10", "pass", "pass,pass"]);
+        play(g, ["pass,-j11,-k10", "pass,pass,-k10", "pass,-j11,-k10", "pass,-k10", "pass,pass", "pass,pass"]);
         expect(g.gameover).to.be.true;
         assertChatLogParity(g, ["Alice", "Bob"]);
         const log = g.chatLog(["Alice", "Bob"]).flat().join("\n");
         expect(log).to.contain("Alice marked 2 stones as dead.");
-        expect(log).to.contain("Bob cleared the marking: no stones are marked dead.");
-        expect(log).to.contain("Alice changed the marking: one stone is marked dead.");
-        expect(log).to.contain("Both players have changed the marking in turn, so it is dropped");
+        expect(log).to.contain("Bob changed the marking: one stone is marked dead.");
+        expect(log).to.contain("Alice changed the marking: 2 stones are marked dead.");
+        expect(log).to.contain("Alice cleared the marking: no stones are marked dead.");
+        expect(log).to.contain("Dead-stone marking has ended");
         expect(log).to.not.contain("removed from the board");
         expect(log).to.contain("both players passed consecutively");
         // A game that ends by accepting a marking removes the marked stones.
