@@ -783,20 +783,21 @@ export class ThueMorseGoGame extends GameBase {
     // Dead strings
     // -----------------------------------------------------------------------
 
-    /** The stones of the string at `cell`, which must hold a stone. */
-    private stringOf(cell: string): string[] {
-        return stringAt(this.board, this.geo, cell).stones;
+    /** The stones of the string at `cell` on `board`, which must hold a stone there. */
+    private stringOn(board: Board, cell: string): string[] {
+        return stringAt(board, this.geo, cell).stones;
     }
 
     /**
-     * The marking that names the strings at `cells`: every stone of each, in board order. Cells
-     * without a stone name nothing; validation reports them.
+     * The marking that names the strings at `cells` on `board`: every stone of each, in board
+     * order. Cells without a stone name nothing, so a mark on a stone the move's own placements
+     * captured simply drops out.
      */
-    private canonicalMarks(cells: Iterable<string>): string[] {
+    private canonicalMarksOn(board: Board, cells: Iterable<string>): string[] {
         const marked = new Set<string>();
         for (const cell of cells) {
-            if (this.board.has(cell) && !marked.has(cell)) {
-                for (const stone of this.stringOf(cell)) {
+            if (board.has(cell) && !marked.has(cell)) {
+                for (const stone of this.stringOn(board, cell)) {
                     marked.add(stone);
                 }
             }
@@ -804,19 +805,27 @@ export class ThueMorseGoGame extends GameBase {
         return this.geo.cells.filter((cell) => marked.has(cell));
     }
 
-    /** The tokens that spell a marking: one per marked string, naming its first stone in board order. */
-    private markTokens(marks: string[]): string[] {
+    private canonicalMarks(cells: Iterable<string>): string[] {
+        return this.canonicalMarksOn(this.board, cells);
+    }
+
+    /** The tokens that spell a marking on `board`: one per marked string, naming its first stone in board order. */
+    private markTokensOn(board: Board, marks: string[]): string[] {
         const named = new Set<string>();
         const tokens: string[] = [];
         for (const cell of marks) {
             if (!named.has(cell)) {
                 tokens.push(`-${cell}`);
-                for (const stone of this.stringOf(cell)) {
+                for (const stone of this.stringOn(board, cell)) {
                     named.add(stone);
                 }
             }
         }
         return tokens;
+    }
+
+    private markTokens(marks: string[]): string[] {
+        return this.markTokensOn(this.board, marks);
     }
 
     private sameMarks(a: string[], b: string[]): boolean {
@@ -837,14 +846,23 @@ export class ThueMorseGoGame extends GameBase {
         return { placements, marked };
     }
 
-    /** Whether `placements` are the voluntary passes of a whole-move pass, which may carry a marking. */
+    /** Whether `placements` are the voluntary passes of a whole-move pass, the only move that can end the game. */
     private passesWholeMove(placements: string[]): boolean {
         return !this.killAll && placements.length > 0 && placements.every((token) => token === "pass");
     }
 
     /**
-     * The marking a whole-move pass by the current player answers: the pending one when the
-     * opponent's last move was a whole-move pass, so that keeping it ends the game.
+     * Whether `placements` pass at least one placement. Such a move counts as a pass, may carry a
+     * marking, and stays open for strings to be clicked; a whole-move pass by the opponent can then
+     * end the game.
+     */
+    private passesAny(placements: string[]): boolean {
+        return !this.killAll && placements.includes("pass");
+    }
+
+    /**
+     * The marking the current player's move answers: the pending one when the opponent's last
+     * move passed at least one placement, so that a whole-move pass keeping it ends the game.
      */
     private inheritedMarks(): string[] | undefined {
         const n = this.passes.length;
@@ -1533,39 +1551,52 @@ export class ThueMorseGoGame extends GameBase {
     /** Extend the placement tokens of a move in progress with a click on `cell`, `free` placements being the player's. */
     private clickPlacements(tokens: string[], cell: string, free: number): string {
         const { placements, marked } = this.splitMarks(tokens);
-        if (this.board.has(cell) && this.passesWholeMove(placements)) {
-            // A stone clicked while the move passes every placement: its string is marked
-            // dead, or unmarked again.
-            const marks = new Set(this.canonicalMarks(marked));
-            const stones = this.stringOf(cell);
+        const passing = placements.includes("pass");
+        let placed = placements.filter((token) => token !== "pass");
+        const board = this.boardAfter(placed);
+        if (placed.includes(cell)) {
+            // A placement clicked again is taken back.
+            placed = placed.filter((token) => token !== cell);
+        } else if (board.has(cell) && !this.killAll && placed.length < free && (passing || placed.length > 0)) {
+            // A stone clicked while the move passes at least one placement: its string is marked
+            // dead, or unmarked again, as the board stands after the move's placements.
+            const marks = new Set(this.canonicalMarksOn(board, marked));
+            const stones = this.stringOn(board, cell);
             if (stones.every((stone) => marks.has(stone))) {
                 for (const stone of stones) { marks.delete(stone); }
             } else {
                 for (const stone of stones) { marks.add(stone); }
             }
-            const passes = Array<string>(free).fill("pass");
-            return [...passes, ...this.markTokens(this.geo.cells.filter((c) => marks.has(c)))].join(",");
-        }
-        // A placement, which drops any marking; a click on a stone is left to fail as occupied.
-        // The placements come first and the passes that fill the rest of the move after them, so
-        // a stone placed after passing the move gives "e5,pass" rather than "pass,e5". Clicking a
-        // placement again takes it back, restoring the passes if the move had any.
-        const passing = placements.includes("pass");
-        let placed = placements.filter((token) => token !== "pass");
-        if (placed.includes(cell)) {
-            placed = placed.filter((token) => token !== cell);
+            const passes = Array<string>(free - placed.length).fill("pass");
+            return [...placed, ...passes, ...this.markTokensOn(board, this.geo.cells.filter((c) => marks.has(c)))].join(",");
         } else if (placed.length < free) {
             placed = [...placed, cell];
         } else {
+            // A click on a stone with no placement left to pass is left to fail as occupied.
             placed = [...placed.slice(0, -1), cell];
         }
-        const passes = passing ? Array<string>(free - placed.length).fill("pass") : [];
-        return [...placed, ...passes].join(",");
+        // The placements come first and the passes that fill the rest of the move after them, so
+        // a stone placed after passing the move gives "e5,pass" rather than "pass,e5". Marks on
+        // strings that survive the placements stay; a move that passes nothing carries none.
+        const after = this.boardAfter(placed);
+        const marks = placed.length < free ? this.canonicalMarksOn(after, marked) : [];
+        const passes = passing || marks.length > 0 ? Array<string>(free - placed.length).fill("pass") : [];
+        return [...placed, ...passes, ...this.markTokensOn(after, marks)].join(",");
     }
 
-    // -----------------------------------------------------------------------
-    // Validation
-    // -----------------------------------------------------------------------
+    /** The board after the current player's placements `stones` (cells or the button), as far as they are legal. */
+    private boardAfter(stones: string[]): Board {
+        const colour = this.colourOfSeat(this.currplayer)!;
+        const sim = this.newSim(this.moveLength(this.placed), 0);
+        this.serveForced(sim, this.forcedPasses());
+        for (const token of stones) {
+            if (this.applyToken(sim, token, colour) !== undefined) {
+                break;
+            }
+        }
+        return sim.board;
+    }
+
     // -----------------------------------------------------------------------
     // Validation
     // -----------------------------------------------------------------------
@@ -1769,28 +1800,40 @@ export class ThueMorseGoGame extends GameBase {
         this.serveForced(sim, forced);
         const err = this.applyTokens(sim, tokens, colour, result);
         if (err !== undefined) { return err; }
+        // A move that passes at least one placement, as submitted now, stays open for strings to be
+        // marked dead or a stone to be placed for a pass; it counts as a pass for ending the game.
+        const passes = this.passesAny(tokens) || (!this.killAll && tokens.length < free);
         if (marked.length > 0) {
-            const bad = this.checkMarks(tokens, marked);
+            const bad = this.checkMarks(passes, marked, sim.board);
             if (bad !== undefined) { return this.fail(result, bad); }
         }
-        // A whole-move pass stays open for marking strings dead. A pass that leaves placements to
-        // fill does too once a marking is pending, since submitting it answers that marking.
-        if (this.passesWholeMove(tokens) && (marked.length > 0 || tokens.length === free || this.marks.length > 0)) {
-            return this.passVerdict(marked, result);
+        if (passes && !sim.over) {
+            // With checked weak eyes the clearing that ends the move can leave a forbidden position.
+            const finish = this.finishMove(this.copySim(sim), colour);
+            if (finish !== undefined) {
+                const key = finish.startsWith("SUICIDE_REPEAT") ? "MUST_CONTINUE_SUICIDE" : "MUST_CONTINUE";
+                return this.ok(result, -1, i18next.t(`apgames:validation.thuemorsego.${key}`), true);
+            }
+            return this.passVerdict(sim.board, marked, this.passesWholeMove(tokens), free, result);
         }
         return this.warnMarkingEnds(this.completeness(sim, colour, result));
     }
 
-    /** The validation message when the mark tokens of a move are not allowed, if they are not. */
-    private checkMarks(placements: string[], marked: string[]): string | undefined {
-        if (!this.passesWholeMove(placements)) {
+    /**
+     * The validation message when the mark tokens of a move are not allowed, if they are not.
+     * `passes` is whether the move, as submitted now, passes at least one placement, and `board`
+     * the board after its placements: a mark on a stone they captured is allowed and simply drops
+     * out, while a mark on a point that never held a stone is a mistake.
+     */
+    private checkMarks(passes: boolean, marked: string[], board: Board): string | undefined {
+        if (!passes) {
             return i18next.t("apgames:validation.thuemorsego.MARKS_NEED_PASS");
         }
         for (const cell of marked) {
             if (!this.isValidCell(cell)) {
                 return i18next.t("apgames:validation._general.INVALIDCELL", { cell });
             }
-            if (!this.board.has(cell)) {
+            if (!board.has(cell) && !this.board.has(cell)) {
                 return i18next.t("apgames:validation.thuemorsego.MARK_EMPTY", { where: cell });
             }
         }
@@ -1798,27 +1841,32 @@ export class ThueMorseGoGame extends GameBase {
     }
 
     /**
-     * The verdict on a whole-move pass: what submitting it does to the marking and to the game.
-     * The pass is left open (`complete` 0) while strings can still be clicked.
+     * The verdict on a move that passes at least one placement: what submitting it does to the
+     * marking and to the game. The move is left open (`complete` 0) while strings can still be
+     * clicked, or a stone placed for one of its passes; once marking has ended, a pass of a
+     * single placement is finished. `board` is the board after the move's placements, and `pure`
+     * whether the move passes every placement, which alone can end the game.
      */
-    private passVerdict(marked: string[], result: IValidationResult): IValidationResult {
-        const marks = this.canonicalMarks(marked);
+    private passVerdict(board: Board, marked: string[], pure: boolean, free: number, result: IValidationResult): IValidationResult {
+        const marks = this.canonicalMarksOn(board, marked);
         const count = marks.length;
         const inherited = this.inheritedMarks();
         if (this.locked) {
             if (count > 0) {
                 return this.fail(result, i18next.t("apgames:validation.thuemorsego.MARKS_LOCKED"));
             }
-            const key = inherited === undefined ? "PASS_LOCKED" : "PASS_LOCKED_ENDS";
-            return this.ok(result, 1, i18next.t(`apgames:validation.thuemorsego.${key}`), true);
+            const key = !pure ? "PASS_LOCKED_PLACE" : inherited === undefined ? "PASS_LOCKED" : "PASS_LOCKED_ENDS";
+            return this.ok(result, free > 1 ? 0 : 1, i18next.t(`apgames:validation.thuemorsego.${key}`), true);
         }
         let key: string;
         if (this.marks.length > 0 && count === 0) {
             // A pass that marks nothing dead after a marking ends marking for the rest of the game.
-            key = "PASS_CLEARS";
+            key = pure ? "PASS_CLEARS" : "PASS_CLEARS_PLACE";
+        } else if (!pure) {
+            key = "PASS_PLACE";
         } else if (inherited === undefined) {
             key = "PASS_OPEN";
-        } else if (this.sameMarks(marks, this.marks)) {
+        } else if (this.sameMarks(marks, this.canonicalMarksOn(board, inherited))) {
             key = "PASS_AGREE";
         } else {
             key = "PASS_DISPUTE";
@@ -1860,27 +1908,19 @@ export class ThueMorseGoGame extends GameBase {
         return undefined;
     }
 
-    /** The verdict on a move whose explicit placements were all legal. */
+    /**
+     * The verdict on a move that places every placement it controls, or whose placements have
+     * ended the game: it is complete. In Kill-All, where nothing is passed, a move with
+     * placements left must go on, and must be able to.
+     */
     private completeness(sim: ISim, colour: Stone, result: IValidationResult): IValidationResult {
         if (sim.over || sim.placed === sim.length) {
             return this.ok(result, 1, i18next.t("apgames:validation._general.VALID_MOVE"), true);
         }
-        const left = sim.length - sim.placed;
-        if (this.killAll) {
-            if (!this.hasContinuation(sim, colour)) {
-                return this.fail(result, i18next.t("apgames:validation.thuemorsego.DEAD_END"));
-            }
-            return this.ok(result, -1, i18next.t("apgames:validation.thuemorsego.PLACE_MORE", { count: left }), true);
+        if (!this.hasContinuation(sim, colour)) {
+            return this.fail(result, i18next.t("apgames:validation.thuemorsego.DEAD_END"));
         }
-        // Submitting now passes the rest of the move; with checked weak eyes the clearing that
-        // ends the move can then leave a forbidden position.
-        const err = this.finishMove(this.copySim(sim), colour);
-        if (err !== undefined) {
-            const key = err === "SUICIDE_REPEAT" ? "MUST_CONTINUE_SUICIDE" : "MUST_CONTINUE";
-            return this.ok(result, -1, i18next.t(`apgames:validation.thuemorsego.${key}`), true);
-        }
-        const button = this.buttonValue > 0 && this.button === undefined && !sim.buttonTaken;
-        return this.ok(result, 0, i18next.t(`apgames:validation.thuemorsego.${button ? "MORE_OR_SUBMIT_BUTTON" : "MORE_OR_SUBMIT"}`, { count: left }), true);
+        return this.ok(result, -1, i18next.t("apgames:validation.thuemorsego.PLACE_MORE", { count: sim.length - sim.placed }), true);
     }
 
     // -----------------------------------------------------------------------
@@ -2030,8 +2070,10 @@ export class ThueMorseGoGame extends GameBase {
             if (komiResult !== undefined) {
                 this.results.unshift(komiResult);
             }
-            // Show the marking the move would leave: its own when it passes, none once it places.
-            if (declared === undefined && this.passesWholeMove(tokens)) {
+            // Show the marking the move would leave: its own when it passes any placement (judged
+            // on the board after its placements), none when it places every one.
+            const rest = Array<string>(Math.max(0, length - forced - tokens.length)).fill("pass");
+            if (declared === undefined && this.passesAny([...tokens, ...rest])) {
                 this.marks = this.locked ? [] : this.canonicalMarks(marked);
             } else if (tokens.some((token) => token !== "pass")) {
                 this.marks = [];
@@ -2050,8 +2092,10 @@ export class ThueMorseGoGame extends GameBase {
         this.interim = sim.created.slice(0, -1);
         this.novel = sim.created.length > 0;
         let agreed = false;
-        if (declared !== undefined) {
-            this.lastmove = [`${declared}s`, ...spelled].join(",");
+        if (declared !== undefined && forced === length) {
+            // The declaration alone: every placement of the move given away as a handicap stone,
+            // which answers a marking like a move that passes nothing.
+            this.lastmove = `${declared}s`;
             this.passes = [];
             if (this.markingPending()) {
                 this.endMarking();
@@ -2061,15 +2105,20 @@ export class ThueMorseGoGame extends GameBase {
             // Automatic passes neither count towards ending the game nor interrupt a run of
             // passes, and leave the pending marking as it is.
             this.lastmove = Array<string>(length).fill("pass").join(",");
-        } else if (this.passesWholeMove(spelled)) {
+        } else if (this.passesAny(spelled)) {
             agreed = this.recordPass(seat, spelled, marked);
         } else {
+            // A move that places every placement: it answers no marking, and ends marking for the
+            // rest of the game when one is pending.
             this.lastmove = spelled.join(",");
             this.passes = [];
             if (this.markingPending()) {
                 this.endMarking();
             }
             this.clearMarks();
+        }
+        if (declared !== undefined && forced < length) {
+            this.lastmove = [`${declared}s`, this.lastmove].join(",");
         }
         if (prefix.length > 0) {
             this.lastmove = [...prefix, this.lastmove].join(",");
@@ -2085,19 +2134,24 @@ export class ThueMorseGoGame extends GameBase {
     }
 
     /**
-     * Record a whole-move pass and the marking it carries. When the opponent's last move was a
-     * whole-move pass, this pass answers its marking: keeping it ends the game, which is what
-     * the result reports, and changing it never does; the players may change it back and forth
-     * for as long as their passes follow one another. A pass that marks nothing dead after a
-     * marking ends marking for the rest of the game; it still counts as a pass, so the opponent's
-     * next whole-move pass ends the game with every stone alive.
+     * Record a move that passes at least one placement, and the marking it carries, judged on the
+     * board after its placements: a mark on a stone they captured drops out. When the opponent's
+     * last move was such a pass, this one answers its marking: a whole-move pass keeping it ends
+     * the game, which is what the result reports; a move that places a stone or changes the
+     * marking never does, and the players may change it back and forth for as long as their
+     * passes follow one another. A pass that marks nothing dead after a marking ends marking for
+     * the rest of the game; it still counts as a pass, so the opponent's next whole-move pass ends
+     * the game with every stone alive.
      */
     private recordPass(seat: playerid, spelled: string[], marked: string[]): boolean {
+        const pure = this.passesWholeMove(spelled);
         const marks = this.canonicalMarks(marked);
-        const inherited = this.inheritedMarks();
+        const pending = this.inheritedMarks();
+        const inherited = pending === undefined ? undefined : this.canonicalMarks(pending);
         const changed = inherited !== undefined && !this.sameMarks(marks, inherited);
         if (changed || (inherited === undefined && marks.length > 0)) {
-            const how = !changed ? "marked" : marks.length > 0 ? "changed" : "cleared";
+            // Marks after a pass that carried none are a marking, not a change of one.
+            const how = inherited === undefined || inherited.length === 0 ? "marked" : marks.length > 0 ? "changed" : "cleared";
             this.results.push({ type: "select", what: "dead", how, ...(marks.length > 0 ? { where: marks.join(",") } : {}) });
         }
         this.lastmove = [...spelled, ...this.markTokens(marks)].join(",");
@@ -2106,7 +2160,7 @@ export class ThueMorseGoGame extends GameBase {
         }
         this.marks = marks;
         this.passes = [...this.passes, seat];
-        return inherited !== undefined && !changed;
+        return pure && inherited !== undefined && !changed;
     }
 
     /** Copy the outcome of a move in progress into the game. */

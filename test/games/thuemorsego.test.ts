@@ -153,12 +153,14 @@ describe("Thue-Morse Go: moves", () => {
         click = g.handleClick("e5", gy, gx);
         expect(click.move).to.equal("e5,g7");
         expect(click.complete).to.equal(1);
-        // Clicking the last placement again takes it back; an occupied cell is refused.
+        // Clicking the last placement again takes it back; an occupied cell is refused while the
+        // move passes nothing, and marks its string dead once a placement is left to pass.
         expect(g.handleClick("e5,g7", gy, gx).move).to.equal("e5");
         const [fx, fy] = g.algebraic2coords("f6");
-        const refused = g.handleClick("e5", fy, fx);
+        const refused = g.handleClick("", fy, fx);
         expect(refused.valid).to.be.false;
-        expect(refused.move).to.equal("e5");
+        expect(refused.move).to.equal("");
+        expect(g.handleClick("e5", fy, fx).move).to.equal("e5,pass,-f6");
     });
 
     it("ignores clicks on the tracker's glyphs", () => {
@@ -346,7 +348,7 @@ describe("Thue-Morse Go: moves", () => {
         expect(g.getPlayerScore(1)).to.equal(1);
         expect(g.validateMove("button").valid).to.be.false;
         expect(g.validateMove("e5,button").valid).to.be.false;
-        expect(g.validateMove("e5,pass").complete).to.equal(1);
+        expect(g.validateMove("e5,pass").complete).to.equal(0);
         expect(small(["half-button"]).move("button").getPlayerScore(1)).to.equal(0.5);
         expect(sixteen().validateMove("button").valid).to.be.false;
     });
@@ -356,11 +358,21 @@ describe("Thue-Morse Go: moves", () => {
         expect(g.gameover).to.be.true;
         expect(g.winner).to.deep.equal([1, 2]);
         expect(g.results.find((r) => r.type === "eog")!.reason).to.equal("consecutive-passes");
-        // A move that passes only one of its placements does not count.
-        const partial = play(small(), ["f6", "pass,e5", "pass"]);
+        // A move that passes one of its placements counts as a pass, so the opponent's whole-move
+        // pass then ends the game; the pass that ends it must itself pass the whole move.
+        const partial = play(small(), ["f6", "pass,e5"]);
         expect(partial.gameover).to.be.false;
         partial.move("pass");
         expect(partial.gameover).to.be.true;
+        const half = play(small(), ["f6", "e5,g7", "d4", "c3", "pass,pass", "b2,pass"]);
+        expect(half.gameover).to.be.false;
+        half.move("pass,pass");
+        expect(half.gameover).to.be.true;
+        // A move that passes nothing breaks the run of passes.
+        const reset = play(small(), ["f6", "pass,pass", "e5", "pass"]);
+        expect(reset.gameover).to.be.false;
+        reset.move("pass,pass");
+        expect(reset.gameover).to.be.true;
 
         const h = play(small(), ["button", "pass,pass"]);
         expect(h.gameover).to.be.false;
@@ -891,9 +903,18 @@ describe("Thue-Morse Go: territory and dead strings", () => {
         expect(single.message).to.contain("mark them dead");
         const g = play(scene(), ["f7"]);
         expect(g.validateMove("pass,pass").complete).to.equal(0);
-        // Passing one placement of two leaves the other to fill, as before.
-        expect(g.validateMove("pass").message).to.contain("Place another stone");
+        // A single pass typed in a two-placement move passes the whole move.
         expect(g.validateMove("pass").complete).to.equal(0);
+        expect(g.validateMove("pass").message).to.contain("mark them dead");
+        // A move that places one stone and passes the other placement stays open too, whether or
+        // not the pass is spelled out: a stone can still be placed, or strings marked dead.
+        const half = g.validateMove("e5,pass");
+        expect(half.complete).to.equal(0);
+        expect(half.message).to.contain("pass the rest of this move");
+        expect(half.message).to.contain("does not end the game");
+        expect(g.validateMove("e5").message).to.equal(half.message);
+        expect(g.validateMove("e5").complete).to.equal(0);
+        expect(g.validateMove("e5,g7").complete).to.equal(1);
     });
 
     it("marks and unmarks strings by clicking them after passing", () => {
@@ -907,21 +928,29 @@ describe("Thue-Morse Go: territory and dead strings", () => {
         expect(click(g, "pass,-a2", "e5").move).to.equal("e5");
         const occupied = click(g, "", "a2");
         expect(occupied.valid).to.be.false;
-        expect(occupied.message).to.contain("pass the whole move");
+        expect(occupied.message).to.contain("press Pass");
         expect(click(g, "e5", "a2").valid).to.be.false;
         // A two-placement move: the Pass button then a click, or a typed single pass then a click.
         const h = play(scene(), ["f7"]);
         expect(click(h, h.handleClick("", -1, -1, "_btn_pass").move, "j11").move).to.equal("pass,pass,-j11");
         expect(click(h, "pass", "j11").move).to.equal("pass,pass,-j11");
-        // A stone placed after passing the move comes first, the pass after it, and the marking goes.
+        // A stone placed after passing the move comes first, the pass after it, and the marking stays.
         expect(click(h, "pass,pass", "e5").move).to.equal("e5,pass");
-        expect(click(h, "pass,pass,-j11", "e5").move).to.equal("e5,pass");
+        expect(click(h, "pass,pass,-j11", "e5").move).to.equal("e5,pass,-j11");
         expect(click(h, "e5,pass", "e5").move).to.equal("pass,pass");
+        expect(click(h, "e5,pass,-j11", "e5").move).to.equal("pass,pass,-j11");
         expect(click(h, "e5,pass", "g7").move).to.equal("e5,g7");
         expect(click(h, "e5,pass", "g7").complete).to.equal(1);
-        const occupiedAfter = click(h, "e5,pass", "j11");
+        // Once a placement is left to pass, a click on a string marks it dead, or unmarks it again;
+        // a second placement drops the marking, and leaves no placement to pass for a string.
+        expect(click(h, "e5,pass", "j11").move).to.equal("e5,pass,-j11");
+        expect(click(h, "e5", "j11").move).to.equal("e5,pass,-j11");
+        expect(click(h, "e5,pass,-j11", "j11").move).to.equal("e5,pass");
+        expect(click(h, "e5,pass,-j11", "k10").move).to.equal("e5,pass,-j11,-k10");
+        expect(click(h, "e5,pass,-j11", "g7").move).to.equal("e5,g7");
+        const occupiedAfter = click(h, "e5,g7", "j11");
         expect(occupiedAfter.valid).to.be.false;
-        expect(occupiedAfter.message).to.contain("pass the whole move");
+        expect(occupiedAfter.message).to.contain("press Pass");
         // Without a pass in the move, clicks behave as before.
         expect(click(h, "", "e5").move).to.equal("e5");
         expect(click(h, "e5", "g7").move).to.equal("e5,g7");
@@ -929,14 +958,55 @@ describe("Thue-Morse Go: territory and dead strings", () => {
         expect(click(h, "e5,g7", "d4").move).to.equal("e5,d4");
     });
 
-    it("refuses marks that do not belong to a whole-move pass", () => {
+    it("drops a mark on a stone the move's own placement captures", () => {
+        // Player 1's a1 has its last liberty at a2; Player 2 captures it while passing the other placement.
+        const g = small();
+        setStones(g, ["a1", "f6"], ["b1", "k10"]);
+        g.move("k11");
+        expect(click(g, "pass,pass,-a1,-k10", "a2").move).to.equal("a2,pass,-k10");
+        const kept = g.validateMove("a2,pass,-a1,-k10");
+        expect(kept.valid).to.be.true;
+        expect(kept.message).to.contain("one stone marked dead");
+        expect(g.validateMove("a2,pass,-a3").message).to.contain("no stone");
+        g.move("a2,pass,-a1,-k10");
+        expect(g.board.has("a1")).to.be.false;
+        expect(g.lastmove).to.equal("a2,pass,-k10");
+        expect(g.marks).to.deep.equal(["k10"]);
+        expect(g.results).to.deep.include({ type: "select", what: "dead", how: "marked", where: "k10" });
+        // The opponent's whole-move pass keeping the marking ends the game.
+        expect(g.getButtons()[0].move).to.equal("pass,-k10");
+        g.move("pass,-k10");
+        expect(g.gameover).to.be.true;
+        expect(g.board.has("k10")).to.be.false;
+        // A capture that leaves nothing marked after a marking is a pass that marks nothing dead.
+        const h = small();
+        setStones(h, ["a1", "f6"], ["b1", "k10"]);
+        h.move("pass,-a1");
+        expect(click(h, "pass,pass,-a1", "a2").move).to.equal("a2,pass");
+        expect(h.validateMove("a2,pass,-a1").message).to.contain("ends dead-stone marking");
+        h.move("a2,pass,-a1");
+        expect(h.locked).to.be.true;
+        expect(h.marks).to.deep.equal([]);
+    });
+
+    it("refuses marks in a move that passes nothing", () => {
         const g = scene();
         expect(g.validateMove("f7,-a2").valid).to.be.false;
-        expect(g.validateMove("-a2").valid).to.be.false;
+        // Marks alone pass the move, the pass being implied.
+        expect(g.validateMove("-a2").complete).to.equal(0);
+        expect(play(scene(), ["-a2"]).lastmove).to.equal("pass,-a2");
         expect(g.validateMove("pass,-a1").message).to.contain("no stone");
         expect(g.validateMove("pass,-zz9").valid).to.be.false;
         const k = play(small(["kill-all"]), ["f6", "attacker"]);
         expect(k.validateMove("pass,-f6").valid).to.be.false;
+        // In a two-placement move, one placement suffices, its pass spelled out or not.
+        const h = play(scene(), ["f7"]);
+        expect(h.validateMove("e5,pass,-a2").valid).to.be.true;
+        expect(h.validateMove("e5,-a2").valid).to.be.true;
+        expect(h.validateMove("e5,-a2").complete).to.equal(0);
+        expect(h.validateMove("e5,g7,-a2").valid).to.be.false;
+        expect(h.validateMove("pass,e5,-a2").valid).to.be.true;
+        expect(play(scene(), ["f7", "e5,-a2"]).lastmove).to.equal("e5,pass,-a2");
     });
 
     it("shows marked strings faded, with the territory they would leave", () => {
@@ -1051,35 +1121,61 @@ describe("Thue-Morse Go: territory and dead strings", () => {
         expect(lockedClick.valid).to.be.false;
         expect(lockedClick.message).to.contain("Capture any dead stones");
         expect(p.getButtons()[0].move).to.equal("pass,pass");
+        // A whole-move pass of two placements stays open, so that a stone can be placed for one of them.
         const ends = p.validateMove("pass,pass");
-        expect(ends.complete).to.equal(1);
+        expect(ends.complete).to.equal(0);
         expect(ends.message).to.contain("end the game");
         expect(p.clone().move("e5").gameover).to.be.false;
         p.move("pass,pass");
         expect(p.gameover).to.be.true;
         expect(p.board.has("j11")).to.be.true;
         expect(p.results.some((r) => r.type === "remove")).to.be.false;
-        // A placement ends marking too, whether or not the move also passes.
-        const placing = g.validateMove("e5");
+        // A move that passes nothing ends marking, as does one that passes but marks nothing dead.
+        const placing = g.validateMove("e5,g7");
         expect(placing.valid).to.be.true;
         expect(placing.message).to.contain("ends dead-stone marking");
+        const placed = g.clone().move("e5,g7");
+        expect(placed.locked).to.be.true;
+        expect(placed.passes).to.deep.equal([]);
+        expect(placed.results).to.deep.include({ type: "select", what: "dead", how: "locked" });
+        expect(g.validateMove("e5").message).to.contain("ends dead-stone marking");
         expect(g.validateMove("e5,pass").message).to.contain("ends dead-stone marking");
         const q = g.clone().move("e5,pass");
         expect(q.locked).to.be.true;
         expect(q.marks).to.deep.equal([]);
-        expect(q.passes).to.deep.equal([]);
+        expect(q.passes[q.passes.length - 1]).to.equal(2);
+        expect(q.results).to.deep.include({ type: "select", what: "dead", how: "cleared" });
         expect(q.results).to.deep.include({ type: "select", what: "dead", how: "locked" });
-        expect(q.validateMove("pass,pass").complete).to.equal(1);
-        expect(q.validateMove("pass,pass").message).to.contain("if your opponent then passes");
+        // It still counts as a pass: the opponent's whole-move pass ends the game with every stone alive.
+        expect(q.validateMove("pass,pass").complete).to.equal(0);
+        expect(q.validateMove("pass,pass").message).to.contain("end the game with every stone alive");
+        expect(q.validateMove("e5,pass").valid).to.be.false;
+        expect(q.validateMove("d4,pass").message).to.contain("pass the rest of this move");
+        expect(q.clone().move("d4,pass").gameover).to.be.false;
         q.move("pass,pass");
-        expect(q.gameover).to.be.false;
-        q.move("pass");
         expect(q.gameover).to.be.true;
         expect(q.board.has("e5")).to.be.true;
         expect(q.board.has("j11")).to.be.true;
-        // Taking the button counts as a placement.
-        const b = g.clone().move("button,pass");
-        expect(b.locked).to.be.true;
+        // A move that places a stone and passes keeping the marking goes on marking.
+        const keeps = g.clone().move("e5,pass,-j11,-k10");
+        expect(keeps.locked).to.be.false;
+        expect(keeps.marks).to.deep.equal(["j11", "k10"]);
+        expect(keeps.lastmove).to.equal("e5,pass,-j11,-k10");
+        expect(keeps.results.some((r) => r.type === "select")).to.be.false;
+        expect(keeps.gameover).to.be.false;
+        expect(keeps.validateMove("pass,pass,-j11,-k10").message).to.contain("end the game");
+        expect(keeps.clone().move("pass,pass,-j11,-k10").gameover).to.be.true;
+        expect(keeps.clone().move("d4,pass,-j11,-k10").gameover).to.be.false;
+        // Taking the button for a placement is the same.
+        expect(g.clone().move("button,pass").locked).to.be.true;
+        expect(g.clone().move("button,pass,-j11,-k10").locked).to.be.false;
+        // A handicap declaration that gives away every placement of the move answers the marking too.
+        const declared = small(["handicap"]);
+        setStones(declared, ["f6"], []);
+        play(declared, ["pass,-f6", "2"]);
+        expect(declared.locked).to.be.true;
+        expect(declared.marks).to.deep.equal([]);
+        expect(declared.results).to.deep.include({ type: "select", what: "dead", how: "locked" });
         // Once ended, even after play resumes, passes carry no marking.
         const h = play(scene(), ["pass,-j11,-k10", "pass,e5", "f7"]);
         expect(h.locked).to.be.true;
@@ -1092,6 +1188,7 @@ describe("Thue-Morse Go: territory and dead strings", () => {
         const g = play(scene(), ["pass", "pass,pass,-k10"]);
         expect(g.locked).to.be.false;
         expect(g.marks).to.deep.equal(["k10"]);
+        expect(g.results).to.deep.include({ type: "select", what: "dead", how: "marked", where: "k10" });
         expect(g.validateMove("pass,-k10").message).to.contain("end the game");
         // Neither does a placement before any marking.
         const h = play(scene(), ["pass", "e5,pass", "pass,-k10"]);
@@ -1219,7 +1316,8 @@ describe("Thue-Morse Go: reverse komi", () => {
         // Any whole number up to the largest stone may be typed.
         expect(g.validateMove("1").complete).to.equal(0);
         expect(g.validateMove("7,e5").complete).to.equal(0);
-        expect(play(small(["reverse-komi"]), ["f6", "7,e5", "pass", "pass"]).getPlayerScore(1)).to.equal(1 + 7);
+        // Placing one stone of the move passes the other, so the opponent's pass then ends the game.
+        expect(play(small(["reverse-komi"]), ["f6", "7,e5", "pass"]).getPlayerScore(1)).to.equal(1 + 7);
         const alone = g.validateMove("14");
         expect(alone.complete).to.equal(0);
         expect(alone.message).to.contain("14 points");
@@ -1282,8 +1380,8 @@ describe("Thue-Morse Go: reverse komi", () => {
         expect(log).to.contain("Bob gave their opponent a reverse komi of 14 points.");
         expect(log).to.contain("Bob passed.");
         // One stone each is level, so the komi decides.
-        expect(play(small(["reverse-komi"]), ["f6", "14,e5", "pass", "pass"]).winner).to.deep.equal([1]);
-        expect(play(small(), ["f6", "e5", "pass", "pass"]).winner).to.deep.equal([1, 2]);
+        expect(play(small(["reverse-komi"]), ["f6", "14,e5", "pass"]).winner).to.deep.equal([1]);
+        expect(play(small(), ["f6", "e5", "pass"]).winner).to.deep.equal([1, 2]);
     });
 
     it("takes the komi and the handicap in either order, both open to clicks until a placement remains", () => {
