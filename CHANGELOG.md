@@ -17,7 +17,7 @@ Since the `1.0.0-beta` release, the version in `package.json` has stayed at `1.0
 
 ### Changed
 
-- **Arimaa (Dicey Moves):** the preview of a complete move (`emulation`) keeps showing the current die where it was instead of a throwaway roll; the die's outline and pips are both painted in the `borders` context colour, so the whole die follows that one setting.
+- **Arimaa (Dicey Moves):** the preview of a complete move (`emulation`) keeps showing the current die where it was instead of a throwaway roll; the die's outline and pips are both painted in whichever of black and white contrasts best with the board colour, so it shows on dark boards.
 
 ## [1.0.0-ci] - 2026-10-16
 

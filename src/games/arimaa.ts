@@ -1,6 +1,6 @@
 import {  GameBase, IAPGameState, IClickResult, ICustomButton, IIndividualState, IScores, IStatus, IValidationResult, type ChatLogCollectContext, type ChatLogLine, type FlagContext, type GameFlag } from "./_base.js";
 import type { APGamesInformation } from "../schemas/gameinfo.js";
-import { APRenderRep, AreaPieces, BoardBasic, Colourfuncs, Glyph } from "@abstractplay/renderer/build/schemas/schema";
+import { APRenderRep, AreaPieces, BoardBasic, Colourfuncs, Glyph, PaintEntry } from "@abstractplay/renderer/build/schemas/schema";
 import type { APMoveResult } from "../schemas/moveresults.js";
 import { randomInt, RectGrid, reviver, shuffle, SquareOrthGraph, UserFacingError, cloneState } from "../common/index.js";
 import i18next from "i18next";
@@ -1861,11 +1861,14 @@ export class ArimaaGame extends GameBase {
 
         // Dicey Moves: the turn's die, one of the renderer's d6 faces, drawn as
         // a board marker so that a piece moving onto its square covers it. The
-        // body stays hollow, and the outline and pips both take the `borders`
-        // context colour, which nothing else in this game uses, so the whole
-        // die follows one setting the player can tune to their board.
+        // body stays hollow, and the outline and pips are both drawn in
+        // whichever of black and white contrasts best with the board colour,
+        // so the die shows on light and dark boards alike.
         if (this.die !== undefined) {
-            const ink = {colour: "_context_borders", opacity: 0.75};
+            const ink: PaintEntry = {
+                colour: {func: "bestContrast", bg: "_context_board", fg: ["#000", "#fff"]},
+                opacity: 0.75,
+            };
             legend.DIE = {
                 name: `d6-${this.die.steps}`,
                 paint: {border: ink, detail: ink},
