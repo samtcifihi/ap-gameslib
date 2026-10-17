@@ -1860,17 +1860,17 @@ export class ArimaaGame extends GameBase {
         };
 
         // Dicey Moves: the turn's die, one of the renderer's d6 faces, drawn as
-        // a board marker so that a piece moving onto its square covers it. Its
-        // outline takes the `borders` context colour, black in both of the
-        // site's themes, so the body is filled in the `fill` colour and the
-        // pips in the background colour to stand out on a dark board too.
+        // a board marker so that a piece moving onto its square covers it. The
+        // face's outline defaults to the `borders` context colour, black in
+        // both of the site's themes, so its paint slot takes the `fill`
+        // colour of the pips instead, which shows on a dark board too. The
+        // body stays hollow.
         if (this.die !== undefined) {
+            const ink = {colour: "_context_fill", opacity: 0.75};
             legend.DIE = {
                 name: `d6-${this.die.steps}`,
-                colour: "_context_fill",
-                colour2: "_context_background",
+                paint: {border: ink, detail: ink},
                 scale: 0.6,
-                opacity: 0.75,
             };
             const [dx, dy] = ArimaaGame.algebraic2coords(this.die.square);
             (rep.board as BoardBasic).markers!.push({
