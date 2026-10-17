@@ -153,14 +153,38 @@ describe("Thue-Morse Go: moves", () => {
         click = g.handleClick("e5", gy, gx);
         expect(click.move).to.equal("e5,g7");
         expect(click.complete).to.equal(1);
-        // Clicking the last placement again takes it back; an occupied cell is refused while the
-        // move passes nothing, and marks its string dead once a placement is left to pass.
+        // Clicking the last placement again takes it back; an occupied cell is refused, even
+        // after one placement of two, since marking a string dead takes an explicit pass first.
         expect(g.handleClick("e5,g7", gy, gx).move).to.equal("e5");
         const [fx, fy] = g.algebraic2coords("f6");
-        const refused = g.handleClick("", fy, fx);
+        const refused = g.handleClick("e5", fy, fx);
         expect(refused.valid).to.be.false;
-        expect(refused.move).to.equal("");
-        expect(g.handleClick("e5", fy, fx).move).to.equal("e5,pass,-f6");
+        expect(refused.move).to.equal("e5");
+        expect(refused.message).to.contain("press Pass first");
+        expect(g.handleClick("", fy, fx).valid).to.be.false;
+    });
+
+    it("takes a placement back on a second click only while its stone is still on the board", () => {
+        const click = (game: ThueMorseGoGame, move: string, cell: string): IClickResult => {
+            const [x, y] = game.algebraic2coords(cell);
+            return game.handleClick(move, y, x);
+        };
+        // Player 2's two placements: a1 has no liberties and captures nothing, so it is removed at once.
+        const g = play(small(), ["k11"]);
+        setStones(g, ["a2", "b1", "k11"], []);
+        expect(click(g, "", "a1").move).to.equal("a1");
+        expect(click(g, "a1", "a1").move).to.equal("a1,a1");
+        expect(click(g, "a1,a1", "a1").move).to.equal("a1,a1");
+        // A stone that stays is taken back, as is one placed on a point its own capture emptied.
+        expect(click(g, "k10", "k10").move).to.equal("");
+        const h = play(small(), ["k11"]);
+        setStones(h, ["a1", "k11"], ["a2"]);
+        expect(click(h, "b1", "a1").move).to.equal("b1,a1");
+        expect(click(h, "b1,a1", "a1").move).to.equal("b1");
+        // With checked weak eyes the stone stays until the move ends, so the second click takes it back.
+        const w = play(small(["weak-eyes"]), ["k11"]);
+        setStones(w, ["a2", "b1", "k11"], []);
+        expect(click(w, "a1", "a1").move).to.equal("");
     });
 
     it("ignores clicks on the tracker's glyphs", () => {
@@ -302,6 +326,54 @@ describe("Thue-Morse Go: moves", () => {
         h.move("a1,k10");
         expect(h.board.has("a1")).to.be.false;
         expect(h.board.get("k10")).to.equal(2);
+        // Two stones removed together at the end of the move are reported as the move's suicide.
+        const both = play(small(["superko", "weak-eyes"]), ["k11"]);
+        setStones(both, ["a2", "b2", "c1", "k11"], []);
+        const together = both.validateMove("a1,b1");
+        expect(together.valid).to.be.false;
+        expect(together.message).to.contain("stones placed this move");
+        expect(together.message).to.contain("positional superko");
+        const apart = play(small(["superko", "weak-eyes"]), ["k11"]);
+        setStones(apart, ["a2", "b1", "a10", "b11", "k11"], []);
+        expect(apart.validateMove("a1,a11").message).to.contain("stones placed this move");
+        // Under double delayed superko the move is allowed until the position has arisen three times.
+        const delayed = small(["double-delayed-psk", "weak-eyes"]);
+        setStones(delayed, [], ["a2", "b2", "c1", "j11", "k10"]);
+        play(delayed, ["k11", "pass,pass", "k11", "pass"]);
+        expect(delayed.gameover).to.be.false;
+        const fourth = delayed.validateMove("a1,b1");
+        expect(fourth.valid).to.be.false;
+        expect(fourth.message).to.contain("stones placed this move");
+        expect(fourth.message).to.contain("three times");
+    });
+
+    it("judges repetition only by the position a move leaves under checked weak eyes", () => {
+        // A ko: retaking it at once recreates the position the capture came from.
+        const g = small(["superko", "weak-eyes"]);
+        setStones(g, ["a2", "b1", "b3"], ["b2", "c1", "c3", "d2"]);
+        g.move("c2");
+        expect(g.board.has("b2")).to.be.false;
+        // The retake alone would end the move in that position; followed by another stone it is a new one.
+        const alone = g.validateMove("b2");
+        expect(alone.complete).to.equal(-1);
+        expect(alone.message).to.contain("earlier position");
+        expect(g.validateMove("b2,pass").valid).to.be.false;
+        expect(g.validateMove("b2,k11").complete).to.equal(1);
+        g.move("b2,k11");
+        expect(g.board.has("c2")).to.be.false;
+        expect(g.board.get("k11")).to.equal(2);
+        // Only the position the move left was recorded, so the next move sees one new position.
+        expect(g.interim).to.deep.equal([]);
+        expect(g.novel).to.be.true;
+        // The fifth occurrence by default is likewise counted when the move ends.
+        const d = small(["weak-eyes"]);
+        setStones(d, ["k10", "j11"], ["a2", "b1"]);
+        play(d, ["a1", "k11,pass", "a1", "pass"]);
+        expect(d.gameover).to.be.false;
+        expect(d.validateMove("a1,k9").complete).to.equal(1);
+        d.move("a1,pass");
+        expect(d.gameover).to.be.true;
+        expect(d.results.find((r) => r.type === "eog")!.reason).to.equal("repetition");
     });
 
     it("can empty a cell and refill it within one move", () => {
@@ -907,13 +979,17 @@ describe("Thue-Morse Go: territory and dead strings", () => {
         expect(g.validateMove("pass").complete).to.equal(0);
         expect(g.validateMove("pass").message).to.contain("mark them dead");
         // A move that places one stone and passes the other placement stays open too, whether or
-        // not the pass is spelled out: a stone can still be placed, or strings marked dead.
+        // not the pass is spelled out; strings can be clicked only once the pass is spelled out.
         const half = g.validateMove("e5,pass");
         expect(half.complete).to.equal(0);
         expect(half.message).to.contain("pass the rest of this move");
         expect(half.message).to.contain("does not end the game");
-        expect(g.validateMove("e5").message).to.equal(half.message);
-        expect(g.validateMove("e5").complete).to.equal(0);
+        expect(half.message).to.contain("Click strings to mark them dead");
+        const implied = g.validateMove("e5");
+        expect(implied.complete).to.equal(0);
+        expect(implied.message).to.contain("pass the rest of this move");
+        expect(implied.message).to.contain("press Pass first");
+        expect(implied.message).to.not.contain("Click strings");
         expect(g.validateMove("e5,g7").complete).to.equal(1);
     });
 
@@ -941,11 +1017,15 @@ describe("Thue-Morse Go: territory and dead strings", () => {
         expect(click(h, "e5,pass,-j11", "e5").move).to.equal("pass,pass,-j11");
         expect(click(h, "e5,pass", "g7").move).to.equal("e5,g7");
         expect(click(h, "e5,pass", "g7").complete).to.equal(1);
-        // Once a placement is left to pass, a click on a string marks it dead, or unmarks it again;
-        // a second placement drops the marking, and leaves no placement to pass for a string.
+        // Once the move passes, a click on a string marks it dead, or unmarks it again; without a
+        // pass spelled out a stone clicked is just occupied, so a misclick never passes a placement.
         expect(click(h, "e5,pass", "j11").move).to.equal("e5,pass,-j11");
-        expect(click(h, "e5", "j11").move).to.equal("e5,pass,-j11");
+        const misclick = click(h, "e5", "j11");
+        expect(misclick.valid).to.be.false;
+        expect(misclick.move).to.equal("e5");
         expect(click(h, "e5,pass,-j11", "j11").move).to.equal("e5,pass");
+        // Marks alone pass the move too, so strings can be clicked after them.
+        expect(click(g, "-a2", "k10").move).to.equal("pass,-k10,-a2");
         expect(click(h, "e5,pass,-j11", "k10").move).to.equal("e5,pass,-j11,-k10");
         expect(click(h, "e5,pass,-j11", "g7").move).to.equal("e5,g7");
         const occupiedAfter = click(h, "e5,g7", "j11");

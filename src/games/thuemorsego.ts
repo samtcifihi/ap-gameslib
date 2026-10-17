@@ -971,10 +971,11 @@ export class ThueMorseGoGame extends GameBase {
     /**
      * Record the position the board holds after a placement (or after the clearing a placement
      * owed). Returns the key of the validation message when the repetition rule forbids it: the
-     * suicide message when the placement left the board as it was because its own stones were
-     * removed, the plain one otherwise, each in its superko or double delayed superko wording. By
-     * default the fifth occurrence of a position ends the game instead. `step` is what the
-     * clearing removed this time.
+     * suicide message when the placement left the board as it was because its own stone was
+     * removed, the move's suicide message when the clearing at the end of a move with checked
+     * weak eyes removed every stone it placed, the plain one otherwise, each in its superko or
+     * double delayed superko wording. By default the fifth occurrence of a position ends the game
+     * instead. `step` is what the clearing removed this time.
      */
     private recordPosition(sim: ISim, step: { captured: number; suicided: number }): string | undefined {
         const sig = signature(sim.board, this.geo);
@@ -983,8 +984,8 @@ export class ThueMorseGoGame extends GameBase {
         if (limit !== undefined && seen >= limit) {
             const previous = sim.created.length > 0 ? sim.created[sim.created.length - 1] : sim.start;
             const unchanged = step.captured === 0 && step.suicided > 0 && (sig === previous || sig === sim.start);
-            const suffix = limit === 1 ? "" : "_DDPSK";
-            return (unchanged ? "SUICIDE_REPEAT" : "KO_PSK") + suffix;
+            const key = !unchanged ? "KO_PSK" : sig === sim.start && step.suicided > 1 ? "SUICIDE_REPEAT_MOVE" : "SUICIDE_REPEAT";
+            return key + (limit === 1 ? "" : "_DDPSK");
         }
         sim.created.push(sig);
         if (limit === undefined && seen + 1 >= REPETITIONS_FOR_DRAW) {
@@ -1018,11 +1019,7 @@ export class ThueMorseGoGame extends GameBase {
             return undefined;
         }
         sim.cleared = true;
-        const step = this.clear(sim, colour);
-        if (step.captured + step.suicided === 0) {
-            return undefined;
-        }
-        return this.recordPosition(sim, step);
+        return this.recordPosition(sim, this.clear(sim, colour));
     }
 
     /** Serve handicap passes at the start of a move. */
@@ -1080,7 +1077,9 @@ export class ThueMorseGoGame extends GameBase {
             return this.recordPosition(sim, this.clear(sim, colour));
         }
         if (!final) {
-            return this.recordPosition(sim, { captured: 0, suicided: 0 });
+            // With checked weak eyes the board is neither cleared nor its position recorded until
+            // the move's last placement: only the position the move leaves counts for repetition.
+            return undefined;
         }
         sim.cleared = true;
         return this.recordPosition(sim, this.clear(sim, colour));
@@ -1548,18 +1547,24 @@ export class ThueMorseGoGame extends GameBase {
         return { move: [...this.declarationTokens(first), ...first.placements].join(",") };
     }
 
-    /** Extend the placement tokens of a move in progress with a click on `cell`, `free` placements being the player's. */
+    /**
+     * Extend the placement tokens of a move in progress with a click on `cell`, `free` placements
+     * being the player's. A stone clicked marks its string dead only once the move passes (the
+     * Pass button, a typed pass or a mark), never by itself: a stone placed first then a stone
+     * clicked is a misclick, refused as occupied, so the player must pass first and then place.
+     */
     private clickPlacements(tokens: string[], cell: string, free: number): string {
         const { placements, marked } = this.splitMarks(tokens);
-        const passing = placements.includes("pass");
+        const passing = placements.includes("pass") || marked.length > 0;
         let placed = placements.filter((token) => token !== "pass");
         const board = this.boardAfter(placed);
-        if (placed.includes(cell)) {
-            // A placement clicked again is taken back.
+        if (placed.includes(cell) && board.has(cell)) {
+            // A placement clicked again is taken back, while its stone is still on the board; a
+            // point emptied again by suicide or capture can take a second stone.
             placed = placed.filter((token) => token !== cell);
-        } else if (board.has(cell) && !this.killAll && placed.length < free && (passing || placed.length > 0)) {
-            // A stone clicked while the move passes at least one placement: its string is marked
-            // dead, or unmarked again, as the board stands after the move's placements.
+        } else if (board.has(cell) && !this.killAll && passing && placed.length < free) {
+            // A stone clicked while the move passes: its string is marked dead, or unmarked
+            // again, as the board stands after the move's placements.
             const marks = new Set(this.canonicalMarksOn(board, marked));
             const stones = this.stringOn(board, cell);
             if (stones.every((stone) => marks.has(stone))) {
@@ -1814,7 +1819,10 @@ export class ThueMorseGoGame extends GameBase {
                 const key = finish.startsWith("SUICIDE_REPEAT") ? "MUST_CONTINUE_SUICIDE" : "MUST_CONTINUE";
                 return this.ok(result, -1, i18next.t(`apgames:validation.thuemorsego.${key}`), true);
             }
-            return this.passVerdict(sim.board, marked, this.passesWholeMove(tokens), free, result);
+            // Every placement passed, spelled out or (marks alone) implied, is a whole-move pass.
+            const pure = tokens.every((token) => token === "pass");
+            const explicit = this.passesAny(tokens) || marked.length > 0;
+            return this.passVerdict(sim.board, marked, pure, explicit, free, result);
         }
         return this.warnMarkingEnds(this.completeness(sim, colour, result));
     }
@@ -1844,10 +1852,11 @@ export class ThueMorseGoGame extends GameBase {
      * The verdict on a move that passes at least one placement: what submitting it does to the
      * marking and to the game. The move is left open (`complete` 0) while strings can still be
      * clicked, or a stone placed for one of its passes; once marking has ended, a pass of a
-     * single placement is finished. `board` is the board after the move's placements, and `pure`
-     * whether the move passes every placement, which alone can end the game.
+     * single placement is finished. `board` is the board after the move's placements, `pure`
+     * whether the move passes every placement, which alone can end the game, and `explicit`
+     * whether its pass is spelled out (or a mark carried), which clicks on strings need.
      */
-    private passVerdict(board: Board, marked: string[], pure: boolean, free: number, result: IValidationResult): IValidationResult {
+    private passVerdict(board: Board, marked: string[], pure: boolean, explicit: boolean, free: number, result: IValidationResult): IValidationResult {
         const marks = this.canonicalMarksOn(board, marked);
         const count = marks.length;
         const inherited = this.inheritedMarks();
@@ -1871,7 +1880,12 @@ export class ThueMorseGoGame extends GameBase {
         } else {
             key = "PASS_DISPUTE";
         }
-        return this.ok(result, 0, i18next.t(`apgames:validation.thuemorsego.${key}`, { count }), true);
+        let message = i18next.t(`apgames:validation.thuemorsego.${key}`, { count });
+        if (!pure) {
+            // A stone placed first leaves no way to click a string: the move must pass first.
+            message = `${message} ${i18next.t(`apgames:validation.thuemorsego.${explicit ? "MARK_CLICK" : "MARK_HINT"}`)}`;
+        }
+        return this.ok(result, 0, message, true);
     }
 
     /** The rest of a first move that declares a handicap of `n`: the placements `rest` after it. */
