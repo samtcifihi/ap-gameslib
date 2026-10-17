@@ -15,6 +15,10 @@ Since the `1.0.0-beta` release, the version in `package.json` has stayed at `1.0
 
 - **New games (dev / experimental only):** Agents of MARS, Bagh Chal, Bashni, Clearpath, Croda, Dama, Ice Palace, Kill-All Go, Neutron, Selfo, Thricewise, Yodd.
 
+### Changed
+
+- **Arimaa (Dicey Moves):** the preview of a complete move (`emulation`) keeps showing the current die where it was instead of a throwaway roll; the die is filled in the `fill` context colour with background-coloured pips so it stands out on dark boards.
+
 ## [1.0.0-ci] - 2026-10-16
 
 ### Fixed

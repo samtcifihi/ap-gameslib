@@ -1392,7 +1392,7 @@ export class ArimaaGame extends GameBase {
         return i18next.t("apgames:validation.arimaa.NO_MOVE");
     }
 
-    public move(m: string, {trusted = false, partial = false} = {}): ArimaaGame {
+    public move(m: string, {trusted = false, partial = false, emulation = false} = {}): ArimaaGame {
         if (this.gameover) {
             throw new UserFacingError("MOVES_GAMEOVER", i18next.t("apgames:validation._general.MOVES_GAMEOVER"));
         }
@@ -1504,10 +1504,19 @@ export class ArimaaGame extends GameBase {
         // GameBase instead and keep the die, since it may have informed the
         // decision. Partial moves have already returned, so the die never
         // changes while a move is entered.
-        this.die = this.variants.includes("dicey") && this.hands === undefined ? castDie(this.board) : undefined;
+        //
+        // The front end previews a complete move under `emulation` before it
+        // is submitted. The next die is cast on submission alone, so the
+        // preview keeps showing this turn's die, where it was and as it fell,
+        // and the game-over checks assume a full allowance: a roll nobody has
+        // seen cannot decide them.
+        const shown = this.die;
+        this.die = this.variants.includes("dicey") && this.hands === undefined && !emulation ? castDie(this.board) : undefined;
         this.checkEOG();
         if (this.gameover) {
             this.die = undefined;
+        } else if (emulation) {
+            this.die = shown;
         }
         this.saveState();
         return this;
@@ -1851,10 +1860,15 @@ export class ArimaaGame extends GameBase {
         };
 
         // Dicey Moves: the turn's die, one of the renderer's d6 faces, drawn as
-        // a board marker so that a piece moving onto its square covers it
+        // a board marker so that a piece moving onto its square covers it. Its
+        // outline takes the `borders` context colour, black in both of the
+        // site's themes, so the body is filled in the `fill` colour and the
+        // pips in the background colour to stand out on a dark board too.
         if (this.die !== undefined) {
             legend.DIE = {
                 name: `d6-${this.die.steps}`,
+                colour: "_context_fill",
+                colour2: "_context_background",
                 scale: 0.6,
                 opacity: 0.75,
             };
