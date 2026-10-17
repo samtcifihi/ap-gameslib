@@ -190,7 +190,7 @@ Use the [examples by feature](/gameslib/examples/by-feature/) index to find game
 
 ## Renderer
 
-Implement `render(opts?)` returning `APRenderRep`, `APRenderRep[]` (animation frames), or `APRenderComposite` (`kind: "composite"`) for `@abstractplay/renderer`. Use `isAPRenderComposite()` from gameslib when branching; the front calls `renderComposite` for composites. Prototype JSON in the [renderer playground](https://renderer.dev.abstractplay.com).
+Implement `render(opts?)` returning `APRenderRep`, `APRenderRep[]` (animation frames), or `APRenderComposite` (`kind: "composite"`) for `@abstractplay/renderer`. Use `isAPRenderComposite()` from gameslib when branching; the front calls `renderComposite` for composites, routes clicks and hover with `panelId`, and resolves structured labels on each panel. Ice Palace's `composite` display is a worked example: one square-board panel per structure plus a clickable rack of pieces, with `handleClick(..., panelId)` and `renderColumn(col, row, panelId)`. Prototype JSON in the [renderer playground](https://renderer.dev.abstractplay.com).
 
 **Player-named area labels** (pieces stashes, captured piles, and similar) should use structured labels via `seatAreaLabel()` — not hard-coded `"Player 1"` strings. Front resolves display names at draw time. See **[Structured render labels](/gameslib/structured-render-labels/)**.
 

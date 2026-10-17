@@ -706,12 +706,13 @@ describe("Ice Palace: top-down display", () => {
     };
     const expanding = (g: IcePalaceGame): Rep => g.render() as unknown as Rep;
 
-    it("is the default, with perspective as the alternate, and neither rotates", () => {
+    it("is the default, with perspective and separate boards as the alternates, and none rotates", () => {
         expect(IcePalaceGame.gameinfo.displays).to.deep.equal([
             { uid: "perspective", group: "board" },
+            { uid: "composite", group: "board" },
             { uid: "perspective-areas", group: "areas" },
         ]);
-        expect(new IcePalaceGame(3).alternativeDisplays()!.map(d => d.uid)).to.deep.equal(["#areas", "#board", "perspective", "perspective-areas"]);
+        expect(new IcePalaceGame(3).alternativeDisplays()!.map(d => d.uid)).to.deep.equal(["#areas", "#board", "perspective", "composite", "perspective-areas"]);
         expect(IcePalaceGame.gameinfo.flags).to.include("stacking-expanding");
         expect(IcePalaceGame.gameinfo.flags).to.include("custom-rotation");
         expect(new IcePalaceGame(3).getCustomRotation()).to.equal(0);
@@ -998,6 +999,190 @@ describe("Ice Palace: mixing the board and stash displays", () => {
             // A layer opacity beside paint would fade the outline too; only fills are translucent.
             expect(glyph).to.not.have.any.keys("colour", "colour2", "opacity");
         }
+    });
+});
+
+describe("Ice Palace: separate boards display", () => {
+    type Rep = {
+        renderer?: string;
+        options?: string[];
+        board?: { style?: string; width: number; height: number; blocked?: unknown };
+        legend?: Record<string, { name?: string } | { name?: string }[]>;
+        pieces: string[][][];
+        areas?: { type?: string; stash?: string[][]; width?: number; label?: { textKey?: string } }[];
+        annotations?: { type: string; targets: { row: number; col: number }[] }[];
+    };
+    type Panel = { id: string; label?: { textKey?: string; actor?: { kind: string; seat?: number } }; render: Rep };
+    type Composite = { kind: string; layout: { arrangement: string; columns?: number; gap?: number; align?: string }; panels: Panel[] };
+    const split = (g: IcePalaceGame, areas: string[] = []): Composite =>
+        g.render({ altDisplays: ["composite", ...areas] }) as unknown as Composite;
+    const panel = (c: Composite, id: string): Panel => {
+        const found = c.panels.find(p => p.id === id);
+        expect(found, id).to.not.be.undefined;
+        return found!;
+    };
+    /** The board position a panel draws a legend key at. */
+    const drawnAt = (rep: Rep, key: string): [number, number] => {
+        for (let row = 0; row < rep.pieces.length; row++) {
+            for (let col = 0; col < rep.pieces[row].length; col++) {
+                if (rep.pieces[row][col].includes(key)) {
+                    return [row, col];
+                }
+            }
+        }
+        throw new Error(`${key} is not drawn anywhere`);
+    };
+    const rigged = () => rig(new IcePalaceGame(3), [["1M", "1L", "2S"], ["1S"], ["3S"]], ["2S", "1L", "WM", "1S"]);
+
+    it("gives each structure a board of its own, with the hand racked below the Yard and the Pool below that", () => {
+        const g = rigged();
+        g.move("1M@0.0");
+        g.move("1S@1.0");
+        g.palace = new Map([["0.0", ["2L", "1M"]]]);
+        const c = split(g);
+        expect(c.kind).to.equal("composite");
+        expect(c.layout).to.deep.equal({ arrangement: "grid", columns: 2, gap: 1, align: "start" });
+        expect(c.panels.map(p => p.id)).to.deep.equal(["yard", "palace", "rack"]);
+        const yard = panel(c, "yard");
+        const palace = panel(c, "palace");
+        expect(yard.label).to.deep.include({ textKey: "apgames:status.icepalace.YARD", actor: { kind: "none" } });
+        expect(palace.label).to.deep.include({ textKey: "apgames:status.icepalace.PALACE", actor: { kind: "none" } });
+        // Each board is its structure's own box, every cell drawn, by the expanding renderer.
+        for (const p of [yard, palace]) {
+            expect(p.render.renderer).to.equal("stacking-expanding");
+            expect(p.render.options).to.deep.equal(["hide-labels"]);
+            expect(p.render.board).to.deep.equal({ style: "squares", width: 7, height: 7 });
+        }
+        // The Yard's stacks sit at the Yard's cells; the Palace's are opaque, with keys of their own.
+        expect(drawnAt(yard.render, "p1M")).to.deep.equal([3, 3]);
+        expect(drawnAt(yard.render, "p1S")).to.deep.equal([3, 4]);
+        expect(yard.render.pieces.flat().filter(s => s.length > 0)).to.have.length(2);
+        expect(palace.render.pieces[3][3]).to.deep.equal(["a2L", "a1M"]);
+        expect(palace.render.legend).to.have.all.keys("a2L", "a1M");
+        expect(yard.render.areas).to.be.undefined;
+        expect(palace.render.areas).to.be.undefined;
+        // Seat 3's hand is racked one pyramid to a cell, drawn as the stash would draw it,
+        // and the Pool hangs below the rack, as wide as the Yard.
+        const rack = panel(c, "rack");
+        expect(rack.label).to.deep.include({ textKey: "apgames:status.icepalace.HAND", actor: { kind: "seat", seat: 3 } });
+        expect(rack.render.renderer).to.equal("stacking-expanding");
+        expect(rack.render.board).to.deep.equal({ style: "squares", width: 1, height: 1 });
+        expect(rack.render.pieces).to.deep.equal([[["s3S"]]]);
+        expect(rack.render.legend!.s3S).to.deep.include({ name: "pyramid-flattened-small" });
+        expect(rack.render.areas).to.have.length(1);
+        expect(rack.render.areas![0].label).to.deep.include({ textKey: "apgames:status.icepalace.IN_POOL" });
+        expect(rack.render.areas![0].width).to.equal(Math.floor(7 / 0.75));
+        expect(rack.render.areas![0].stash).to.deep.equal([["b1L", "gap", "b1S"], ["gap"], ["b2S"], ["gap"], ["bWM"]]);
+        expect(rack.render.legend).to.include.keys("b1L", "bWM", "gap");
+    });
+
+    it("wraps a long rack at the Yard's width, and hangs the Pool under the Yard when nothing is on offer", () => {
+        const g = rigged();
+        g.yard = new Map();
+        g.phase = "build";
+        g.currplayer = 2;
+        g.stock = ["3L", "3M", "3S", "2L", "2M", "2S", "1L", "1M", "1S"];
+        const rack = panel(split(g), "rack");
+        expect(rack.label).to.deep.include({ textKey: "apgames:status.icepalace.STOCK", actor: { kind: "none" } });
+        expect(rack.render.board).to.deep.equal({ style: "squares", width: 7, height: 2 });
+        expect(rack.render.pieces.map(row => row.map(cell => cell.join()))).to.deep.equal([
+            ["s1S", "s1M", "s1L", "s2S", "s2M", "s2L", "s3S"],
+            ["s3M", "s3L", "", "", "", "", ""],
+        ]);
+        // Nothing to build with: no rack, and the Pool hangs under the Yard instead.
+        g.stock = [];
+        const bare = split(g);
+        expect(bare.panels.map(p => p.id)).to.deep.equal(["yard", "palace"]);
+        expect(panel(bare, "yard").render.areas![0].label).to.deep.include({ textKey: "apgames:status.icepalace.IN_POOL" });
+        expect(panel(bare, "palace").render.areas).to.be.undefined;
+    });
+
+    it("takes clicks by panel: the rack names a pyramid, a structure a cell, the wrong structure nothing", () => {
+        const g = rig(new IcePalaceGame(3), [["1M"], ["1S"], ["3M", "1S"]], fatPool());
+        g.move("1M@0.0");
+        g.move("1S@1.0");
+        // Seat 3's rack: its small, then its medium. Which glyph the renderer reports is beside the point.
+        expect(panel(split(g), "rack").render.pieces).to.deep.equal([[["s1S"], ["s3M"]]]);
+        let click = g.handleClick("", 0, 1, "SvgjsSymbol1", "rack");
+        expect(click.valid, click.message).to.be.true;
+        expect(click.move).to.equal("3M");
+        // The medium covers the small at 1.0, a column right of the Yard's origin.
+        click = g.handleClick(click.move, 3, 4, "", "yard");
+        expect(click.valid, click.message).to.be.true;
+        expect(click.move).to.equal("3M@1.0");
+        expect(click.complete).to.equal(1);
+        // The small founds beside the Yard's origin.
+        expect(g.handleClick("1S", 3, 2, "", "yard").move).to.equal("1S@-1.0");
+        // The Palace takes nothing during a hand, nor does a panel this game never drew, nor
+        // a position off the board; each drops the pick.
+        expect(g.handleClick("1S", 3, 3, "", "palace").move).to.equal("");
+        expect(g.handleClick("1S", 3, 3, "", "elsewhere").move).to.equal("");
+        expect(g.handleClick("1S", 7, 7, "", "yard").move).to.equal("");
+        // An empty rack cell changes nothing.
+        const empty = g.handleClick("1S", 1, 0, "", "rack");
+        expect(empty.move).to.equal("1S");
+        expect(empty.valid).to.be.false;
+    });
+
+    it("builds by clicking the rack and the Palace, and draws a finished build once, every placement outlined", () => {
+        const g = rig(new IcePalaceGame(3), [["1M", "1S"], ["2S"], ["3S"]], fatPool());
+        g.move("1M@0.0");
+        g.move("pass");
+        g.move("pass");
+        g.move("1S@1.0");
+        while (g.phase === "hand") {
+            g.move("pass");
+        }
+        expect(g.buildMin).to.equal(2);
+        // The stock is racked smallest first.
+        expect(panel(split(g), "rack").render.pieces).to.deep.equal([[["s1S"], ["s1M"]]]);
+        // The first placement goes to the empty Palace's origin wherever the click lands.
+        let click = g.handleClick("", 0, 1, "", "rack");
+        expect(click.move).to.equal("1M");
+        click = g.handleClick(click.move, 1, 1, "", "palace");
+        expect(click.move).to.equal("1M@0.0");
+        expect(click.complete).to.equal(-1);
+        // The rack is read less what the build has placed: its first cell is now the small.
+        click = g.handleClick(click.move, 0, 0, "", "rack");
+        expect(click.move).to.equal("1M@0.0;1S");
+        // While a pyramid is picked, the Palace shows where it may go and the rack what is left.
+        const pending = split(g.clone().move("1M@0.0;1S", { partial: true }));
+        expect(panel(pending, "rack").render.pieces).to.deep.equal([[["s1S"]]]);
+        expect(panel(pending, "palace").render.legend).to.have.property("dot");
+        expect(panel(pending, "yard").render.legend).to.not.have.property("dot");
+        expect(panel(pending, "palace").render.annotations).to.deep.equal([{ type: "enter", targets: [{ row: 3, col: 3 }] }]);
+        expect(panel(pending, "yard").render.annotations).to.be.undefined;
+        click = g.handleClick(click.move, 3, 4, "", "palace");
+        expect(click.move).to.equal("1M@0.0;1S@1.0");
+        expect(click.complete).to.equal(0);
+        g.move(click.move);
+        // The single board steps through a build as frames; the two boards show it at once.
+        expect(Array.isArray(g.render())).to.be.true;
+        const built = split(g);
+        expect(built.kind).to.equal("composite");
+        expect(panel(built, "palace").render.annotations).to.deep.equal([{ type: "enter", targets: [{ row: 3, col: 3 }, { row: 3, col: 4 }] }]);
+        expect(panel(built, "yard").render.annotations).to.be.undefined;
+    });
+
+    it("lays out the hovered stack of either structure, and nothing for the rack", () => {
+        const g = rigged();
+        g.move("1M@0.0");
+        g.palace = new Map([["0.0", ["2L", "1M"]]]);
+        type Column = { areas: { type: string; stack: string[] }[] };
+        const column = (col: number, row: number, panelId: string) => (g.renderColumn(col, row, panelId) as unknown as Column).areas;
+        expect(column(3, 3, "yard")).to.deep.equal([{ type: "expandedColumn", stack: ["c1M"] }]);
+        expect(column(3, 3, "palace")).to.deep.equal([{ type: "expandedColumn", stack: ["c2L", "c1M"] }]);
+        expect(column(0, 0, "rack")).to.deep.equal([{ type: "expandedColumn", stack: [] }]);
+        expect(column(9, 9, "palace")).to.deep.equal([{ type: "expandedColumn", stack: [] }]);
+    });
+
+    it("racks the hand and draws the Pool in 3D on request", () => {
+        const g = rigged();
+        g.move("1M@0.0");
+        const rack = panel(split(g, ["perspective-areas"]), "rack");
+        expect(rack.render.pieces).to.deep.equal([[["h1S"]]]);
+        expect(rack.render.legend!.h1S).to.deep.include({ name: "pyramid-up-small-3D" });
+        expect(rack.render.areas![0].stash).to.deep.equal([["b1L", "b1S"], ["b2S"], ["bWM"]]);
     });
 });
 

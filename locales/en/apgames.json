@@ -651,7 +651,9 @@
       "POOL": "Pyramids left in the Pool",
       "HAND": "{{player}}'s hand",
       "STOCK": "Pyramids from the Yard, to be built into the Palace",
-      "IN_POOL": "Pyramids in the Pool"
+      "IN_POOL": "Pyramids in the Pool",
+      "YARD": "Yard",
+      "PALACE": "Ice Palace"
     },
     "killallgo": {
       "ATTACKER": "Attacker",
@@ -5108,6 +5110,10 @@
       "#board": {
         "description": "Two dimensional board, with stacks expanding when hovered over.",
         "name": "Expanding"
+      },
+      "composite": {
+        "description": "The Yard and the Ice Palace each on a board of its own, with the pyramids on offer racked below the Yard and the Pool beneath them.",
+        "name": "Separate boards"
       },
       "perspective": {
         "description": "Three dimensional board, with pyramids stacked in perspective.",
