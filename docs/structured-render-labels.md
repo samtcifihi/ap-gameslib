@@ -139,7 +139,7 @@ import { resolveRenderLabel } from "@abstractplay/gameslib";
 const text = resolveRenderLabel(area.label, playerNames, (key, params) => i18n.t(key, params));
 ```
 
-Abstract Play front walks the full rep via `resolveRenderLabels()` — game authors normally only set labels in `render()`.
+Abstract Play front walks the full rep via `resolveRenderLabels()` — game authors normally only set labels in `render()`. For a composite render that includes each panel's title (`panels[].label`) and the labels on its board and areas.
 
 ## Comparison with structured move log
 

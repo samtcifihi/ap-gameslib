@@ -112,15 +112,31 @@ function walkBoard(
     walkMarkers(board.markers, playerNames, t);
 }
 
+type LabelledRep = {
+    board?: Parameters<typeof walkBoard>[0];
+    areas?: Parameters<typeof walkAreas>[0];
+};
+
 function resolveOneRenderRep<T>(
     rep: T,
     playerNames: string[],
     t: ChatLogTranslate,
 ): T {
-    const out = structuredClone(rep) as T & {
-        board?: Parameters<typeof walkBoard>[0];
-        areas?: Parameters<typeof walkAreas>[0];
+    const out = structuredClone(rep) as T & LabelledRep & {
+        kind?: string;
+        panels?: Array<{ label?: RenderLabel; render?: LabelledRep }>;
     };
+    if (out.kind === "composite" && Array.isArray(out.panels)) {
+        // Composite output: each panel carries its own title and a full render rep.
+        for (const panel of out.panels) {
+            if (panel?.label !== undefined) {
+                panel.label = resolveLabelField(panel.label, playerNames, t);
+            }
+            walkBoard(panel?.render?.board, playerNames, t);
+            walkAreas(panel?.render?.areas, playerNames, t);
+        }
+        return out;
+    }
     walkBoard(out.board, playerNames, t);
     walkAreas(out.areas, playerNames, t);
     return out;
@@ -128,7 +144,8 @@ function resolveOneRenderRep<T>(
 
 /**
  * Resolve structured render labels to display strings before drawing.
- * Walks board markers, dual-board labels, areas, and button-bar buttons.
+ * Walks board markers, dual-board labels, areas, and button-bar buttons, and in a
+ * composite render each panel's title and those of its board and areas.
  */
 export function resolveRenderLabels<T>(
     rep: T,

@@ -172,4 +172,33 @@ describe("resolveRenderLabels", () => {
             actor: { kind: "seat", seat: 2 },
         });
     });
+
+    it("resolves panel titles and each panel's board and area labels in a composite render", () => {
+        const rep = {
+            kind: "composite" as const,
+            layout: { arrangement: "row" as const },
+            panels: [
+                {
+                    id: "west",
+                    label: { textKey: "test:STASH", actor: { kind: "seat" as const, seat: 1 } },
+                    render: {
+                        board: {
+                            markers: [{ type: "label", label: { textKey: "test:DECK", actor: { kind: "none" as const } } }],
+                        },
+                        areas: [
+                            { type: "pieces", label: { textKey: "test:STASH", actor: { kind: "seat" as const, seat: 2 } } },
+                        ],
+                    },
+                },
+                { id: "east", label: "Plain", render: {} },
+            ],
+        };
+        const resolved = resolveRenderLabels(rep, ["Alice", "Bob"], mockT);
+        expect(resolved.panels[0].label).to.equal("Alice's stash");
+        expect(resolved.panels[0].render.board!.markers[0].label).to.equal("Cards in deck");
+        expect(resolved.panels[0].render.areas![0].label).to.equal("Bob's stash");
+        expect(resolved.panels[1].label).to.equal("Plain");
+        // The caller's rep is left as it was.
+        expect(rep.panels[0].label).to.deep.equal({ textKey: "test:STASH", actor: { kind: "seat", seat: 1 } });
+    });
 });
