@@ -555,8 +555,8 @@ function applyPlaygroundClickResult(game, gamename, result) {
     }
 }
 
-function boardClick(row, col, piece) {
-    console.log("Row: " + row + ", Col: " + col + ", Piece: " + piece);
+function boardClick(row, col, piece, panelId) {
+    console.log("Row: " + row + ", Col: " + col + ", Piece: " + piece + (panelId === undefined ? "" : ", Panel: " + panelId));
     var state = getCommittedStateString();
     var gamename = window.localStorage.getItem("gamename");
     var game = APGames.GameFactory(gamename, state);
@@ -564,7 +564,7 @@ function boardClick(row, col, piece) {
         return;
     }
     var movebox = document.getElementById("moveEntry");
-    var result = game.handleClick(movebox.value, row, col, piece);
+    var result = game.handleClick(movebox.value, row, col, piece, panelId);
     applyPlaygroundClickResult(game, gamename, result);
 }
 
@@ -634,6 +634,34 @@ function boardClickSimultaneous(row, col, piece) {
 
 function boardClickVolcano(row, col, piece) {
     renderGame(col, row);
+}
+
+/**
+ * Draws a render: one board, or a composite of several through renderComposite, which
+ * reports the panel a click or hover landed on, as the front passes it on to the game,
+ * and takes no seat rotation.
+ */
+function drawBoard(data, options) {
+    if (!APGames.isAPRenderComposite(data)) {
+        return APRender.render(data, options);
+    }
+    const compositeOpts = { ...options };
+    delete compositeOpts.rotate;
+    if (options.boardClick) {
+        compositeOpts.boardClick = (panelId, row, col, piece) => options.boardClick(row, col, piece, panelId);
+    }
+    if (options.boardHover) {
+        compositeOpts.boardHover = (panelId, row, col, piece) => options.boardHover(row, col, piece, panelId);
+    }
+    return APRender.renderComposite(data, compositeOpts);
+}
+
+/** A render's boards: its last frame, or each panel of a composite. */
+function renderBoards(data) {
+    if (APGames.isAPRenderComposite(data)) {
+        return data.panels.map((panel) => panel.render);
+    }
+    return Array.isArray(data) ? [data[data.length - 1]] : [data];
 }
 
 // --- Customization Management ---
@@ -754,7 +782,26 @@ function renderCustomizePreview() {
             data = data[data.length - 1];
         }
         data = prepareRenderRep(data, game, gamename);
-        const svgString = APRender.renderStatic(data, options);
+        let svgString;
+        if (APGames.isAPRenderComposite(data)) {
+            // No static form exists for a composite: draw it offscreen, then prefix its ids
+            // so that they do not collide with the main board's.
+            const offscreen = document.createElement("div");
+            offscreen.style.position = "absolute";
+            offscreen.style.left = "-9999px";
+            document.body.appendChild(offscreen);
+            try {
+                const compositeOpts = { ...options, divelem: offscreen };
+                delete compositeOpts.rotate;
+                delete compositeOpts.prefix;
+                APRender.renderComposite(data, compositeOpts);
+                svgString = APRender.addPrefix(offscreen.innerHTML, { prefix: uniqueid });
+            } finally {
+                document.body.removeChild(offscreen);
+            }
+        } else {
+            svgString = APRender.renderStatic(data, options);
+        }
         previewDiv.innerHTML = svgString;
     } catch (e) {
         previewDiv.innerHTML = `<div style="color: red; padding: 1em;">${e.message}</div>`;
@@ -869,7 +916,7 @@ function updateGlyphMapDisplay() {
                     if (g.name) names.add(g.name);
                 }
             };
-            Object.values(data.legend).forEach((val) => {
+            renderBoards(data).flatMap((rep) => Object.values(rep.legend ?? {})).forEach((val) => {
                 if (Array.isArray(val)) {
                     val.forEach((v) => processGlyph(v));
                 } else {
@@ -2246,7 +2293,7 @@ function renderGame(...args) {
         data = prepareRenderRep(data, game, gamename);
         var canvas;
         try {
-            canvas = APRender.render(data, options);
+            canvas = drawBoard(data, options);
         } catch (e) {
             console.error("Render error:", e);
             console.log("Render data:", data, "Options:", options);
