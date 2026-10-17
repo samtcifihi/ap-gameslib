@@ -5108,12 +5108,8 @@
         "name": "Top-down hand and Pool"
       },
       "#board": {
-        "description": "Two dimensional board, with stacks expanding when hovered over.",
+        "description": "The Yard and the Ice Palace each on a two dimensional board of its own, with stacks expanding when hovered over.",
         "name": "Expanding"
-      },
-      "composite": {
-        "description": "The Yard and the Ice Palace each on a board of its own, with the pyramids on offer racked below the Yard and the Pool beneath them.",
-        "name": "Separate boards"
       },
       "perspective": {
         "description": "Three dimensional board, with pyramids stacked in perspective.",

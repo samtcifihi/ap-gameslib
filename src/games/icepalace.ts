@@ -14,8 +14,6 @@ void gameApgamesUidKey("icepalace", "displays", "#areas", "name");
 void gameApgamesUidKey("icepalace", "displays", "#areas", "description");
 void gameApgamesUidKey("icepalace", "displays", "#board", "name");
 void gameApgamesUidKey("icepalace", "displays", "#board", "description");
-void gameApgamesUidKey("icepalace", "displays", "composite", "name");
-void gameApgamesUidKey("icepalace", "displays", "composite", "description");
 void gameApgamesUidKey("icepalace", "displays", "perspective", "name");
 void gameApgamesUidKey("icepalace", "displays", "perspective", "description");
 void gameApgamesUidKey("icepalace", "displays", "perspective-areas", "name");
@@ -45,12 +43,8 @@ export const gameApgamesEn = {
             name: "Top-down hand and Pool",
         },
         "#board": {
-            description: "Two dimensional board, with stacks expanding when hovered over.",
+            description: "The Yard and the Ice Palace each on a two dimensional board of its own, with stacks expanding when hovered over.",
             name: "Expanding",
-        },
-        composite: {
-            description: "The Yard and the Ice Palace each on a board of its own, with the pyramids on offer racked below the Yard and the Pool beneath them.",
-            name: "Separate boards",
         },
         perspective: {
             description: "Three dimensional board, with pyramids stacked in perspective.",
@@ -663,7 +657,7 @@ type PyramidView = "3D" | "top" | "side" | "nest";
 type Legend = { [k: string]: Glyph | [Glyph, ...Glyph[]] };
 type Which = "palace" | "yard";
 /**
- * The third panel of the two-board display, where the pyramids on offer are racked one to
+ * The third panel of the top-down display, where the pyramids on offer are racked one to
  * a cell. The structures' panels are named after the structures.
  */
 const RACK_PANEL = "rack";
@@ -800,7 +794,6 @@ export class IcePalaceGame extends GameBaseSequenced {
         displays: [
             // Two choices, made separately: how the board is drawn, and how the hand and Pool are.
             { uid: "perspective", group: "board" },
-            { uid: "composite", group: "board" },
             { uid: "perspective-areas", group: "areas" },
         ],
     };
@@ -1494,8 +1487,8 @@ export class IcePalaceGame extends GameBaseSequenced {
      * valid selector in a real browser, so the pyramid id gets a letter in front. A piece
      * drawn two ways on one board needs two keys, so the letter says where it is drawn:
      * `p` on the board, `a` in the top-down Palace (drawn opaque, unlike the Yard), `h` in
-     * the perspective hand, `s` in the top-down hand (whether as a stash or racked on a
-     * board of its own), `c` in the hovered column, and `b` for the Pool shown below the hand.
+     * the 3D hand and `s` in the top-down one (whether stashed under the 3D board or racked
+     * on a board of its own), `c` in the hovered column, and `b` for the Pool.
      */
     private static legendKey(piece: PieceId, where: "board" | "palace" | "hand" | "stash" | "column" | "pool" = "board"): string {
         const prefix = { board: "p", palace: "a", hand: "h", stash: "s", column: "c", pool: "b" }[where];
@@ -1669,7 +1662,7 @@ export class IcePalaceGame extends GameBaseSequenced {
             let newmove: string;
             const picked = piece === undefined ? undefined : /^([a-z])?([1-6BW][SML])$/i.exec(piece);
             if (panelId === RACK_PANEL) {
-                // The two-board display says which panel was clicked, and the composite
+                // The top-down display says which panel was clicked, and the composite
                 // renderer hands back whatever glyph was under the pointer, often its own
                 // click tile; so the cell alone says what was clicked: the pyramid racked
                 // there, or nothing, at the end of a wrapped rack.
@@ -1782,33 +1775,31 @@ export class IcePalaceGame extends GameBaseSequenced {
     }
 
     /**
-     * One board holds both structures, the Yard on the left and the Palace on the right,
-     * whatever the phase. During the build the Yard stands empty, having been taken up into
-     * the stock, which is offered below the board instead of the current player's hand.
-     * That area is where the current player picks a pyramid from; every hand is also listed
-     * in the status panel.
+     * The default display looks straight down, giving the Yard and the Palace a board each
+     * (see `renderPanels`), with each stack's pyramids drawn translucently over one another;
+     * hovering a cell lays its stack out beside the boards (see `renderColumn`).
      *
-     * The default display looks straight down, with each stack's pyramids drawn
-     * translucently over one another, and hovering a cell lays its stack out beside the
-     * board (see `renderColumn`). The "perspective" display draws the pyramids in 3D
-     * instead. Both show the offered pyramids, then whatever is still in the Pool, as
-     * stashes below the board; the Pool is for reference only. The stashes are chosen
-     * separately: seen from above by default, or in 3D with "perspective-areas".
+     * The "perspective" display draws the pyramids in 3D, and holds both structures on one
+     * board, the Yard on the left and the Palace on the right, whatever the phase: the
+     * composite renderer cannot yet find the cell under a click on a perspective board.
+     * During the build the Yard stands empty, having been taken up into the stock, which
+     * is offered below the board instead of the current player's hand, and below that is
+     * whatever is still in the Pool, for reference only. Every hand is also listed in the
+     * status panel. On either display the offered pyramids and the Pool are seen from
+     * above by default, or in 3D with "perspective-areas".
      *
-     * A build is the one move that changes the board in several places at once, so it is
-     * returned as frames: the Palace before the build, then after each placement, with the
-     * stock dwindling below it, and last the game as it stands. Every frame uses the final
-     * board's layout so that the board holds still. Other moves return a single render.
-     *
-     * The "composite" display gives each structure a board of its own instead; see
-     * `renderPanels`.
+     * On the one board a build, the one move that changes the board in several places at
+     * once, is returned as frames: the Palace before the build, then after each placement,
+     * with the stock dwindling below it, and last the game as it stands. Every frame uses
+     * the final board's layout so that the board holds still. Other moves return a single
+     * render.
      */
     public render(opts?: IRenderOpts): APRenderGameOutput {
         // The cells the last move placed into, outlined. A build places into the Palace,
         // whether finished (it left frames) or still being entered; anything else, the Yard.
         const placed = this.results.filter(r => r.type === "place").map(r => (r as { where: Cell }).where);
         const where: Which = this.frames.length > 0 || this.phase === "build" ? "palace" : "yard";
-        if (this.hasDisplay(opts, "composite")) {
+        if (!this.hasDisplay(opts, "perspective")) {
             return this.renderPanels(opts, { where, cells: placed });
         }
         const layout = this.layout();
@@ -1826,25 +1817,21 @@ export class IcePalaceGame extends GameBaseSequenced {
         return [...frames, live];
     }
 
-    /** One board: the stacks, the hand and Pool below it, and the overlays on top. */
+    /** The 3D display's one board: the stacks, the hand and Pool below it, and the overlays on top. */
     private renderView(opts: IRenderOpts | undefined, layout: ILayout, view: IBoardView, entered: { where: Which; cells: Cell[] }): APRenderRep {
-        // The top-down board is the default; the perspective board is the alternate. The
-        // board picks the renderer, which draws the stashes too, but both renderers lay
-        // stashes out alike, so a stash style is a matter of glyphs and not of the board.
-        const expanding = !this.hasDisplay(opts, "perspective");
         const areas3D = this.hasDisplay(opts, "perspective-areas");
         const legend: Legend = {};
-        const pieces = this.boardPieces(layout, view, legend, expanding);
+        const pieces = this.boardPieces(layout, view, legend, false);
         const areas = this.areasBelow(view, legend, areas3D, Math.floor(layout.width / STASH_COLUMN));
         const blocked = IcePalaceGame.unreachable(layout, view.palace, view.yard);
         const rep: APRenderRep = {
-            renderer: expanding ? "stacking-expanding" : "stacking-3D",
+            renderer: "stacking-3D",
             options: ["hide-labels"],
             board: {
                 style: "squares",
                 width: layout.width,
                 height: layout.height,
-                stackOffset: expanding ? undefined : STACK_OFFSET,
+                stackOffset: STACK_OFFSET,
                 blocked: blocked.length > 0 ? nonEmpty(blocked) : undefined,
             },
             legend,
@@ -1856,17 +1843,16 @@ export class IcePalaceGame extends GameBaseSequenced {
     }
 
     /**
-     * The "composite" display: the Yard and the Palace each on a board of its own, side by
+     * The default display: the Yard and the Palace each on a board of its own, side by
      * side, with the pyramids on offer racked on a small board below the Yard and the Pool
-     * below that. Every panel is drawn by the expanding renderer, as the top-down board is,
-     * and a click arrives with the id of the panel it landed on; hovering a structure's cell
-     * still lays its stack out beside the boards.
+     * below that. Every panel is drawn by the expanding renderer, and a click arrives with
+     * the id of the panel it landed on; hovering a structure's cell lays its stack out
+     * beside the boards.
      *
      * The composite renderer finds a board's cells from the first cell it drew, which a
-     * blanked corner would shift, so unlike the single board these boards keep every cell;
-     * and it cannot yet find the cell under a click on a perspective board, so there is no
-     * 3D form of this display. A build is drawn once, with every placement outlined, rather
-     * than as frames: the front steps through frames of single boards only.
+     * blanked corner would shift, so unlike the 3D display's board these boards keep every
+     * cell. A build is drawn once, with every placement outlined, rather than as frames:
+     * the front steps through frames of single boards only.
      */
     private renderPanels(opts: IRenderOpts | undefined, entered: { where: Which; cells: Cell[] }): APRenderComposite {
         const areas3D = this.hasDisplay(opts, "perspective-areas");
@@ -2073,10 +2059,10 @@ export class IcePalaceGame extends GameBaseSequenced {
     }
 
     /**
-     * The stack under the hovered cell, for the expanding display: the front draws it beside
-     * the board, bottom of the stack first, as side-on pyramids. Either structure can be
-     * looked into, and the gap between them, or an empty cell, shows nothing. The two-board
-     * display names the panel hovered; its rack has nothing to look into.
+     * The stack under the hovered cell, for the top-down display: the front draws it beside
+     * the boards, bottom of the stack first, as side-on pyramids. Either structure can be
+     * looked into; an empty cell, or the rack, shows nothing. The front names the panel
+     * hovered; without one, the position is read as on the 3D display's single board.
      */
     public renderColumn(col: number, row: number, panelId?: string): APRenderRep {
         const found = panelId === undefined ? this.locate(row, col) : this.locatePanel(panelId, row, col);
@@ -2192,7 +2178,7 @@ export class IcePalaceGame extends GameBaseSequenced {
     }
 
     /**
-     * The cell at a position on one of the two-board display's structure panels. The rack,
+     * The cell at a position on one of the top-down display's structure panels. The rack,
      * a panel this game never drew, and a position off the board are undefined.
      */
     private locatePanel(panelId: string, row: number, col: number): { which: Which; cell: Cell } | undefined {
