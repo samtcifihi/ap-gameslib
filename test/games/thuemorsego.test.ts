@@ -36,14 +36,35 @@ const stonePaint = (slot: number, fromPalette = false) => ({
     border: fromPalette ? slot + 4 : { func: "bestContrast", bg: slot, fg: ["#000", "#fff"] },
 });
 
-/** Put stones on the board, and into the initial position, without playing them. */
+/** Put stones on the board, and into the initial and current positions, without playing them. */
 const setStones = (g: ThueMorseGoGame, colour1: string[], colour2: string[]): void => {
     const board = new Map<string, 1 | 2>();
     for (const cell of colour1) { board.set(cell, 1); }
     for (const cell of colour2) { board.set(cell, 2); }
     g.stack[0].board = new Map(board);
+    g.stack[g.stack.length - 1].board = new Map(board);
     g.board = new Map(board);
 };
+
+/** The cells whose stones the rendered board draws translucent, sorted: pass-alive stones in Kill-All games. */
+const faded = (g: ThueMorseGoGame, opts?: { altDisplays?: string[] }): string[] => {
+    const rep = g.render(opts);
+    const keys = new Set(Object.entries(rep.legend ?? {})
+        .filter(([, entry]) => [entry].flat().some((glyph) => ((glyph as { opacity?: number }).opacity ?? 1) < 1))
+        .map(([key]) => key));
+    const cells: string[] = [];
+    (rep.pieces as string).split("\n").forEach((row, y) => {
+        if (row !== "_") {
+            (row.includes(",") ? row.split(",") : row.split("")).forEach((key, x) => {
+                if (keys.has(key)) {
+                    cells.push(g.coords2algebraic(x, y));
+                }
+            });
+        }
+    });
+    return cells.sort();
+};
+const THROUGHOUT = { altDisplays: ["pass-alive-throughout"] };
 
 /** The layers of a tracker legend entry. */
 const layers = (g: ThueMorseGoGame, key: string, opts?: { altDisplays?: string[] }): Glyph[] => {
@@ -717,10 +738,31 @@ describe("Thue-Morse Go: Kill-All", () => {
         const { own, wall } = twoEyedCorner();
         const g = play(small(["kill-all"]), ["f6", "attacker"]);
         setStones(g, own, [...wall, "f6"]);
+        // Before the end, pass-alive stones are faded only under the display option.
+        expect(faded(g)).to.deep.equal([]);
+        expect(faded(g, THROUGHOUT)).to.deep.equal([...own].sort());
         g.move("k11");
         expect(g.gameover).to.be.true;
         expect(g.winner).to.deep.equal([1]);
         expect(g.results.find((r) => r.type === "eog")!.reason).to.equal("pass-alive");
+        expect(g.alive!.sort()).to.deep.equal([...own].sort());
+        // The position that ended the game fades them, instead of boxing them; the last stone is still boxed.
+        expect(faded(g)).to.deep.equal([...own].sort());
+        const rep = g.render();
+        const enters = rep.annotations!.filter((a) => a.type === "enter") as Array<{ targets: RowCol[] }>;
+        expect(enters.map((a) => a.targets.length)).to.deep.equal([1]);
+        expect(layers(g, "L1")[0]).to.deep.include({ opacity: 0.75 });
+        expect((layers(g, "L1")[0] as { paint: { fill: unknown } }).paint.fill).to.deep.equal(role(4));
+        // Earlier positions of the finished game are marked only on request.
+        g.load(g.stack.length - 2);
+        expect(faded(g)).to.deep.equal([]);
+        expect(faded(g, THROUGHOUT)).to.deep.equal([...own].sort());
+        // Outside Kill-All the display does nothing, and dead stones keep their own fade.
+        const plain = small();
+        setStones(plain, ["f6"], []);
+        plain.move("pass,-f6");
+        expect(faded(plain, THROUGHOUT)).to.deep.equal(["f6"]);
+        expect(plain.render(THROUGHOUT).legend).to.not.have.property("L1");
     });
 
     it("needs three eyes under checked weak eyes", () => {
@@ -729,12 +771,31 @@ describe("Thue-Morse Go: Kill-All", () => {
         setStones(g, own, [...wall, "f6"]);
         g.move("k11");
         expect(g.gameover).to.be.false;
+        // Two eyes are not pass-alive here, so nothing fades even on request.
+        expect(faded(g, THROUGHOUT)).to.deep.equal([]);
 
         const h = play(small(["kill-all", "weak-eyes"]), ["f6", "attacker"]);
-        setStones(h, [...own, "e2", "f1", "f2"], ["a3", "b3", "c3", "d3", "e3", "f3", "g1", "g2", "g3", "f6"]);
+        const three = [...own, "e2", "f1", "f2"];
+        setStones(h, three, ["a3", "b3", "c3", "d3", "e3", "f3", "g1", "g2", "g3", "f6"]);
+        expect(faded(h, THROUGHOUT)).to.deep.equal([...three].sort());
         h.move("k11");
         expect(h.gameover).to.be.true;
         expect(h.winner).to.deep.equal([1]);
+        expect(faded(h)).to.deep.equal([...three].sort());
+    });
+
+    it("fades the Attacker's pass-alive stones too, and at any end of the game", () => {
+        // The Attacker's own two-eyed corner is pass-alive as well.
+        const { own, wall } = twoEyedCorner();
+        const g = play(small(["kill-all"]), ["f6", "attacker"]);
+        setStones(g, [], [...own, "f6"]);
+        expect(faded(g, THROUGHOUT)).to.deep.equal([...own].sort());
+        expect(g.render(THROUGHOUT).legend).to.have.property("L2");
+        expect(g.render(THROUGHOUT).legend).to.not.have.property("L1");
+        void wall;
+        // A state pasted with indentation around it still loads.
+        const again = new ThueMorseGoGame(`  \n  ${g.serialize()}\n`);
+        expect(again.render(THROUGHOUT).pieces).to.deep.equal(g.render(THROUGHOUT).pieces);
     });
 
     it("places the handicap stones when Player 2 takes the Attacker side", () => {
@@ -780,7 +841,7 @@ describe("Thue-Morse Go: Kill-All", () => {
         const h = play(small(), ["f6"]);
         expect(h.getPlayerColour(1)).to.equal(1);
         expect((layers(h, "B")[0] as { paint: { fill: number } }).paint.fill).to.equal(2);
-        expect(ThueMorseGoGame.gameinfo.displays!.map((d) => d.uid)).to.deep.equal(["tms-tracker", "digits-down", "hide-territory", "palette-borders"]);
+        expect(ThueMorseGoGame.gameinfo.displays!.map((d) => d.uid)).to.deep.equal(["tms-tracker", "digits-down", "hide-territory", "palette-borders", "pass-alive-throughout"]);
     });
 });
 

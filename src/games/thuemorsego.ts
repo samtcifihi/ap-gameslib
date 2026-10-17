@@ -151,6 +151,8 @@ const MAX_TRACK_INDEX = 0xfff;
 const DECLARATION_RE = /^(\d+)([ps]?)$/;
 /** Opacity of a stone marked dead. */
 const DEAD_OPACITY = 0.4;
+/** The opacity of pass-alive stones in Kill-All games, as in Kill-All Go. */
+const ALIVE_OPACITY = 0.75;
 /** Diameter of a territory dot as a fraction of a cell, the size of the renderer's own dots. */
 const DOT_SIZE = 0.2;
 /** Diameter of a star point as a fraction of a cell, the size the renderer draws its own. */
@@ -301,7 +303,7 @@ export class ThueMorseGoGame extends GameBase {
         ],
         categories: ["goal>area", "goal>cripple", "mechanic>place", "mechanic>capture", "mechanic>enclose", "board>shape>rect", "board>connect>rect", "board>connect>snub", "components>simple>1per"],
         flags: ["experimental", "scores", "custom-buttons", "no-moves", "custom-randomization"],
-        displays: [{ uid: "tms-tracker" }, { uid: "digits-down" }, { uid: "hide-territory" }, { uid: "palette-borders" }],
+        displays: [{ uid: "tms-tracker" }, { uid: "digits-down" }, { uid: "hide-territory" }, { uid: "palette-borders" }, { uid: "pass-alive-throughout" }],
         // Kill-All games draw their roles from slots 3 and 4, so that the Attacker takes the first
         // colour as in Kill-All Go by default, and a player who prefers the Defender in the first
         // colour can set those two slots the other way round.
@@ -412,10 +414,12 @@ export class ThueMorseGoGame extends GameBase {
             this.stack = [fresh];
         } else {
             if (typeof state === "string") {
-                if (!state.startsWith("{") && !state.startsWith("[")) {
+                // A state pasted with indentation around it is still JSON, not a compressed state.
+                const text = state.trim();
+                if (!text.startsWith("{") && !text.startsWith("[")) {
                     throw new Error("Compressed game state must be decompressed before constructing the engine.");
                 }
-                state = JSON.parse(state, reviver) as IThueMorseGoState;
+                state = JSON.parse(text, reviver) as IThueMorseGoState;
             }
             if (state.game !== ThueMorseGoGame.gameinfo.uid) {
                 throw new Error(`The Thue-Morse Go engine cannot process a game of '${state.game}'.`);
@@ -2517,6 +2521,30 @@ export class ThueMorseGoGame extends GameBase {
      * Shown in the standard game unless the display hides it; the marked stones are faded regardless.
      * Returns the legend keys of the marked stones by cell and the dots for the empty points.
      */
+    /**
+     * Kill-All: the pass-alive stones of both sides, drawn faded in the position that ended the
+     * game, or in every position under the display option, as in Kill-All Go. The final position
+     * is known by its own `eog` result, since `gameover` holds for every position of a finished
+     * game once loaded, and the stones fade at any end, a stalemate or a repetition included.
+     */
+    private passAliveOverlay(legend: ILegend, throughout: boolean, paletteBorders: boolean): Map<string, string> {
+        const alive = new Map<string, string>();
+        if (!this.killAll || !(throughout || this.results.some((r) => r.type === "eog"))) {
+            return alive;
+        }
+        for (const colour of [1, 2] as const) {
+            const cells = passAliveStrings(this.board, this.geo, colour, { suicideAllowed: true, minVital: this.minVital }).flat();
+            if (cells.length > 0) {
+                const key = `L${colour}`;
+                legend[key] = [{ name: "piece", paint: this.stonePaint(colour, paletteBorders), opacity: ALIVE_OPACITY }];
+                for (const cell of cells) {
+                    alive.set(cell, key);
+                }
+            }
+        }
+        return alive;
+    }
+
     private territoryOverlay(legend: ILegend, hide: boolean, paletteBorders: boolean): { dead: Map<string, string>; dots: MarkerDots[] } {
         const dead = new Map<string, string>();
         const dots: MarkerDots[] = [];
@@ -2710,6 +2738,7 @@ export class ThueMorseGoGame extends GameBase {
         };
         const { overlay, chosen } = this.pickerOverlay(legend, paletteBorders);
         const { dead, dots } = this.territoryOverlay(legend, hideDots, paletteBorders);
+        const alive = this.passAliveOverlay(legend, this.hasDisplay(opts, "pass-alive-throughout"), paletteBorders);
 
         const rows: string[] = [];
         for (let row = 0; row < this.boardSize; row++) {
@@ -2717,13 +2746,13 @@ export class ThueMorseGoGame extends GameBase {
             for (let col = 0; col < this.boardSize; col++) {
                 const cell = this.coords2algebraic(col, row);
                 const contents = this.board.get(cell);
-                cells.push(overlay.get(cell) ?? dead.get(cell) ?? (contents === 1 ? "A" : contents === 2 ? "B" : "-"));
+                cells.push(overlay.get(cell) ?? dead.get(cell) ?? alive.get(cell) ?? (contents === 1 ? "A" : contents === 2 ? "B" : "-"));
             }
             if (cells.every((c) => c === "-")) {
                 rows.push("_");
             } else {
                 // Multi-character keys need the comma-delimited form.
-                rows.push(overlay.size > 0 || dead.size > 0 ? cells.join(",") : cells.join(""));
+                rows.push(overlay.size > 0 || dead.size > 0 || alive.size > 0 ? cells.join(",") : cells.join(""));
             }
         }
 
@@ -2767,9 +2796,6 @@ export class ThueMorseGoGame extends GameBase {
                 const targets = r.where!.split(",").map(toRowCol);
                 annotations.push({ type: "exit", targets: targets as [RowCol, ...RowCol[]] });
             }
-        }
-        if (this.gameover && this.alive !== undefined && this.alive.length > 0) {
-            annotations.push({ type: "enter", targets: this.alive.map(toRowCol) as [RowCol, ...RowCol[]] });
         }
         for (const cell of chosen) {
             annotations.push({ type: "enter", targets: [toRowCol(cell)] });
