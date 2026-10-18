@@ -14,7 +14,7 @@ Since the `1.0.0-beta` release, the version in `package.json` has stayed at `1.0
 ### Added
 
 - **New games (dev / experimental only):** Agents of MARS, Bagh Chal, Bashni, Clearpath, Croda, Dama, Ice Palace, Kill-All Go, Neutron, Selfo, Thricewise, Thue-Morse Go, Yodd.
-- **Ice Palace:** the default top-down display renders the Yard and the Ice Palace as composite panels, each on a board of its own, with the pyramids on offer racked on a clickable board below the Yard and the Pool beneath; the first `APRenderComposite` consumer. A build there renders once, every placement outlined, rather than as frames. The 3D stacks display keeps both structures on one board, since composite click routing does not yet cover perspective boards.
+- **Ice Palace:** the default top-down display renders the Yard and the Ice Palace as composite panels, each on a board of its own, with the pyramids on offer racked on a clickable board below the Yard, its cells not drawn, and the Pool beneath; the first `APRenderComposite` consumer. Like the 3D board, the panels leave blank the cells nothing can go into, drawing the grid and fill of the others as markers, since `blocked` cells would shift composite click routing. A build there renders once, every placement outlined, rather than as frames. The 3D stacks display keeps both structures on one board, since composite click routing does not yet cover perspective boards. How the hand and the Pool are drawn are separate display choices (`perspective-hand`, `perspective-pool`); a saved `perspective-areas` expands to both through `LEGACY_DISPLAY_EXPAND`.
 
 ### Fixed
 

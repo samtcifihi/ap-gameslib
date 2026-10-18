@@ -2,7 +2,7 @@ import { IAPGameState, IClickResult, IIndividualState, IRenderOpts, IScores, ISt
 import type { IGamePly } from "./_turn-model.js";
 import { GameBaseSequenced } from "./_turn-sequenced.js";
 import type { APGamesInformation } from "../schemas/gameinfo.js";
-import { APRenderRep, AreaStackingExpanded, AreaVolcanoStash, Colourfuncs, Glyph, SheetGlyph } from "@abstractplay/renderer/build/schemas/schema";
+import { APRenderRep, AreaStackingExpanded, AreaVolcanoStash, BoardBasic, Colourfuncs, Glyph, MarkerLine, SheetGlyph } from "@abstractplay/renderer/build/schemas/schema";
 import type { APRenderComposite, APRenderCompositePanel } from "@abstractplay/renderer";
 import type { APMoveResult } from "../schemas/moveresults.js";
 import { reviver, UserFacingError } from "../common/index.js";
@@ -10,14 +10,18 @@ import i18next from "i18next";
 import { gameApgamesUidKey } from "../common/game-apgames-t.js";
 
 /** Display strings are resolved in {@link GameBase}; anchors for strict apgames key coverage. */
-void gameApgamesUidKey("icepalace", "displays", "#areas", "name");
-void gameApgamesUidKey("icepalace", "displays", "#areas", "description");
 void gameApgamesUidKey("icepalace", "displays", "#board", "name");
 void gameApgamesUidKey("icepalace", "displays", "#board", "description");
+void gameApgamesUidKey("icepalace", "displays", "#hand", "name");
+void gameApgamesUidKey("icepalace", "displays", "#hand", "description");
+void gameApgamesUidKey("icepalace", "displays", "#pool", "name");
+void gameApgamesUidKey("icepalace", "displays", "#pool", "description");
 void gameApgamesUidKey("icepalace", "displays", "perspective", "name");
 void gameApgamesUidKey("icepalace", "displays", "perspective", "description");
-void gameApgamesUidKey("icepalace", "displays", "perspective-areas", "name");
-void gameApgamesUidKey("icepalace", "displays", "perspective-areas", "description");
+void gameApgamesUidKey("icepalace", "displays", "perspective-hand", "name");
+void gameApgamesUidKey("icepalace", "displays", "perspective-hand", "description");
+void gameApgamesUidKey("icepalace", "displays", "perspective-pool", "name");
+void gameApgamesUidKey("icepalace", "displays", "perspective-pool", "description");
 
 export const gameApgamesEn = {
     validation: {
@@ -38,21 +42,29 @@ export const gameApgamesEn = {
         POOL_CLICK: "The Pool is shown for reference. Its pyramids cannot be played.",
     },
     displays: {
-        "#areas": {
-            description: "Hand and Pool seen from above, in two dimensions.",
-            name: "Top-down hand and Pool",
-        },
         "#board": {
             description: "The Yard and the Ice Palace each on a two dimensional board of its own, with stacks expanding when hovered over.",
             name: "Expanding",
+        },
+        "#hand": {
+            description: "The hand, or during a build the pyramids won from the Yard, seen from above, in two dimensions.",
+            name: "Top-down hand",
+        },
+        "#pool": {
+            description: "The Pool seen from above, in two dimensions.",
+            name: "Top-down Pool",
         },
         perspective: {
             description: "Three dimensional board, with pyramids stacked in perspective.",
             name: "3D stacks",
         },
-        "perspective-areas": {
-            description: "Hand and Pool in three dimensions, with the pyramids drawn in perspective.",
-            name: "3D hand and Pool",
+        "perspective-hand": {
+            description: "The hand, or during a build the pyramids won from the Yard, in three dimensions, with the pyramids drawn in perspective.",
+            name: "3D hand",
+        },
+        "perspective-pool": {
+            description: "The Pool in three dimensions, with the pyramids drawn in perspective.",
+            name: "3D Pool",
         },
     },
     status: {
@@ -792,9 +804,14 @@ export class IcePalaceGame extends GameBaseSequenced {
             { num: 8, default: "#ffffff", explanation: "Colour of the White pyramids" },
         ],
         displays: [
-            // Two choices, made separately: how the board is drawn, and how the hand and Pool are.
+            // Three choices, made separately: how the board is drawn, how the hand is, and how
+            // the Pool is. Each default is listed so that the choices are offered in this order.
+            { uid: "#board", group: "board" },
             { uid: "perspective", group: "board" },
-            { uid: "perspective-areas", group: "areas" },
+            { uid: "#hand", group: "hand" },
+            { uid: "perspective-hand", group: "hand" },
+            { uid: "#pool", group: "pool" },
+            { uid: "perspective-pool", group: "pool" },
         ],
     };
 
@@ -1559,11 +1576,11 @@ export class IcePalaceGame extends GameBaseSequenced {
      * would reach into neighbouring cells. The pyramid comes first: the renderer reads a 3D
      * stash piece's size from its first layer to rest every base on one line.
      */
-    private handStash(offered: PieceId[], legend: Legend, areas3D: boolean): string[][] {
+    private handStash(offered: PieceId[], legend: Legend, hand3D: boolean): string[][] {
         return [...offered].sort(pieceSort).map(piece => {
-            const key = IcePalaceGame.legendKey(piece, areas3D ? "hand" : "stash");
+            const key = IcePalaceGame.legendKey(piece, hand3D ? "hand" : "stash");
             if (!(key in legend)) {
-                legend[key] = areas3D ? [this.glyphFor(piece, "3D"), BLANK] : this.glyphFor(piece, "nest");
+                legend[key] = hand3D ? [this.glyphFor(piece, "3D"), BLANK] : this.glyphFor(piece, "nest");
             }
             return [key];
         });
@@ -1574,21 +1591,21 @@ export class IcePalaceGame extends GameBaseSequenced {
      * to diamonds and drawn opaque; a diamond is wider than a stash column, so a spacer
      * column keeps the colours apart.
      */
-    private poolStash(legend: Legend, areas3D: boolean): string[][] {
+    private poolStash(legend: Legend, pool3D: boolean): string[][] {
         const sorted = [...this.pool].sort(pieceSort);
         for (const piece of sorted) {
             const key = IcePalaceGame.legendKey(piece, "pool");
             if (key in legend) {
                 continue;
             }
-            if (areas3D) {
+            if (pool3D) {
                 legend[key] = this.glyphFor(piece, "3D");
             } else {
                 legend[key] = { ...this.glyphFor(piece, "top", true), rotate: 45 };
             }
         }
-        const columns = IcePalaceGame.poolColumns(sorted, areas3D);
-        if (areas3D) {
+        const columns = IcePalaceGame.poolColumns(sorted, pool3D);
+        if (pool3D) {
             return columns;
         }
         legend[GAP_KEY] = BLANK;
@@ -1604,8 +1621,8 @@ export class IcePalaceGame extends GameBaseSequenced {
      * line by size, so two of a size in one column would be drawn as one: a colour is shown
      * as nests instead, each holding at most one pyramid of each size.
      */
-    private static poolColumns(sorted: PieceId[], areas3D: boolean): string[][] {
-        if (areas3D) {
+    private static poolColumns(sorted: PieceId[], pool3D: boolean): string[][] {
+        if (pool3D) {
             return IcePalaceGame.nests(sorted).flatMap(IcePalaceGame.nestColumns);
         }
         return IcePalaceGame.nests(sorted).map(nest => {
@@ -1785,8 +1802,8 @@ export class IcePalaceGame extends GameBaseSequenced {
      * During the build the Yard stands empty, having been taken up into the stock, which
      * is offered below the board instead of the current player's hand, and below that is
      * whatever is still in the Pool, for reference only. Every hand is also listed in the
-     * status panel. On either display the offered pyramids and the Pool are seen from
-     * above by default, or in 3D with "perspective-areas".
+     * status panel. On either display the offered pyramids are seen from above by default,
+     * or in 3D with "perspective-hand", and so is the Pool, or in 3D with "perspective-pool".
      *
      * On the one board a build, the one move that changes the board in several places at
      * once, is returned as frames: the Palace before the build, then after each placement,
@@ -1819,10 +1836,9 @@ export class IcePalaceGame extends GameBaseSequenced {
 
     /** The 3D display's one board: the stacks, the hand and Pool below it, and the overlays on top. */
     private renderView(opts: IRenderOpts | undefined, layout: ILayout, view: IBoardView, entered: { where: Which; cells: Cell[] }): APRenderRep {
-        const areas3D = this.hasDisplay(opts, "perspective-areas");
         const legend: Legend = {};
         const pieces = this.boardPieces(layout, view, legend, false);
-        const areas = this.areasBelow(view, legend, areas3D, Math.floor(layout.width / STASH_COLUMN));
+        const areas = this.areasBelow(view, legend, this.hasDisplay(opts, "perspective-hand"), this.hasDisplay(opts, "perspective-pool"), Math.floor(layout.width / STASH_COLUMN));
         const blocked = IcePalaceGame.unreachable(layout, view.palace, view.yard);
         const rep: APRenderRep = {
             renderer: "stacking-3D",
@@ -1849,24 +1865,25 @@ export class IcePalaceGame extends GameBaseSequenced {
      * the id of the panel it landed on; hovering a structure's cell lays its stack out
      * beside the boards.
      *
-     * The composite renderer finds a board's cells from the first cell it drew, which a
-     * blanked corner would shift, so unlike the 3D display's board these boards keep every
-     * cell. A build is drawn once, with every placement outlined, rather than as frames:
-     * the front steps through frames of single boards only.
+     * Like the 3D display's board, these boards leave blank the cells nothing can go into,
+     * but they cannot block them: the composite renderer finds a board's cells from the
+     * first cell it drew, which a blocked corner would shift. Each board's own lines and
+     * fill are hidden instead, and drawn again around the open cells alone (see `openGrid`).
+     * A build is drawn once, with every placement outlined, rather than as frames: the
+     * front steps through frames of single boards only.
      */
     private renderPanels(opts: IRenderOpts | undefined, entered: { where: Which; cells: Cell[] }): APRenderComposite {
-        const areas3D = this.hasDisplay(opts, "perspective-areas");
         const yardLayout = this.panelLayout("yard");
         const yard = this.structurePanel("yard", yardLayout, entered);
         const panels = [yard, this.structurePanel("palace", this.panelLayout("palace"), entered)];
         // The rack and the Pool wrap at the Yard's width, so that the column they share with
         // the Yard grows no wider than it; with nothing on offer the Pool goes under the Yard.
-        const rack = this.rackPanel(areas3D);
+        const rack = this.rackPanel(this.hasDisplay(opts, "perspective-hand"));
         if (rack !== undefined) {
             panels.push(rack);
         }
         const host = rack ?? yard;
-        const pool = this.poolArea(host.render.legend as Legend, areas3D, Math.floor(yardLayout.width / STASH_COLUMN));
+        const pool = this.poolArea(host.render.legend as Legend, this.hasDisplay(opts, "perspective-pool"), Math.floor(yardLayout.width / STASH_COLUMN));
         if (pool !== undefined) {
             host.render.areas = [pool];
         }
@@ -1879,14 +1896,18 @@ export class IcePalaceGame extends GameBaseSequenced {
         return { regions: [region], width: region.cols, height: region.rows };
     }
 
-    /** A structure on a board of its own, titled, with its stacks and the overlays on top. */
+    /**
+     * A structure on a board of its own, titled, with its stacks and the overlays on top,
+     * and only its open cells drawn.
+     */
     private structurePanel(which: Which, layout: ILayout, entered: { where: Which; cells: Cell[] }): APRenderCompositePanel {
         const legend: Legend = {};
         const pieces = this.boardPieces(layout, this, legend, true);
+        const open = IcePalaceGame.reachable(layout, this.palace, this.yard);
         const render: APRenderRep = {
             renderer: "stacking-expanding",
             options: ["hide-labels"],
-            board: { style: "squares", width: layout.width, height: layout.height },
+            board: IcePalaceGame.bareBoard(layout.width, layout.height, IcePalaceGame.openGrid(layout, open)),
             legend,
             pieces: nonEmpty(pieces),
         };
@@ -1899,10 +1920,11 @@ export class IcePalaceGame extends GameBaseSequenced {
 
     /**
      * The pyramids on offer, racked one to a cell in the order the stash shows them, so that
-     * a click on a cell names a pyramid; each is drawn as the stash would draw it. The rows
-     * wrap at the Yard's width. Nothing on offer, no panel.
+     * a click on a cell names a pyramid; each is drawn as the stash would draw it, and the
+     * cells themselves are not drawn at all. The rows wrap at the Yard's width. Nothing on
+     * offer, no panel.
      */
-    private rackPanel(areas3D: boolean): APRenderCompositePanel | undefined {
+    private rackPanel(hand3D: boolean): APRenderCompositePanel | undefined {
         const racked = this.rackPieces();
         if (racked.length === 0) {
             return undefined;
@@ -1918,8 +1940,8 @@ export class IcePalaceGame extends GameBaseSequenced {
                     line.push([]);
                     continue;
                 }
-                const key = IcePalaceGame.legendKey(piece, areas3D ? "hand" : "stash");
-                legend[key] = this.glyphFor(piece, areas3D ? "3D" : "nest");
+                const key = IcePalaceGame.legendKey(piece, hand3D ? "hand" : "stash");
+                legend[key] = this.glyphFor(piece, hand3D ? "3D" : "nest");
                 line.push([key]);
             }
             pieces.push(line);
@@ -1930,7 +1952,7 @@ export class IcePalaceGame extends GameBaseSequenced {
             render: {
                 renderer: "stacking-expanding",
                 options: ["hide-labels"],
-                board: { style: "squares", width, height: pieces.length },
+                board: IcePalaceGame.bareBoard(width, pieces.length),
                 legend,
                 pieces: nonEmpty(pieces),
             },
@@ -2001,13 +2023,13 @@ export class IcePalaceGame extends GameBaseSequenced {
      * than pieces areas: the renderer puts both directly under the board, so the hand
      * must be a stash once the Pool is one. Each wraps after `columns` columns.
      */
-    private areasBelow(view: IBoardView, legend: Legend, areas3D: boolean, columns: number): AreaVolcanoStash[] {
+    private areasBelow(view: IBoardView, legend: Legend, hand3D: boolean, pool3D: boolean, columns: number): AreaVolcanoStash[] {
         const areas: AreaVolcanoStash[] = [];
         const offered = view.phase === "build" ? view.stock : this.handOf(this.currplayer);
         if (offered.length > 0) {
-            areas.push({ type: "localStash", label: this.offerLabel(view.phase), width: columns, stash: this.handStash(offered, legend, areas3D) });
+            areas.push({ type: "localStash", label: this.offerLabel(view.phase), width: columns, stash: this.handStash(offered, legend, hand3D) });
         }
-        const pool = this.poolArea(legend, areas3D, columns);
+        const pool = this.poolArea(legend, pool3D, columns);
         if (pool !== undefined) {
             areas.push(pool);
         }
@@ -2018,13 +2040,13 @@ export class IcePalaceGame extends GameBaseSequenced {
      * Everything still in the Pool, for reference, wrapping after `columns` columns. Draws
      * are made at random when hands are refilled, so showing the contents gives nothing away.
      */
-    private poolArea(legend: Legend, areas3D: boolean, columns: number): AreaVolcanoStash | undefined {
+    private poolArea(legend: Legend, pool3D: boolean, columns: number): AreaVolcanoStash | undefined {
         if (this.pool.length === 0) {
             return undefined;
         }
         // i18next.t("apgames:status.icepalace.IN_POOL")
         const label = this.neutralAreaLabel("apgames:status.icepalace.IN_POOL");
-        return { type: "localStash", label, width: columns, stash: this.poolStash(legend, areas3D) };
+        return { type: "localStash", label, width: columns, stash: this.poolStash(legend, pool3D) };
     }
 
     /** The dashed outline on the last move's cells, and the dots for a picked pyramid. */
@@ -2086,13 +2108,13 @@ export class IcePalaceGame extends GameBaseSequenced {
     }
 
     /**
-     * The cells nothing can ever go into right now, for both displays to leave blank:
-     * the gap between the structures, and every empty cell with no pyramid beside it
-     * orthogonally. An empty structure keeps only its centre, where its first pyramid goes;
+     * The board positions both displays draw, as `"row,col"`: every pyramid's cell, and
+     * every empty cell with a pyramid beside it orthogonally, so every cell anything could
+     * go into. An empty structure keeps only its centre, where its first pyramid goes;
      * it is kept whether or not this is the phase for that, so that the structure's place
      * on the board can be seen.
      */
-    private static unreachable(layout: ILayout, palace: Structure, yard: Structure): RowCol[] {
+    private static reachable(layout: ILayout, palace: Structure, yard: Structure): Set<string> {
         const open = new Set<string>();
         for (const region of layout.regions) {
             const struct = region.which === "palace" ? palace : yard;
@@ -2107,6 +2129,12 @@ export class IcePalaceGame extends GameBaseSequenced {
                 open.add(`${row},${col}`);
             }
         }
+        return open;
+    }
+
+    /** Every other position, for the 3D board to block: the gap between the structures too. */
+    private static unreachable(layout: ILayout, palace: Structure, yard: Structure): RowCol[] {
+        const open = IcePalaceGame.reachable(layout, palace, yard);
         const blocked: RowCol[] = [];
         for (let row = 0; row < layout.height; row++) {
             for (let col = 0; col < layout.width; col++) {
@@ -2116,6 +2144,71 @@ export class IcePalaceGame extends GameBaseSequenced {
             }
         }
         return blocked;
+    }
+
+    /**
+     * A top-down board whose own lines and fill are hidden, so that it shows only the
+     * `markers` given: the rack none, a structure the grid of its open cells.
+     */
+    private static bareBoard(width: number, height: number, markers?: BoardBasic["markers"]): BoardBasic {
+        // A see-through backFill hides the fill, which would otherwise take the board colour
+        // a viewer may have chosen.
+        const board: BoardBasic = { style: "squares", width, height, strokeOpacity: 0, backFill: { colour: "_context_board", opacity: 0 } };
+        if (markers !== undefined) {
+            board.markers = markers;
+        }
+        return board;
+    }
+
+    /**
+     * The grid of the cells `open`, and their fill, drawn as markers on a bare board, which
+     * stands in for blocking the rest (see `renderPanels`). Each line of the grid is drawn
+     * in runs of the edges an open cell touches; a line's points are cell corners, each
+     * named by the cell it is the top left of.
+     */
+    private static openGrid(layout: ILayout, open: Set<string>): NonNullable<BoardBasic["markers"]> {
+        const isOpen = (row: number, col: number): boolean => open.has(`${row},${col}`);
+        const cells: RowCol[] = [];
+        for (let row = 0; row < layout.height; row++) {
+            for (let col = 0; col < layout.width; col++) {
+                if (isOpen(row, col)) {
+                    cells.push({ row, col });
+                }
+            }
+        }
+        const markers: NonNullable<BoardBasic["markers"]> = [];
+        if (cells.length > 0) {
+            // The fill the board would have given these cells: the viewer's board colour, if any.
+            markers.push({ type: "flood", points: nonEmpty(cells), colour: "_context_board", opacity: 1 });
+        }
+        const line = (from: RowCol, to: RowCol): MarkerLine => ({ type: "line", points: [from, to], opacity: 1 });
+        // Along each line, a run starts at the first edge touching an open cell and ends
+        // before the first one after it that does not.
+        for (let row = 0; row <= layout.height; row++) {
+            let start: number | undefined;
+            for (let col = 0; col <= layout.width; col++) {
+                const edge = col < layout.width && (isOpen(row - 1, col) || isOpen(row, col));
+                if (edge && start === undefined) {
+                    start = col;
+                } else if (!edge && start !== undefined) {
+                    markers.push(line({ row, col: start }, { row, col }));
+                    start = undefined;
+                }
+            }
+        }
+        for (let col = 0; col <= layout.width; col++) {
+            let start: number | undefined;
+            for (let row = 0; row <= layout.height; row++) {
+                const edge = row < layout.height && (isOpen(row, col - 1) || isOpen(row, col));
+                if (edge && start === undefined) {
+                    start = row;
+                } else if (!edge && start !== undefined) {
+                    markers.push(line({ row: start, col }, { row, col }));
+                    start = undefined;
+                }
+            }
+        }
+        return markers;
     }
 
     /** Where a structure cell lands on the board, as `[row, col]`. */

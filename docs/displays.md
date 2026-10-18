@@ -17,6 +17,8 @@ Each entry in `gameinfo.displays` is an `AlternativeDisplay` object (see [`gamei
 
 **Radio vs checkbox:** a `group` field → one active uid per group. No `group` → optional checkbox; multiple checkboxes may be active together.
 
+**Group order:** pickers offer groups in the order their displays first appear in `alternativeDisplays()`, which puts each `#group` sentinel the game does not declare first, in reverse order of the groups. A game with several groups can declare each sentinel ahead of its members to fix the order, as Ice Palace does for its board, hand and Pool groups.
+
 **Submitted arrays:** clients send active display uids as `string[]` (empty = default renderer). Do not send `#group` sentinels in saved settings.
 
 **Who consumes constraints:**
@@ -64,6 +66,7 @@ Before combinable toggles, some games used shortcut uids such as `hide-both`. **
 | Legacy uid | Expands to |
 |------------|------------|
 | `hide-both` | `hide-threatened`, `hide-influence` |
+| `perspective-areas` (Ice Palace) | `perspective-hand`, `perspective-pool` |
 
 Prefer independent checkbox uids in new games instead of encoding every combination.
 

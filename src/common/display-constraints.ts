@@ -22,9 +22,11 @@ export type DisplayAvailability = UidAvailability;
 export type DisplaySelectionState = UidSelectionState;
 export type ValidateDisplaySelectionResult = ValidateUidSelectionResult;
 
-/** Composite display uids from before combinable toggles; expanded before sanitize. */
+/** Composite display uids from before their parts could be chosen separately; expanded before sanitize. */
 export const LEGACY_DISPLAY_EXPAND: Readonly<Record<string, readonly string[]>> = {
     "hide-both": ["hide-threatened", "hide-influence"],
+    // Ice Palace: the hand and the Pool in 3D, now two choices.
+    "perspective-areas": ["perspective-hand", "perspective-pool"],
 };
 
 export function expandLegacyDisplayIncoming(incoming: string[] | undefined): string[] | undefined {

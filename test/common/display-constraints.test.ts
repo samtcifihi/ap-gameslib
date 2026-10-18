@@ -38,6 +38,14 @@ describe("display-constraints", () => {
                 "hide-influence",
             ]);
         });
+
+        it("expands Ice Palace's perspective-areas into its separate hand and Pool uids, in place", () => {
+            expect(expandLegacyDisplayIncoming(["perspective", "perspective-areas"])).to.deep.equal([
+                "perspective",
+                "perspective-hand",
+                "perspective-pool",
+            ]);
+        });
     });
 
     describe("sanitizeDisplaySelection", () => {

@@ -5103,21 +5103,29 @@
       }
     },
     "icepalace": {
-      "#areas": {
-        "description": "Hand and Pool seen from above, in two dimensions.",
-        "name": "Top-down hand and Pool"
-      },
       "#board": {
         "description": "The Yard and the Ice Palace each on a two dimensional board of its own, with stacks expanding when hovered over.",
         "name": "Expanding"
+      },
+      "#hand": {
+        "description": "The hand, or during a build the pyramids won from the Yard, seen from above, in two dimensions.",
+        "name": "Top-down hand"
+      },
+      "#pool": {
+        "description": "The Pool seen from above, in two dimensions.",
+        "name": "Top-down Pool"
       },
       "perspective": {
         "description": "Three dimensional board, with pyramids stacked in perspective.",
         "name": "3D stacks"
       },
-      "perspective-areas": {
-        "description": "Hand and Pool in three dimensions, with the pyramids drawn in perspective.",
-        "name": "3D hand and Pool"
+      "perspective-hand": {
+        "description": "The hand, or during a build the pyramids won from the Yard, in three dimensions, with the pyramids drawn in perspective.",
+        "name": "3D hand"
+      },
+      "perspective-pool": {
+        "description": "The Pool in three dimensions, with the pyramids drawn in perspective.",
+        "name": "3D Pool"
       }
     },
     "intermedium": {
