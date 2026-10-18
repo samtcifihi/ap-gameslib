@@ -640,12 +640,13 @@ function drawBoard(data, options) {
     return APRender.renderComposite(data, compositeOpts);
 }
 
-/** A render's boards: its last frame, or each panel of a composite. */
+/** A render's boards: those of its last frame, which is one board or a composite of several. */
 function renderBoards(data) {
-    if (APGames.isAPRenderComposite(data)) {
-        return data.panels.map((panel) => panel.render);
+    const frame = Array.isArray(data) ? data[data.length - 1] : data;
+    if (APGames.isAPRenderComposite(frame)) {
+        return frame.panels.map((panel) => panel.render);
     }
-    return Array.isArray(data) ? [data[data.length - 1]] : [data];
+    return [frame];
 }
 
 // --- Customization Management ---
