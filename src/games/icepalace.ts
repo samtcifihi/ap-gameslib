@@ -2,7 +2,7 @@ import { IAPGameState, IClickResult, IIndividualState, IRenderOpts, IScores, ISt
 import type { IGamePly } from "./_turn-model.js";
 import { GameBaseSequenced } from "./_turn-sequenced.js";
 import type { APGamesInformation } from "../schemas/gameinfo.js";
-import { APRenderRep, AreaStackingExpanded, AreaVolcanoStash, BoardBasic, Colourfuncs, Glyph, MarkerLine, SheetGlyph } from "@abstractplay/renderer/build/schemas/schema";
+import { APRenderRep, AreaStackingExpanded, AreaVolcanoStash, Colourfuncs, Glyph, SheetGlyph } from "@abstractplay/renderer/build/schemas/schema";
 import type { APRenderComposite, APRenderCompositePanel } from "@abstractplay/renderer";
 import type { APMoveResult } from "../schemas/moveresults.js";
 import { reviver, UserFacingError } from "../common/index.js";
@@ -1876,10 +1876,7 @@ export class IcePalaceGame extends GameBaseSequenced {
      * the id of the panel it landed on; hovering a structure's cell lays its stack out
      * beside the boards.
      *
-     * Like the 3D display's board, these boards leave blank the cells nothing can go into,
-     * but they cannot block them: the composite renderer finds a board's cells from the
-     * first cell it drew, which a blocked corner would shift. Each board's own lines and
-     * fill are hidden instead, and drawn again around the open cells alone (see `openGrid`).
+     * Like the 3D display's board, these boards leave blank the cells nothing can go into.
      */
     private renderPanels(opts: IRenderOpts | undefined, view: IBoardView, entered: { where: Which; cells: Cell[] }): APRenderComposite {
         const yardLayout = this.panelLayout("yard");
@@ -1912,11 +1909,16 @@ export class IcePalaceGame extends GameBaseSequenced {
     private structurePanel(which: Which, layout: ILayout, view: IBoardView, entered: { where: Which; cells: Cell[] }): APRenderCompositePanel {
         const legend: Legend = {};
         const pieces = this.boardPieces(layout, view, legend, true);
-        const open = IcePalaceGame.reachable(layout, view.palace, view.yard);
+        const blocked = IcePalaceGame.unreachable(layout, view.palace, view.yard);
         const render: APRenderRep = {
             renderer: "stacking-expanding",
             options: ["hide-labels"],
-            board: IcePalaceGame.bareBoard(layout.width, layout.height, IcePalaceGame.openGrid(layout, open)),
+            board: {
+                style: "squares",
+                width: layout.width,
+                height: layout.height,
+                blocked: blocked.length > 0 ? nonEmpty(blocked) : undefined,
+            },
             legend,
             pieces: nonEmpty(pieces),
         };
@@ -1961,7 +1963,9 @@ export class IcePalaceGame extends GameBaseSequenced {
             render: {
                 renderer: "stacking-expanding",
                 options: ["hide-labels"],
-                board: IcePalaceGame.bareBoard(width, pieces.length),
+                // The cells take clicks but are not drawn: no lines, and a see-through fill
+                // in place of the board colour a viewer may have chosen.
+                board: { style: "squares", width, height: pieces.length, strokeOpacity: 0, backFill: { colour: "_context_board", opacity: 0 } },
                 legend,
                 pieces: nonEmpty(pieces),
             },
@@ -2117,13 +2121,13 @@ export class IcePalaceGame extends GameBaseSequenced {
     }
 
     /**
-     * The board positions both displays draw, as `"row,col"`: every pyramid's cell, and
-     * every empty cell with a pyramid beside it orthogonally, so every cell anything could
-     * go into. An empty structure keeps only its centre, where its first pyramid goes;
+     * The cells nothing can ever go into right now, for both displays to leave blank:
+     * the gap between the structures, and every empty cell with no pyramid beside it
+     * orthogonally. An empty structure keeps only its centre, where its first pyramid goes;
      * it is kept whether or not this is the phase for that, so that the structure's place
      * on the board can be seen.
      */
-    private static reachable(layout: ILayout, palace: Structure, yard: Structure): Set<string> {
+    private static unreachable(layout: ILayout, palace: Structure, yard: Structure): RowCol[] {
         const open = new Set<string>();
         for (const region of layout.regions) {
             const struct = region.which === "palace" ? palace : yard;
@@ -2138,12 +2142,6 @@ export class IcePalaceGame extends GameBaseSequenced {
                 open.add(`${row},${col}`);
             }
         }
-        return open;
-    }
-
-    /** Every other position, for the 3D board to block: the gap between the structures too. */
-    private static unreachable(layout: ILayout, palace: Structure, yard: Structure): RowCol[] {
-        const open = IcePalaceGame.reachable(layout, palace, yard);
         const blocked: RowCol[] = [];
         for (let row = 0; row < layout.height; row++) {
             for (let col = 0; col < layout.width; col++) {
@@ -2153,71 +2151,6 @@ export class IcePalaceGame extends GameBaseSequenced {
             }
         }
         return blocked;
-    }
-
-    /**
-     * A top-down board whose own lines and fill are hidden, so that it shows only the
-     * `markers` given: the rack none, a structure the grid of its open cells.
-     */
-    private static bareBoard(width: number, height: number, markers?: BoardBasic["markers"]): BoardBasic {
-        // A see-through backFill hides the fill, which would otherwise take the board colour
-        // a viewer may have chosen.
-        const board: BoardBasic = { style: "squares", width, height, strokeOpacity: 0, backFill: { colour: "_context_board", opacity: 0 } };
-        if (markers !== undefined) {
-            board.markers = markers;
-        }
-        return board;
-    }
-
-    /**
-     * The grid of the cells `open`, and their fill, drawn as markers on a bare board, which
-     * stands in for blocking the rest (see `renderPanels`). Each line of the grid is drawn
-     * in runs of the edges an open cell touches; a line's points are cell corners, each
-     * named by the cell it is the top left of.
-     */
-    private static openGrid(layout: ILayout, open: Set<string>): NonNullable<BoardBasic["markers"]> {
-        const isOpen = (row: number, col: number): boolean => open.has(`${row},${col}`);
-        const cells: RowCol[] = [];
-        for (let row = 0; row < layout.height; row++) {
-            for (let col = 0; col < layout.width; col++) {
-                if (isOpen(row, col)) {
-                    cells.push({ row, col });
-                }
-            }
-        }
-        const markers: NonNullable<BoardBasic["markers"]> = [];
-        if (cells.length > 0) {
-            // The fill the board would have given these cells: the viewer's board colour, if any.
-            markers.push({ type: "flood", points: nonEmpty(cells), colour: "_context_board", opacity: 1 });
-        }
-        const line = (from: RowCol, to: RowCol): MarkerLine => ({ type: "line", points: [from, to], opacity: 1 });
-        // Along each line, a run starts at the first edge touching an open cell and ends
-        // before the first one after it that does not.
-        for (let row = 0; row <= layout.height; row++) {
-            let start: number | undefined;
-            for (let col = 0; col <= layout.width; col++) {
-                const edge = col < layout.width && (isOpen(row - 1, col) || isOpen(row, col));
-                if (edge && start === undefined) {
-                    start = col;
-                } else if (!edge && start !== undefined) {
-                    markers.push(line({ row, col: start }, { row, col }));
-                    start = undefined;
-                }
-            }
-        }
-        for (let col = 0; col <= layout.width; col++) {
-            let start: number | undefined;
-            for (let row = 0; row <= layout.height; row++) {
-                const edge = row < layout.height && (isOpen(row, col - 1) || isOpen(row, col));
-                if (edge && start === undefined) {
-                    start = row;
-                } else if (!edge && start !== undefined) {
-                    markers.push(line({ row: start, col }, { row, col }));
-                    start = undefined;
-                }
-            }
-        }
-        return markers;
     }
 
     /** Where a structure cell lands on the board, as `[row, col]`. */

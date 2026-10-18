@@ -733,15 +733,13 @@ describe("Ice Palace: top-down display", () => {
             width: number;
             height: number;
             stackOffset?: number;
-            blocked?: unknown;
-            markers?: { type: string; points: { row: number; col: number }[]; colour?: unknown; opacity?: number }[];
+            blocked?: { row: number; col: number }[];
         } | null;
         legend?: Record<string, { name?: string; paint?: unknown } | { name?: string }[]>;
         pieces: string[][][];
         areas?: { type?: string; stash?: string[][]; stack?: string[]; width?: number; label?: { textKey?: string } }[];
         annotations?: { type: string; targets: { row: number; col: number }[] }[];
     };
-    type Board = NonNullable<Rep["board"]>;
     type Panel = { id: string; label?: { textKey?: string; actor?: { kind: string; seat?: number } }; render: Rep };
     type Composite = { kind: string; layout: { arrangement: string; columns?: number; gap?: number; align?: string }; panels: Panel[] };
     /** The default display: a board for each structure, and a rack of what is on offer. */
@@ -771,37 +769,6 @@ describe("Ice Palace: top-down display", () => {
             }
         }));
         return cells.sort();
-    };
-    /** The grid a board's line markers draw, as unit edges between cell corners, each "row,col-row,col". */
-    const edgesDrawn = (board: Board): string[] => {
-        const edges: string[] = [];
-        for (const line of (board.markers ?? []).filter(m => m.type === "line")) {
-            // The board's own lines are hidden, so these must be drawn at full strength.
-            expect(line.opacity).to.equal(1);
-            const [from, to] = line.points;
-            const across = from.row === to.row;
-            expect(across || from.col === to.col, "a line along the grid").to.be.true;
-            const steps = across ? to.col - from.col : to.row - from.row;
-            expect(steps).to.be.greaterThan(0);
-            for (let i = 0; i < steps; i++) {
-                const [row, col] = across ? [from.row, from.col + i] : [from.row + i, from.col];
-                edges.push(across ? `${row},${col}-${row},${col + 1}` : `${row},${col}-${row + 1},${col}`);
-            }
-        }
-        expect(new Set(edges).size, "an edge drawn twice").to.equal(edges.length);
-        return edges.sort();
-    };
-    /** The unit edges around some cells, each given as "row,col". */
-    const edgesAround = (cells: readonly string[]): string[] => {
-        const edges = new Set<string>();
-        for (const cell of cells) {
-            const [row, col] = cell.split(",").map(Number);
-            edges.add(`${row},${col}-${row},${col + 1}`);
-            edges.add(`${row + 1},${col}-${row + 1},${col + 1}`);
-            edges.add(`${row},${col}-${row + 1},${col}`);
-            edges.add(`${row},${col + 1}-${row + 1},${col + 1}`);
-        }
-        return [...edges].sort();
     };
     const rigged = () => rig(new IcePalaceGame(3), [["1M", "1L", "2S"], ["1S"], ["3S"]], ["2S", "1L", "WM", "1S"]);
 
@@ -881,38 +848,50 @@ describe("Ice Palace: top-down display", () => {
         expect(rack.render.legend).to.include.keys("b1L", "bWM", "gap");
     });
 
-    it("leaves blank the cells nothing can go into, by drawing the grid of the others rather than blocking the rest", () => {
+    it("blocks the cells nothing can go into, as the 3D board does", () => {
         const g = rigged();
         g.move("1M@0.0");
         g.move("1S@1.0");
         g.palace = new Map([["0.0", ["2L", "1M"]]]);
         const c = boards(g);
+        const deep = g.render({ altDisplays: ["perspective"] }) as unknown as Rep;
         // Each stack's cell, and the empty cells beside a stack: in the Yard, the cells around
         // the two stacks at the centre and right of it; in the Palace, those around the centre.
         const open = {
             yard: ["2,3", "2,4", "3,2", "3,3", "3,4", "3,5", "4,3", "4,4"],
             palace: ["2,3", "3,2", "3,3", "3,4", "4,3"],
         };
+        const unblocked = (board: NonNullable<Rep["board"]>, cols: number[]): string[] => {
+            const shut = new Set((board.blocked ?? []).map(b => `${b.row},${b.col}`));
+            const cells: string[] = [];
+            for (let row = 0; row < board.height; row++) {
+                for (const col of cols) {
+                    if (!shut.has(`${row},${col}`)) {
+                        cells.push(`${row},${col}`);
+                    }
+                }
+            }
+            return cells.sort();
+        };
+        const range = (from: number, n: number) => Array.from({ length: n }, (_, i) => from + i);
         for (const id of ["yard", "palace"] as const) {
             const board = panel(c, id).render.board!;
-            // The composite renderer places a click from the first cell drawn, which a blocked
-            // corner would shift, so every cell is drawn, with the board's own lines and fill hidden...
-            expect(board.blocked).to.be.undefined;
-            expect(board).to.deep.include({ strokeOpacity: 0, backFill: { colour: "_context_board", opacity: 0 } });
-            // ...and drawn again on the open cells alone: the board colour, if the viewer has
-            // one, and the grid around them.
-            const fills = board.markers!.filter(m => m.type === "flood");
-            expect(fills).to.have.length(1);
-            expect(fills[0]).to.deep.include({ colour: "_context_board", opacity: 1 });
-            expect(fills[0].points.map(p => `${p.row},${p.col}`).sort()).to.deep.equal(open[id]);
-            expect(edgesDrawn(board)).to.deep.equal(edgesAround(open[id]));
+            expect(unblocked(board, range(0, board.width))).to.deep.equal(open[id]);
         }
+        // The same cells as on the 3D board, where the Yard and the Palace share one board
+        // with a column between them.
+        const width = panel(c, "yard").render.board!.width;
+        const shift = (cell: string, by: number) => {
+            const [row, col] = cell.split(",").map(Number);
+            return `${row},${col - by}`;
+        };
+        expect(unblocked(deep.board!, range(0, width))).to.deep.equal(open.yard);
+        expect(unblocked(deep.board!, range(width + 1, width)).map(cell => shift(cell, width + 1)).sort()).to.deep.equal(open.palace);
         // An empty structure shows only its centre, where its first pyramid goes, and a click
         // anywhere on its board still goes there.
         const fresh = rig(new IcePalaceGame(3), [["1M"], ["2S"], ["3S"]], fatPool());
         const empty = panel(boards(fresh), "yard").render.board!;
-        expect(empty.markers!.find(m => m.type === "flood")!.points).to.deep.equal([{ row: 3, col: 3 }]);
-        expect(edgesDrawn(empty)).to.deep.equal(edgesAround(["3,3"]));
+        expect(unblocked(empty, range(0, empty.width))).to.deep.equal(["3,3"]);
         expect(fresh.handleClick("1M", 0, 0, "", "yard").move).to.equal("1M@0.0");
     });
 
