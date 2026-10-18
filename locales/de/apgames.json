@@ -640,6 +640,10 @@
     "evenatodds": {
       "BONEYARD": "Friedhof"
     },
+    "focus": {
+      "CAPTURES": "Geschlagen",
+      "CONTROLLED": "Kontrolliert"
+    },
     "guerrilla": {
       "G1_SCORE": "Aufständischen-Punktzahl Spiel 1",
       "GAME1": "Spiel 1",
@@ -4767,7 +4771,7 @@
     "domineering": "Domineering, auch bekannt als Stop-Gate, ist ein parteiisches kombinatorisches Spiel. Das Spiel wurde um 1973 von Göran Andersson entworfen und im einflussreichen CGT-Buch *Winning Ways for Your Mathematical Plays* vorgestellt. Es gibt eine unparteiische Version namens Cram, bei der beide Spieler sowohl horizontale als auch vertikale Dominosteine platzieren können. Die Variante \"Quelhas\" wurde 2025 von Carlos P. Santos und Alfie Davies vorgeschlagen; sie ist eine Misère-Version (der Spieler ohne Zugmöglichkeiten gewinnt das Spiel) und verwendet längere dominoartige Polyominos.",
     "druid": "Ein Deckstein (Lintel) muss an beiden Enden getragen werden (nicht auf bloßem Boden) und auf genau zwei Ihrer Steine aufliegen (die nicht beide an den Enden liegen müssen). Decksteine müssen flach liegen: Beide Enden müssen auf Stapeln gleicher Höhe ruhen. Decksteine dürfen einander kreuzen, aber Sie dürfen keinen neuen Deckstein durch die Lücke unter der Mitte eines bestehenden Decksteins fädeln. Nur der oberste Stein auf jedem Feld zählt für Verbindungen.\n\nBei der Variante \"Druid's Walk\" auf dem rechteckigen Brett erscheint Ihr Druide beim ersten Mal, wenn Sie einen Stein auf einen Ihrer Ränder (Westen oder Osten für Spieler 1, Norden oder Süden für Spieler 2) platzieren. Um zu gewinnen, muss der Druide am gegenüberliegenden Rand vom Brett heruntergezogen werden. In jedem Zug platzieren Sie entweder einen Stein oder bewegen Ihren Druiden – nicht beides. Druiden bewegen sich auf orthogonal benachbarte Steine ihrer Farbe und stehen immer auf dem obersten Stein; sie können nicht in freie Lücken unter Decksteinen treten. Steine können nicht auf einem Druiden platziert werden. Der erste Spieler, der seinen Druiden vom Brett zieht, gewinnt. Druid's Walk gilt nicht für Druid's Y- oder Druid's Hex-Bretter.",
     "elOso": "Der Aufbau erfolgt automatisch beim Starten des Spiels. Die Anzahl für Himmel, Höhle, Boden und Grube wird in der Seitenleiste angezeigt. Verwende nach jedem Zug die Einzelbild-Steuerung, um die Reaktion des Bären Schritt für Schritt zu verfolgen. Zehn oder mehr Steine im Himmel bedeuten einen Sieg.",
-    "emu": "Weitere Informationen zum Decktet-System finden Sie auf der [offiziellen Decktet-Website](https://www.decktet.com). Karten auf den Händen der Spieler sind vor Zuschauern verborgen, und sie sind vor Gegnern verborgen, bis der Stapel leer ist. Ab diesem Zeitpunkt verfügen die Spieler über perfekte Information, sodass die Hände aufgedeckt werden. Vom Ablagestapel gezogene Karten sind für Gegner ebenfalls immer sichtbar.",
+    "emu": "Weitere Informationen zum Decktet-System findest du auf der [offiziellen Decktet-Website](https://www.decktet.com). Die Handkarten der Spieler sind für Beobachter verborgen und bleiben vor Gegnern geheim, bis der Nachziehstapel leer ist. Zu diesem Zeitpunkt verfügen die Spieler über perfekte Information, sodass die Hände aufgedeckt werden. Karten, die vom Ablagestapel gezogen werden, sind für Gegner ebenfalls immer sichtbar. The Excuse wird, sofern enthalten, am Ende des Jahres automatisch angewendet, um deinen Vogel mit der negativsten Punktzahl (falls vorhanden) auszugleichen.",
     "entropy": "In dieser Implementierung spielen die Spieler zwei Spiele gleichzeitig, jedoch mit einem einzigen gemeinsamen Strom zufälliger Steine. Jeder Spieler platziert einen Stein auf dem Ordnung-Brett seines *Gegners* und macht dann einen Zug auf seinem *eigenen* Ordnung-Brett; die Spieler agieren somit gleichzeitig als Ordnung und Chaos. Der Spieler mit der höchsten Punktzahl gewinnt! Da beide Spieler exakt dieselben Platzierungsmöglichkeiten hatten, bietet dies das meiste Maß an relativer Spielstärke.",
     "evenatodds": "Um auf das Feld zu legen, platziere ein Ende auf einem leeren Feld angrenzend an eine passende aktive Seite; das andere Ende kann auf jedem angrenzenden leeren Feld liegen. Um zu stapeln, muss ein Ende mit der darunter liegenden Seite übereinstimmen; das andere Ende darf jede aktive Seite *auf einem anderen Stein* auf derselben Höhe bedecken. In der Notation ist die erste Koordinate das Ende, das einer dieser Regeln entspricht. Blanks sind Blocker, die niemandem gehören.\n\nSteine auf deiner Hand sind vor deinem Gegner verborgen. Die Identitäten des Friedhofs (Boneyard) und die zwei entfernten Verlängerungssteine sind bis Spielende verborgen. Die Anzahl der Steine im Friedhof wird in der Seitenleiste angezeigt.",
     "exxit": "Übersetzungen der Regeln neigen dazu, bestimmte Nuancen auszulassen. Diese Implementierung entspricht der französischen Originalausgabe der Regeln.\n\nDa das Spielbrett während des Spiels in unregelmäßigen Formen aufgebaut wird, sind die Felder nummeriert statt algebraisch beschriftet. Dies stellt sicher, dass sich die Beschriftungen mit wachsendem Spielfeld nicht verändern.",
@@ -6708,6 +6712,24 @@
       },
       "#board": {
         "name": "Standard-Brett"
+      }
+    },
+    "focus": {
+      "#goal": {
+        "description": "Der letzte Spieler, der noch einen Stapel bewegen kann, gewinnt.",
+        "name": "Immobilisierung"
+      },
+      "captures-6": {
+        "description": "Der erste Spieler, der sechs gegnerische Steine schlägt, gewinnt.",
+        "name": "Schlagziel (6)"
+      },
+      "captures-10": {
+        "description": "Der erste Spieler, der zehn gegnerische Steine schlägt, gewinnt.",
+        "name": "Schlagziel (10)"
+      },
+      "hegemony": {
+        "description": "Das Spiel endet, wenn ein Spieler jeden Stapel auf dem Spielbrett kontrolliert; ein Spieler ohne kontrollierte Stapel verliert sofort.",
+        "name": "Hegemonie"
       }
     },
     "forms": {

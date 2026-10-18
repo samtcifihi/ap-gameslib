@@ -4676,8 +4676,8 @@
     "out": "Der Aufbau erfolgt automatisch beim Starten des Spiels. Die Anzahl für Himmel, Höhle, Boden und Grube wird in der Seitenleiste angezeigt. Verwende nach jedem Zug die Einzelbild-Steuerung, um die Reaktion des Bären Schritt für Schritt zu verfolgen. Zehn oder mehr Steine im Himmel bedeuten einen Sieg."
   },
   "notes.emu": {
-    "src": "More information on the Decktet system can be found on the [official Decktet website](https://www.decktet.com). Cards in players' hands are hidden from observers, and they are hidden from opponents until the deck is empty, at which point the players have perfect information, so the hands are revealed. Cards drawn from the discard pile are also always visible to opponents.",
-    "out": "Weitere Informationen zum Decktet-System finden Sie auf der [offiziellen Decktet-Website](https://www.decktet.com). Karten auf den Händen der Spieler sind vor Zuschauern verborgen, und sie sind vor Gegnern verborgen, bis der Stapel leer ist. Ab diesem Zeitpunkt verfügen die Spieler über perfekte Information, sodass die Hände aufgedeckt werden. Vom Ablagestapel gezogene Karten sind für Gegner ebenfalls immer sichtbar."
+    "src": "More information on the Decktet system can be found on the [official Decktet website](https://www.decktet.com). Cards in players' hands are hidden from observers, and they are hidden from opponents until the deck is empty, at which point the players have perfect information, so the hands are revealed. Cards drawn from the discard pile are also always visible to opponents. The Excuse, when included, is automatically applied at the end of the year to offset your most negative scoring bird (if any).",
+    "out": "Weitere Informationen zum Decktet-System findest du auf der [offiziellen Decktet-Website](https://www.decktet.com). Die Handkarten der Spieler sind für Beobachter verborgen und bleiben vor Gegnern geheim, bis der Nachziehstapel leer ist. Zu diesem Zeitpunkt verfügen die Spieler über perfekte Information, sodass die Hände aufgedeckt werden. Karten, die vom Ablagestapel gezogen werden, sind für Gegner ebenfalls immer sichtbar. The Excuse wird, sofern enthalten, am Ende des Jahres automatisch angewendet, um deinen Vogel mit der negativsten Punktzahl (falls vorhanden) auszugleichen."
   },
   "notes.entropy": {
     "src": "In this implementation, the players play two games simultaneously but with a single shared stream of randomized pieces. Each player places a piece on their *opponent's* Order board and then makes a move on their *own* Order board; players thus act as both Order and Chaos at the same time. The player with the greatest score wins! Since both players had the exact same placement choices, this provides the cleanest measure of relative skill.",
@@ -5234,6 +5234,14 @@
   "status.evenatodds.BONEYARD": {
     "src": "Boneyard",
     "out": "Friedhof"
+  },
+  "status.focus.CAPTURES": {
+    "src": "Captures",
+    "out": "Geschlagen"
+  },
+  "status.focus.CONTROLLED": {
+    "src": "Controlled",
+    "out": "Kontrolliert"
   },
   "status.guerrilla.G1_SCORE": {
     "src": "Game 1 insurgent score",
@@ -18470,6 +18478,38 @@
   "variants.flume.7x7.name": {
     "src": "Smaller board: 7x7",
     "out": "Kleineres Brett: 7x7"
+  },
+  "variants.focus.#goal.description": {
+    "src": "The last player able to move a stack wins.",
+    "out": "Der letzte Spieler, der noch einen Stapel bewegen kann, gewinnt."
+  },
+  "variants.focus.#goal.name": {
+    "src": "Immobilize",
+    "out": "Immobilisierung"
+  },
+  "variants.focus.captures-10.description": {
+    "src": "The first player to capture ten enemy pieces wins.",
+    "out": "Der erste Spieler, der zehn gegnerische Steine schlägt, gewinnt."
+  },
+  "variants.focus.captures-10.name": {
+    "src": "Capture target (10)",
+    "out": "Schlagziel (10)"
+  },
+  "variants.focus.captures-6.description": {
+    "src": "The first player to capture six enemy pieces wins.",
+    "out": "Der erste Spieler, der sechs gegnerische Steine schlägt, gewinnt."
+  },
+  "variants.focus.captures-6.name": {
+    "src": "Capture target (6)",
+    "out": "Schlagziel (6)"
+  },
+  "variants.focus.hegemony.description": {
+    "src": "The game ends when one player controls every stack on the board; a player with no controlled stacks loses immediately.",
+    "out": "Das Spiel endet, wenn ein Spieler jeden Stapel auf dem Spielbrett kontrolliert; ein Spieler ohne kontrollierte Stapel verliert sofort."
+  },
+  "variants.focus.hegemony.name": {
+    "src": "Hegemony",
+    "out": "Hegemonie"
   },
   "variants.forms.#board.name": {
     "src": "8x8 board",

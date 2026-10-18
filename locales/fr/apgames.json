@@ -640,6 +640,10 @@
     "evenatodds": {
       "BONEYARD": "Cimetière"
     },
+    "focus": {
+      "CAPTURES": "Captures",
+      "CONTROLLED": "Contrôle"
+    },
     "guerrilla": {
       "G1_SCORE": "Score insurgé Partie 1",
       "GAME1": "Partie 1",
@@ -4767,7 +4771,7 @@
     "domineering": "Domineering, aussi connu sous le nom de Stop-Gate, est un jeu combinatoire partisan. Le jeu a été conçu par Göran Andersson vers 1973 et a été présenté dans le livre de référence CGT *Winning Ways for Your Mathematical Plays*. Il existe une version impartiale appelée Cram, où les joueurs peuvent tous deux placer des dominos horizontaux ou verticaux. La variante \"Quelhas\" a été proposée par Carlos P. Santos et Alfie Davies en 2025, étant une version misère (le joueur sans options gagne la partie) et utilisant des polyominos plus longs semblables à des dominos.",
     "druid": "Un linteau doit être soutenu à ses deux extrémités (pas sur le sol nu) et reposer sur exactement deux de vos pierres (qui n'ont pas besoin d'être toutes deux aux extrémités). Les linteaux doivent être posés à plat : les deux extrémités doivent reposer sur des piles de hauteur égale. Les linteaux peuvent se croiser, mais vous ne pouvez pas enfiler un nouveau linteau dans l'espace sous le centre d'un linteau existant. Seule la pierre supérieure de chaque case compte pour les connexions.\n\nAvec la variante La Marche du Druide sur le plateau rectangulaire, votre Druide apparaît la première fois que vous placez une pierre sur l'un de vos bords (ouest ou est pour le joueur 1, nord ou sud pour le joueur 2). Pour gagner, le druide doit être sorti du plateau par le bord opposé. À chaque tour, vous placez une pierre ou déplacez votre Druide — mais pas les deux. Les Druides se déplacent sur des pierres adjacentes orthogonalement de leur couleur et se tiennent toujours sur la pierre la plus haute ; ils ne peuvent pas marcher dans des espaces nus sous des linteaux. Les pierres ne peuvent pas être placées sur un Druide. Le premier joueur à faire sortir son Druide gagne. La Marche du Druide ne s'applique pas aux plateaux Druid's Y ni Druid's Hex.",
     "elOso": "La mise en place est effectuée automatiquement lorsque vous lancez la partie. Les décomptes du Ciel, de la Grotte, du Sol et de la Fosse apparaissent dans la barre latérale. Après chaque coup, utilisez les commandes d'images pour parcourir la réponse de l'Ours. Placer dix pièces ou plus dans le Ciel constitue une victoire.",
-    "emu": "Plus d'informations sur le système Decktet sont disponibles sur le [site officiel de Decktet](https://www.decktet.com). Les cartes dans les mains des joueurs sont cachées aux observateurs, et elles sont cachées aux adversaires jusqu'à ce que la pioche soit vide, moment auquel les joueurs disposent d'une information parfaite, donc les mains sont révélées. Les cartes tirées de la défausse sont également toujours visibles par les adversaires.",
+    "emu": "Vous trouverez plus d'informations sur le système Decktet sur le [site officiel de Decktet](https://www.decktet.com). Les cartes dans la main des joueurs sont cachées aux spectateurs, et elles sont cachées aux adversaires jusqu'à ce que la pioche soit vide, moment auquel les joueurs disposent d'une information parfaite, les mains sont donc révélées. Les cartes tirées de la défausse sont également toujours visibles par les adversaires. L'Excuse, lorsqu'elle est incluse, est automatiquement appliquée à la fin de l'année pour compenser votre oiseau marquant le plus de points négatifs (le cas échéant).",
     "entropy": "Dans cette implémentation, les joueurs jouent deux parties simultanément mais avec un seul tirage partagé de pièces aléatoires. Chaque joueur place une pièce sur le plateau Ordre de son *adversaire* puis effectue un coup sur son *propre* plateau Ordre ; les joueurs agissent ainsi à la fois en tant qu'Ordre et Chaos en même temps. Le joueur avec le score le plus élevé gagne ! Comme les deux joueurs disposaient exactement des mêmes choix de placement, cela offre la mesure la plus pure de compétence relative.",
     "evenatodds": "Pour poser sur la table, placez une extrémité sur un emplacement vide adjacent à une face active correspondante ; l'autre extrémité peut aller sur n'importe quel emplacement vide adjacent. Pour empiler, une extrémité doit correspondre à la face du dessous ; l'autre extrémité peut recouvrir n'importe quelle face active *sur une tuile différente* à la même hauteur. Dans la notation, la première coordonnée est l'extrémité qui correspond à l'une de ces règles. Les espaces vierges sont des bloqueurs n'appartenant à personne.\n\nLes tuiles de votre main sont cachées à votre adversaire. L'identité des tuiles du talonnier (boneyard) et les deux tuiles de prolongation retirées restent cachées jusqu'à la fin de la partie. Le nombre de tuiles dans le talonnier est affiché dans la barre latérale.",
     "exxit": "Les traductions des règles ont tendance à omettre certaines nuances. Cette implémentation est conforme à l'édition originale française des règles.\n\nComme le plateau s'agrandit au fur et à mesure que vous jouez en formant des figures irrégulières, les hexagones sont numérotés au lieu d'utiliser des coordonnées algébriques. Cela garantit que les repères ne changent pas à mesure que la carte s'étend.",
@@ -6708,6 +6712,24 @@
       },
       "#board": {
         "name": "Plateau par défaut"
+      }
+    },
+    "focus": {
+      "#goal": {
+        "description": "Le dernier joueur capable de déplacer une pile gagne.",
+        "name": "Immobilisation"
+      },
+      "captures-6": {
+        "description": "Le premier joueur à capturer six pièces ennemies gagne.",
+        "name": "Objectif de capture (6)"
+      },
+      "captures-10": {
+        "description": "Le premier joueur à capturer dix pièces ennemies gagne.",
+        "name": "Objectif de capture (10)"
+      },
+      "hegemony": {
+        "description": "La partie se termine lorsqu'un joueur contrôle toutes les piles du plateau ; un joueur n'ayant aucune pile sous son contrôle perd immédiatement.",
+        "name": "Hégémonie"
       }
     },
     "forms": {

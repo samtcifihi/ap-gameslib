@@ -640,6 +640,10 @@
     "evenatodds": {
       "BONEYARD": "Monte"
     },
+    "focus": {
+      "CAPTURES": "Catture",
+      "CONTROLLED": "Controllati"
+    },
     "guerrilla": {
       "G1_SCORE": "Punteggio insorti Partita 1",
       "GAME1": "Partita 1",
@@ -4767,7 +4771,7 @@
     "domineering": "Domineering, noto anche come Stop-Gate, è un gioco combinatorio di tipo partisan. Il gioco è stato progettato da Göran Andersson intorno al 1973 ed è stato presentato nel fondamentale libro di CGT *Winning Ways for Your Mathematical Plays*. Esiste una versione imparziale, chiamata Cram, in cui i giocatori possono piazzare entrambi tessere del domino orizzontali o verticali. La variante \"Quelhas\" è stata proposta da Carlos P. Santos e Alfie Davies nel 2025: si tratta di una versione misère (il giocatore senza opzioni vince la partita) e utilizza poliamini simili a domino più lunghi.",
     "druid": "Un architrave deve essere supportato a entrambe le estremità (non sul terreno nudo) e poggiare su esattamente due delle tue pedine (che non devono essere necessariamente entrambe alle estremità). Gli architravi devono giacere in piano: entrambe le estremità devono poggiare su pile di pari altezza. Gli architravi possono incrociarsi tra loro, ma non puoi far passare un nuovo architrave attraverso lo spazio sotto il centro di un architrave esistente. Solo la pedina più in alto in ciascuna casella conta ai fini delle connessioni.\n\nCon la variante Druid's Walk sul tabellone rettangolare, il tuo Druido appare la prima volta che piazzi una pedina su uno dei tuoi bordi (ovest o est per il giocatore 1, nord o sud per il giocatore 2). Per vincere, il druido deve uscire dal tabellone dal bordo opposto. Ogni turno piazzi una pedina o muovi il tuo Druido — non entrambi. I Druidi si muovono su pedine del proprio colore ortogonalmente adiacenti e si trovano sempre sulla pedina più in alto; non possono passare nei varchi sotto gli architravi. Non è possibile piazzare pedine su un Druido. Vince il primo giocatore che fa uscire il proprio Druido dal tabellone. Druid's Walk non si applica ai tabelloni Druid's Y o Druid's Hex.",
     "elOso": "La preparazione viene eseguita automaticamente all'avvio del gioco. I conteggi di Cielo, Caverna, Terra e Fossa appaiono nella barra laterale. Dopo ogni mossa, usa i controlli del fotogramma per scorrere la risposta dell'Orso. Portare dieci o più pezzi nel Cielo equivale a una vittoria.",
-    "emu": "Maggiori informazioni sul sistema Decktet si possono trovare sul [sito ufficiale di Decktet](https://www.decktet.com). Le carte in mano ai giocatori sono nascoste agli osservatori e sono nascoste agli avversari finché il mazzo non è vuoto, momento in cui i giocatori hanno informazione perfetta e quindi le mani vengono rivelate. Anche le carte pescate dal mazzo degli scarti sono sempre visibili agli avversari.",
+    "emu": "Maggiori informazioni sul sistema Decktet sono disponibili sul [sito ufficiale di Decktet](https://www.decktet.com). Le carte in mano ai giocatori sono nascoste agli osservatori e sono nascoste agli avversari finché il mazzo non è vuoto, momento in cui i giocatori hanno un'informazione perfetta, quindi le mani vengono rivelate. Anche le carte pescate dalla pila degli scarti sono sempre visibili agli avversari. L'Excuse, se inclusa, viene applicata automaticamente alla fine dell'anno per compensare l'uccello dal punteggio più negativo (se presente).",
     "entropy": "In questa implementazione, i giocatori giocano due partite contemporaneamente ma con un unico flusso condiviso di pezzi casuali. Ciascun giocatore piazza un pezzo sul tabellone Ordine del proprio *avversario* e poi effettua una mossa sul *proprio* tabellone Ordine; i giocatori agiscono quindi sia da Ordine che da Caos allo stesso tempo. Vince il giocatore con il punteggio più alto! Poiché entrambi i giocatori hanno avuto le medesime opzioni di piazzamento, questo offre la misura più pura dell'abilità relativa.",
     "evenatodds": "Per piazzare sul tavolo, posiziona un'estremità su uno spazio vuoto adiacente a una faccia attiva corrispondente; l'altra estremità può andare su qualsiasi spazio vuoto adiacente. Per impilare, un'estremità deve corrispondere alla faccia sottostante; l'altra estremità può coprire qualsiasi faccia attiva *su una tessera diversa* alla stessa altezza. Nella notazione, la prima coordinata è l'estremità che soddisfa una di queste regole. Gli spazi vuoti sono bloccanti e non appartengono a nessuno.\n\nLe tessere nella tua mano sono nascoste all'avversario. Le identità del cimitero (boneyard) e le due tessere rimosse per i tempi supplementari rimangono nascoste fino alla fine della partita. Il conteggio del cimitero è mostrato nella barra laterale.",
     "exxit": "Le traduzioni del regolamento tendono a omettere alcune sfumature. Questa implementazione è conforme all'edizione originale francese del regolamento.\n\nPoiché il tabellone viene costruito man mano che si gioca creando forme irregolari, gli esagoni sono etichettati numericamente anziché algebricamente. Ciò garantisce che le etichette non cambino con l'espandersi della mappa.",
@@ -6708,6 +6712,24 @@
       },
       "#board": {
         "name": "Tavoliere predefinito"
+      }
+    },
+    "focus": {
+      "#goal": {
+        "description": "L'ultimo giocatore in grado di muovere una pila vince.",
+        "name": "Immobilizzazione"
+      },
+      "captures-6": {
+        "description": "Il primo giocatore che cattura sei pezzi avversari vince.",
+        "name": "Obiettivo catture (6)"
+      },
+      "captures-10": {
+        "description": "Il primo giocatore che cattura dieci pezzi avversari vince.",
+        "name": "Obiettivo catture (10)"
+      },
+      "hegemony": {
+        "description": "La partita termina quando un giocatore controlla ogni pila sulla plancia; un giocatore senza pile controllate perde immediatamente.",
+        "name": "Egemonia"
       }
     },
     "forms": {

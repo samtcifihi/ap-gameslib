@@ -640,6 +640,10 @@
     "evenatodds": {
       "BONEYARD": "Pozo"
     },
+    "focus": {
+      "CAPTURES": "Capturas",
+      "CONTROLLED": "Controladas"
+    },
     "guerrilla": {
       "G1_SCORE": "Puntuación de insurgente del Juego 1",
       "GAME1": "Juego 1",
@@ -4767,7 +4771,7 @@
     "domineering": "Domineering, también conocido como Stop-Gate, es un juego combinatorio partisano. El juego fue diseñado por Göran Andersson hacia 1973 y se presentó en el libro fundamental de CGT *Winning Ways for Your Mathematical Plays*. Existe una versión imparcial, llamada Cram, donde ambos jugadores pueden colocar dominós horizontales o verticales. La variante \"Quelhas\" fue propuesta por Carlos P. Santos y Alfie Davies en 2025, siendo una versión misère (el jugador sin opciones gana la partida) y utiliza poliominós más largos similares a fichas de dominó.",
     "druid": "Un dintel debe estar apoyado en ambos extremos (no en el suelo descubierto) y descansar sobre exactamente dos de tus piedras (que no necesitan estar ambas en los extremos). Los dinteles deben quedar planos: ambos extremos deben descansar sobre torres de igual altura. Los dinteles pueden cruzarse entre sí, pero no puedes pasar un nuevo dintel a través del espacio debajo del centro de un dintel existente. Solo la piedra superior de cada casilla cuenta para las conexiones.\n\nCon la variante El paseo del druida (Druid's Walk) en el tablero rectangular, tu Druida aparece la primera vez que colocas una piedra en cualquiera de tus bordes (oeste o este para el jugador 1, norte o sur para el jugador 2). Para ganar, el druida debe ser retirado del tablero por el borde opuesto. En cada turno colocas una piedra o mueves a tu Druida, no ambos. Los druidas se mueven a piedras adyacentes ortogonalmente de su color y siempre se paran en la piedra superior; no pueden pisar huecos descubiertos debajo de los dinteles. No se pueden colocar piedras sobre un Druida. El primer jugador que retire a su Druida gana. El paseo del druida no se aplica a los tableros Druid's Y o Druid's Hex.",
     "elOso": "La preparación se realiza automáticamente al iniciar el juego. Los conteos de Cielo, Cueva, Suelo y Fosa aparecen en la barra lateral. Después de cada movimiento, usa los controles de fotograma para avanzar paso a paso la respuesta del Oso. Diez o más piezas en el Cielo representan una victoria.",
-    "emu": "Puedes encontrar más información sobre el sistema Decktet en el [sitio web oficial de Decktet](https://www.decktet.com). Las cartas en las manos de los jugadores están ocultas para los observadores y permanecen ocultas para los oponentes hasta que el mazo se agota, momento en el cual los jugadores tienen información perfecta, por lo que las manos se revelan. Las cartas robadas del pozo de descarte también son siempre visibles para los oponentes.",
+    "emu": "Puedes encontrar más información sobre el sistema Decktet en el [sitio web oficial de Decktet](https://www.decktet.com). Las cartas en las manos de los jugadores están ocultas para los observadores y permanecen ocultas para los oponentes hasta que el mazo esté vacío, momento en el cual los jugadores tienen información perfecta, por lo que las manos se revelan. Las cartas robadas de la pila de descarte también son siempre visibles para los oponentes. La Excusa, cuando se incluye, se aplica automáticamente al final del año para compensar tu ave con la puntuación más negativa (si la hay).",
     "entropy": "En esta implementación, los jugadores juegan dos partidas simultáneamente pero con una sola secuencia compartida de piezas aleatorias. Cada jugador coloca una pieza en el tablero de Orden de su *oponente* y luego realiza un movimiento en su *propio* tablero de Orden; por lo tanto, los jugadores actúan como Orden y Caos al mismo tiempo. ¡Gana el jugador con la puntuación más alta! Dado que ambos jugadores tuvieron exactamente las mismas opciones de colocación, esto proporciona la medida más pura de habilidad relativa.",
     "evenatodds": "Para colocar en la mesa, ubica un extremo en terreno vacío adyacente a una cara activa coincidente; el otro extremo puede ir en cualquier terreno vacío adyacente. Para apilar, un extremo debe coincidir con la cara inferior; el otro extremo puede cubrir cualquier cara activa *en una ficha diferente* a la misma altura. En la notación, la primera coordenada es el extremo que cumple una de estas reglas. Los espacios en blanco son bloqueadores y no pertenecen a nadie.\n\nLas fichas en tu mano están ocultas para tu oponente. Las identidades del pozo (boneyard) y las dos fichas extra eliminadas permanecen ocultas hasta que termina la partida. El recuento del pozo se muestra en la barra lateral.",
     "exxit": "Las traducciones de las reglas suelen omitir ciertos matices. Esta implementación se ajusta a la edición original en francés de las reglas.\n\nDebido a que el tablero se construye a medida que juegas con formas irregulares, los hexágonos están etiquetados numéricamente en lugar de algebraicamente. Esto garantiza que las etiquetas no cambien a medida que crece el mapa.",
@@ -6708,6 +6712,24 @@
       },
       "#board": {
         "name": "Tablero predeterminado"
+      }
+    },
+    "focus": {
+      "#goal": {
+        "description": "Gana el último jugador que pueda mover una pila.",
+        "name": "Inmovilización"
+      },
+      "captures-6": {
+        "description": "Gana el primer jugador en capturar seis piezas enemigas.",
+        "name": "Objetivo de capturas (6)"
+      },
+      "captures-10": {
+        "description": "Gana el primer jugador en capturar diez piezas enemigas.",
+        "name": "Objetivo de capturas (10)"
+      },
+      "hegemony": {
+        "description": "El juego termina cuando un jugador controla todas las pilas del tablero; un jugador sin pilas controladas pierde inmediatamente.",
+        "name": "Hegemonía"
       }
     },
     "forms": {
