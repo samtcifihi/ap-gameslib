@@ -338,9 +338,11 @@ describe("Ice Palace: building the Palace", () => {
         const g = toBuild([["1L", "1M"], ["2L"], ["3L"]], "1M@0.0", ["pass", "pass", "1L@0.0"]);
         g.move("1L@0.0", { partial: true });
         expect(Array.isArray(deep(g))).to.be.false;
+        expect(Array.isArray(g.render())).to.be.false;
         const empty = toBuild([["BL"], ["2L"], ["3L"]], "BL@0.0");
         empty.move("pass");
         expect(Array.isArray(deep(empty))).to.be.false;
+        expect(Array.isArray(empty.render())).to.be.false;
     });
 
     it("refuses a build that breaks the Palace code", () => {
@@ -1044,7 +1046,7 @@ describe("Ice Palace: top-down display", () => {
         expect(empty.valid).to.be.false;
     });
 
-    it("builds by clicking the rack and the Palace, and draws a finished build once, every placement outlined", () => {
+    it("builds by clicking the rack and the Palace", () => {
         const g = rig(new IcePalaceGame(3), [["1M", "1S"], ["2S"], ["3S"]], fatPool());
         g.move("1M@0.0");
         g.move("pass");
@@ -1076,12 +1078,44 @@ describe("Ice Palace: top-down display", () => {
         expect(click.move).to.equal("1M@0.0;1S@1.0");
         expect(click.complete).to.equal(0);
         g.move(click.move);
-        // The 3D board steps through a build as frames; the top-down boards show it at once.
+        // Either display then steps through the build as frames.
         expect(Array.isArray(g.render({ altDisplays: ["perspective"] }))).to.be.true;
-        const built = boards(g);
-        expect(built.kind).to.equal("composite");
-        expect(panel(built, "palace").render.annotations).to.deep.equal([{ type: "enter", targets: [{ row: 3, col: 3 }, { row: 3, col: 4 }] }]);
-        expect(panel(built, "yard").render.annotations).to.be.undefined;
+        expect(Array.isArray(g.render())).to.be.true;
+    });
+
+    it("steps through a finished build as frames, one per placement, the boards holding still", () => {
+        const g = rig(new IcePalaceGame(3), [["1M", "1S"], ["2S"], ["3S"]], fatPool());
+        for (const m of ["1M@0.0", "pass", "pass", "1S@1.0"]) {
+            g.move(m);
+        }
+        while (g.phase === "hand") {
+            g.move("pass");
+        }
+        g.move("1M@0.0;1S@1.0");
+        const frames = g.render() as unknown as Composite[];
+        // Before, after the first placement, and the game as it stands.
+        expect(frames).to.have.length(3);
+        expect(frames.map(f => f.kind)).to.deep.equal(["composite", "composite", "composite"]);
+        const stacks = frames.map(f => panel(f, "palace").render.pieces.flat().filter(s => s.length > 0).map(s => s.join()));
+        expect(stacks).to.deep.equal([[], ["a1M"], ["a1M", "a1S"]]);
+        // Every frame's boards are the final ones, so that they hold still.
+        const sizes = frames.map(f => ["yard", "palace"].map(id => `${panel(f, id).render.board!.width}x${panel(f, id).render.board!.height}`).join());
+        expect(new Set(sizes).size).to.equal(1);
+        // Each frame after the first outlines the placement it shows, the last all of them.
+        expect(frames.map(f => panel(f, "palace").render.annotations)).to.deep.equal([
+            undefined,
+            [{ type: "enter", targets: [{ row: 3, col: 3 }] }],
+            [{ type: "enter", targets: [{ row: 3, col: 3 }, { row: 3, col: 4 }] }],
+        ]);
+        expect(frames.map(f => panel(f, "yard").render.annotations)).to.deep.equal([undefined, undefined, undefined]);
+        // The stock dwindles on the rack through the frames, then the next hand is offered.
+        expect(panel(frames[0], "rack").label).to.deep.include({ textKey: "apgames:status.icepalace.STOCK" });
+        expect(panel(frames[0], "rack").render.pieces.flat(2)).to.deep.equal(["s1S", "s1M"]);
+        expect(panel(frames[1], "rack").render.pieces.flat(2)).to.deep.equal(["s1S"]);
+        expect(panel(frames[2], "rack").label).to.deep.include({ textKey: "apgames:status.icepalace.HAND", actor: { kind: "seat", seat: 2 } });
+        // Frames belong to the build alone: the next move renders singly again.
+        g.move(g.moves()[0]);
+        expect(Array.isArray(g.render())).to.be.false;
     });
 
     it("lays out the hovered stack beside the boards, bottom first, from the side", () => {
@@ -1156,7 +1190,7 @@ describe("Ice Palace: mixing the board and stash displays", () => {
         // A click on the rack names its cell, so the 3D pyramid needs no wider click target.
         expect(rack.pieces).to.deep.equal([[["h1M"]]]);
         expect(rack.legend.h1M).to.deep.include({ name: "pyramid-up-medium-3D" });
-        expect(rack.legend.h1M).to.not.have.any.keys("nudge");
+        expect(rack.legend.h1M).to.not.be.an("array");
         // The Pool as under the 3D board: one dense column per colour, which the renderer nests
         // on a shared base line. A spacer among 3D pyramids is an error to the renderer.
         expect(poolOf(out)).to.deep.equal([["b1L", "b1S"], ["b2S"], ["bWM"]]);
@@ -1164,6 +1198,23 @@ describe("Ice Palace: mixing the board and stash displays", () => {
         expect(rack.legend.b1S).to.deep.include({ name: "pyramid-up-small-3D" });
         expect(rack.legend.b1S).to.not.have.any.keys("nudge");
         expect(poolOf(out).flat()).to.not.include("-");
+    });
+
+    it("rests the racked 3D pyramids on one floor, as a stash does", () => {
+        // A board centres each piece in its cell, and a 3D pyramid's base sits below its
+        // centre by a step for each size above small (fractions of the 500-unit glyph, as
+        // the renderer's sheet draws them), so the smaller ones are nudged down.
+        const baseBelowCentre: Record<string, number> = {
+            "pyramid-up-small-3D": 0,
+            "pyramid-up-medium-3D": 0.15,
+            "pyramid-up-large-3D": 0.3,
+        };
+        const g = rig(new IcePalaceGame(3), [["1S", "2M", "3L"], ["2S"], ["3S"]], fatPool());
+        const rack = (g.render({ altDisplays: ["perspective-hand"] }) as unknown as Composite).panels.find(p => p.id === "rack")!.render;
+        const glyphs = rack.pieces!.flat(2).map(key => rack.legend[key] as Part);
+        expect(glyphs.map(glyph => glyph.name)).to.deep.equal(["pyramid-up-small-3D", "pyramid-up-medium-3D", "pyramid-up-large-3D"]);
+        const floors = glyphs.map(glyph => baseBelowCentre[glyph.name!] * 500 + (glyph.nudge?.dy ?? 0));
+        expect(new Set(floors).size).to.equal(1);
     });
 
     it("draws the hand and the Pool each the way chosen for it, on either display", () => {

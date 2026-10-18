@@ -643,6 +643,8 @@ const MIN_REACH = 2;
  * step lower and a large's two lower.
  */
 const STACK_OFFSET = 0.15;
+/** The side of the square a legend glyph is composed in, which is the unit of a `nudge`. */
+const GLYPH_UNITS = 500;
 /** Legend key of the marker drawn on every legal cell once a pyramid is picked. */
 const DOT_KEY = "dot";
 /**
@@ -1569,6 +1571,18 @@ export class IcePalaceGame extends GameBaseSequenced {
     }
 
     /**
+     * A 3D pyramid nudged down so that its base rests where a large's does. The glyphs are
+     * drawn about one centre, with a small's base on it, a medium's one step below and a
+     * large's two (see `STACK_OFFSET`). A stash lines its pyramids' bases up by itself, but
+     * a board centres each piece in its cell, so the rack's need this. A large is returned
+     * as it is.
+     */
+    private static baseAligned(piece: PieceId, glyph: SheetGlyph): SheetGlyph {
+        const steps = SIZES.length - sizeOf(piece);
+        return steps === 0 ? glyph : { ...glyph, nudge: { dy: steps * STACK_OFFSET * GLYPH_UNITS } };
+    }
+
+    /**
      * The offered pyramids as a stash, one per column, smallest first. Seen from above each
      * is a nest, a filled shape that takes clicks by itself. In 3D each is drawn with an
      * invisible square over it, so a click anywhere in its cell picks it rather than only a
@@ -1805,10 +1819,10 @@ export class IcePalaceGame extends GameBaseSequenced {
      * status panel. On either display the offered pyramids are seen from above by default,
      * or in 3D with "perspective-hand", and so is the Pool, or in 3D with "perspective-pool".
      *
-     * On the one board a build, the one move that changes the board in several places at
+     * On either display a build, the one move that changes the boards in several places at
      * once, is returned as frames: the Palace before the build, then after each placement,
-     * with the stock dwindling below it, and last the game as it stands. Every frame uses
-     * the final board's layout so that the board holds still. Other moves return a single
+     * with the stock dwindling beside it, and last the game as it stands. Every frame uses
+     * the final boards' layout so that the boards hold still. Other moves return a single
      * render.
      */
     public render(opts?: IRenderOpts): APRenderGameOutput {
@@ -1816,22 +1830,19 @@ export class IcePalaceGame extends GameBaseSequenced {
         // whether finished (it left frames) or still being entered; anything else, the Yard.
         const placed = this.results.filter(r => r.type === "place").map(r => (r as { where: Cell }).where);
         const where: Which = this.frames.length > 0 || this.phase === "build" ? "palace" : "yard";
+        // Each frame after the first outlines the placement it shows.
+        const views: { view: IBoardView; entered: { where: Which; cells: Cell[] } }[] = this.frames.map((frame, i) => ({
+            view: { palace: frame.palace, yard: this.yard, stock: frame.stock, phase: "build" },
+            entered: { where, cells: i === 0 ? [] : [placed[i - 1]] },
+        }));
+        views.push({ view: this, entered: { where, cells: placed } });
         if (!this.hasDisplay(opts, "perspective")) {
-            return this.renderPanels(opts, { where, cells: placed });
+            const composites = views.map(({ view, entered }) => this.renderPanels(opts, view, entered));
+            return composites.length === 1 ? composites[0] : composites;
         }
         const layout = this.layout();
-        const live = this.renderView(opts, layout, this, { where, cells: placed });
-        if (this.frames.length === 0) {
-            return live;
-        }
-        // Each frame after the first outlines the placement it shows.
-        const frames = this.frames.map((frame, i) => this.renderView(
-            opts,
-            layout,
-            { palace: frame.palace, yard: this.yard, stock: frame.stock, phase: "build" },
-            { where, cells: i === 0 ? [] : [placed[i - 1]] },
-        ));
-        return [...frames, live];
+        const boards = views.map(({ view, entered }) => this.renderView(opts, layout, view, entered));
+        return boards.length === 1 ? boards[0] : boards;
     }
 
     /** The 3D display's one board: the stacks, the hand and Pool below it, and the overlays on top. */
@@ -1869,16 +1880,14 @@ export class IcePalaceGame extends GameBaseSequenced {
      * but they cannot block them: the composite renderer finds a board's cells from the
      * first cell it drew, which a blocked corner would shift. Each board's own lines and
      * fill are hidden instead, and drawn again around the open cells alone (see `openGrid`).
-     * A build is drawn once, with every placement outlined, rather than as frames: the
-     * front steps through frames of single boards only.
      */
-    private renderPanels(opts: IRenderOpts | undefined, entered: { where: Which; cells: Cell[] }): APRenderComposite {
+    private renderPanels(opts: IRenderOpts | undefined, view: IBoardView, entered: { where: Which; cells: Cell[] }): APRenderComposite {
         const yardLayout = this.panelLayout("yard");
-        const yard = this.structurePanel("yard", yardLayout, entered);
-        const panels = [yard, this.structurePanel("palace", this.panelLayout("palace"), entered)];
+        const yard = this.structurePanel("yard", yardLayout, view, entered);
+        const panels = [yard, this.structurePanel("palace", this.panelLayout("palace"), view, entered)];
         // The rack and the Pool wrap at the Yard's width, so that the column they share with
         // the Yard grows no wider than it; with nothing on offer the Pool goes under the Yard.
-        const rack = this.rackPanel(this.hasDisplay(opts, "perspective-hand"));
+        const rack = this.rackPanel(this.hasDisplay(opts, "perspective-hand"), view);
         if (rack !== undefined) {
             panels.push(rack);
         }
@@ -1900,10 +1909,10 @@ export class IcePalaceGame extends GameBaseSequenced {
      * A structure on a board of its own, titled, with its stacks and the overlays on top,
      * and only its open cells drawn.
      */
-    private structurePanel(which: Which, layout: ILayout, entered: { where: Which; cells: Cell[] }): APRenderCompositePanel {
+    private structurePanel(which: Which, layout: ILayout, view: IBoardView, entered: { where: Which; cells: Cell[] }): APRenderCompositePanel {
         const legend: Legend = {};
-        const pieces = this.boardPieces(layout, this, legend, true);
-        const open = IcePalaceGame.reachable(layout, this.palace, this.yard);
+        const pieces = this.boardPieces(layout, view, legend, true);
+        const open = IcePalaceGame.reachable(layout, view.palace, view.yard);
         const render: APRenderRep = {
             renderer: "stacking-expanding",
             options: ["hide-labels"],
@@ -1911,7 +1920,7 @@ export class IcePalaceGame extends GameBaseSequenced {
             legend,
             pieces: nonEmpty(pieces),
         };
-        this.overlay(render, layout, this, legend, pieces, entered);
+        this.overlay(render, layout, view, legend, pieces, entered);
         // i18next.t("apgames:status.icepalace.YARD")
         // i18next.t("apgames:status.icepalace.PALACE")
         const label = this.neutralAreaLabel(which === "yard" ? "apgames:status.icepalace.YARD" : "apgames:status.icepalace.PALACE");
@@ -1924,8 +1933,8 @@ export class IcePalaceGame extends GameBaseSequenced {
      * cells themselves are not drawn at all. The rows wrap at the Yard's width. Nothing on
      * offer, no panel.
      */
-    private rackPanel(hand3D: boolean): APRenderCompositePanel | undefined {
-        const racked = this.rackPieces();
+    private rackPanel(hand3D: boolean, view: IBoardView): APRenderCompositePanel | undefined {
+        const racked = this.rackPieces(view);
         if (racked.length === 0) {
             return undefined;
         }
@@ -1941,14 +1950,14 @@ export class IcePalaceGame extends GameBaseSequenced {
                     continue;
                 }
                 const key = IcePalaceGame.legendKey(piece, hand3D ? "hand" : "stash");
-                legend[key] = this.glyphFor(piece, hand3D ? "3D" : "nest");
+                legend[key] = hand3D ? IcePalaceGame.baseAligned(piece, this.glyphFor(piece, "3D")) : this.glyphFor(piece, "nest");
                 line.push([key]);
             }
             pieces.push(line);
         }
         return {
             id: RACK_PANEL,
-            label: this.offerLabel(this.phase),
+            label: this.offerLabel(view.phase),
             render: {
                 renderer: "stacking-expanding",
                 options: ["hide-labels"],
@@ -1960,8 +1969,8 @@ export class IcePalaceGame extends GameBaseSequenced {
     }
 
     /** What the current player places from, in the order the rack and the stash show it. */
-    private rackPieces(): PieceId[] {
-        return [...(this.phase === "build" ? this.stock : this.handOf(this.currplayer))].sort(pieceSort);
+    private rackPieces(view: IBoardView = this): PieceId[] {
+        return [...(view.phase === "build" ? view.stock : this.handOf(this.currplayer))].sort(pieceSort);
     }
 
     /** The rack's columns: as many as it has pyramids, up to the width of the Yard above it. */
