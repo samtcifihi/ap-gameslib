@@ -133,38 +133,12 @@ function targetSelection(board: Map<string, CellContents>, player: playerid, lim
     return serializeTurn(board, player, limit, best);
 }
 
-/** 
- * Four transparent clickable line overlays approximate the upper-right half-cell
- * triangle. The renderer's shading polygons have pointer-events disabled, but
- * clickable line markers emit the stable endpoint id through boardClick.
+/**
+ * A virtual, clickable board piece for the Advanced-only alternate trap result.
+ * Its square comes from the renderer's ordinary piece-click coordinates.
+ * It is rendered only in the preview, never stored on the Arimaa board.
  */
-export function captureControlLines(square: string): Array<{
-    points: [{row: number; col: number}, {row: number; col: number}];
-    id: string;
-}> {
-    const x = square.charCodeAt(0) - 97;
-    const y = 8 - Number(square[1]);
-    return [0.07, 0.19, 0.31, 0.43].map(offset => {
-        const points: [{row: number; col: number}, {row: number; col: number}] = [
-            {row: y + offset, col: x + 0.5 + offset},
-            {row: y + offset, col: x + 0.96},
-        ];
-        return {points, id: `${points[0].col},${points[0].row}|${points[1].col},${points[1].row}`};
-    });
-}
-
-/** Decode the synthetic renderer click rather than guessing from -1/-1. */
-export function captureControlSquare(markerId: string | undefined): string | undefined {
-    if (markerId === undefined) {
-        return undefined;
-    }
-    for (const trap of ["c3", "f3", "c6", "f6"]) {
-        if (captureControlLines(trap).some(line => line.id === markerId)) {
-            return trap;
-        }
-    }
-    return undefined;
-}
+export const ARIMAA_CAPTURE_CHOICE = "ARIMAA_CAPTURE_CHOICE";
 
 /**
  * Trap squares where the newest selection has both a surviving and a captured
