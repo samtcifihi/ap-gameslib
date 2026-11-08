@@ -97,6 +97,15 @@ describe("Arimaa input modes", () => {
         }
     });
 
+    it("still selects a pushable enemy when a legal push is available", () => {
+        const g = position("Ed4,Ra1", "re4,ra8,ee8");
+        for (const mode of ["basic", "advanced"] as const) {
+            const r = click(g, "", "e4", mode);
+            expect(r.valid, mode).to.equal(true);
+            expect(r.move, mode).to.equal("e4");
+        }
+    });
+
     it("does not select an enemy when the only remaining die step cannot complete a push", () => {
         const g = position("Ed4,Ra1", "re5,ra8,ee8");
         g.die = {steps: 2, square: "b5"};
