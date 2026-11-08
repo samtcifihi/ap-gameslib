@@ -338,7 +338,7 @@ interface PTok {
     owner?: playerid;
     /** specifier square index, or -1 */
     sq: number;
-    kind: "dest" | "steps" | "capture";
+    kind: "dest" | "steps" | "capture" | "survive";
     dest: number;
     dirs: Dir[];
 }
@@ -366,11 +366,12 @@ export type Resolution =
  * `prune` disables the search heuristic; it exists so tests can check that
  * pruning never changes an answer.
  */
-export function resolve(board: Map<string, CellContents>, player: playerid, maxSteps: number, tokens: Token[], lenient: boolean, prune = true): Resolution {
+export function resolve(board: Map<string, CellContents>, player: playerid, maxSteps: number, tokens: Token[], lenient: boolean, prune = true, accept?: (turn: Turn) => boolean): Resolution {
     const s = new Search(board, player);
     const toks = prepare(tokens);
     const destGroups = new Map<number, PTok[]>();
     const captureToks: PTok[] = [];
+    const surviveToks: PTok[] = [];
     const stepToks: PTok[] = [];
     for (const t of toks) {
         if (t.kind === "dest") {
@@ -382,6 +383,8 @@ export function resolve(board: Map<string, CellContents>, player: playerid, maxS
             }
         } else if (t.kind === "capture") {
             captureToks.push(t);
+        } else if (t.kind === "survive") {
+            surviveToks.push(t);
         } else {
             stepToks.push(t);
         }
@@ -704,6 +707,11 @@ export function resolve(board: Map<string, CellContents>, player: playerid, maxS
                 return false;
             }
         }
+        for (const t of surviveToks) {
+            if (!s.pieces.some(p => typeMatch(p, t) && visitedOk(p, t) && p.cur >= 0)) {
+                return false;
+            }
+        }
         // step tokens must be witnessed in the order written; the earliest
         // completion of each leaves the most room for the next
         let after = -1;
@@ -771,9 +779,13 @@ export function resolve(board: Map<string, CellContents>, player: playerid, maxS
                     return;
                 }
                 const displaced = s.displaced();
+                const candidate = s.snapshot(displaced, sig);
+                if (accept !== undefined && !accept(candidate)) {
+                    return;
+                }
                 const existing = found.get(sig);
                 if (existing === undefined || displaced < existing.displaced) {
-                    found.set(sig, s.snapshot(displaced, sig));
+                    found.set(sig, candidate);
                 }
                 return;
             }
@@ -885,8 +897,10 @@ function bareToken(t: Token): Token {
         text = `${piece}${t.prop.square}`;
     } else if (t.prop.kind === "capture") {
         text = `${piece}x`;
-    } else {
+    } else if (t.prop.kind === "steps") {
         text = `${piece}${t.prop.dirs.join("")}`;
+    } else {
+        text = `${piece}o`;
     }
     return { spec: { piece: t.spec.piece, owner: t.spec.owner }, prop: t.prop, text };
 }
