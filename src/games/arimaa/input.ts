@@ -127,6 +127,51 @@ function targetSelection(board: Map<string, CellContents>, player: playerid, lim
     return serializeTurn(board, player, limit, best);
 }
 
+/**
+ * Trap squares where the newest selection has both a surviving and a captured
+ * legal ending. The renderer can draw the advanced-mode alternative control
+ * only on these squares.
+ */
+export function captureAlternatives(
+    board: Map<string, CellContents>, player: playerid, limit: number, move: string,
+): string[] {
+    let parsed: ReturnType<typeof parseMove>;
+    try {
+        parsed = parseMove(move, true);
+    } catch {
+        return [];
+    }
+    const selectionSquares = parsed.selections ?? [];
+    if (selectionSquares.length === 0) {
+        return [];
+    }
+    const occupants = projected(board, player, limit, parsed.tokens);
+    const selected = selectionSquares.map(s => occupants.get(s));
+    if (selected.some(p => p === undefined)) {
+        return [];
+    }
+    const pieces = selected as Occupant[];
+    const last = pieces[pieces.length - 1];
+    const out: string[] = [];
+    for (const trap of ["c3", "f3", "c6", "f6"]) {
+        if (occupants.has(trap)) {
+            continue;
+        }
+        const drawn = chainTokens(board, parsed.tokens, pieces, selectionSquares, trap);
+        const capture = resolve(board, player, limit,
+            [...drawn, captureToken(last.piece, last.owner, last.origin)], true);
+        if (capture.status === "unsatisfiable") {
+            continue;
+        }
+        const survive = resolve(board, player, limit,
+            [...drawn, surviveToken(last.piece, last.owner, last.origin)], true);
+        if (survive.status !== "unsatisfiable") {
+            out.push(trap);
+        }
+    }
+    return out;
+}
+
 export function inputClick(
     board: Map<string, CellContents>, player: playerid, limit: number,
     move: string, square: string, mode: ArimaaInputMode, alternativeCapture = false,
