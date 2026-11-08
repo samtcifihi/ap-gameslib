@@ -1,4 +1,4 @@
-import {  GameBase, IAPGameState, IClickResult, ICustomButton, IIndividualState, IScores, IStatus, IValidationResult, type ChatLogCollectContext, type ChatLogLine, type FlagContext, type GameFlag } from "./_base.js";
+import {  GameBase, IAPGameState, IClickResult, ICustomButton, IIndividualState, IScores, IStatus, IValidationResult, IHandleClickUi, type ChatLogCollectContext, type ChatLogLine, type FlagContext, type GameFlag } from "./_base.js";
 import type { APGamesInformation } from "../schemas/gameinfo.js";
 import { APRenderRep, AreaPieces, BoardBasic, Colourfuncs, Glyph, PaintEntry } from "@abstractplay/renderer/build/schemas/schema";
 import type { APMoveResult } from "../schemas/moveresults.js";
@@ -7,7 +7,18 @@ import i18next from "i18next";
 import { arrowToken, captureToken, isArrow, isLegacy, isMark, isHold, joinMove, normalize, parseMove, pieceChar, holdToken, tokenText, NotationError, type ParsedMove, type Token } from "./arimaa/notation.js";
 import { hasAnyMove, inferred, resolve, serializeTurn, sqName, turnFromSteps, type Turn } from "./arimaa/turns.js";
 import { castDie, type IDie } from "./arimaa/dice.js";
+import { inputClick } from "./arimaa/input.js";
 export const gameApgamesEn = {
+    inputModes: {
+        basic: {
+            name: "Basic",
+            description: "Move only pieces you explicitly select. Every completed click sequence has an unambiguous result.",
+        },
+        advanced: {
+            name: "Advanced",
+            description: "Select by origin or target, and use inferred movements and trap-capture controls.",
+        },
+    },
     validation: {
         BACKWARDS: "You may not move your own rabbits backwards.",
         FROZEN: "The piece at {{where}} is frozen. It cannot move on its own.",
@@ -215,6 +226,10 @@ export class ArimaaGame extends GameBase {
                 name: "fill",
                 explanation: "Traps are the `fill` colour at 50% opacity"
             },
+        ],
+        inputModes: [
+            {uid: "basic", group: "entry"},
+            {uid: "advanced", group: "entry"},
         ],
         categories: ["goal>breakthrough", "goal>cripple", "goal>immobilize", "mechanic>capture", "mechanic>move", "mechanic>coopt", "mechanic>random>setup", "board>shape>rect", "board>connect>rect", "components>chess"],
         flags: ["perspective", "no-moves", "custom-buttons", "random-start", "custom-colours"]
@@ -601,14 +616,21 @@ export class ArimaaGame extends GameBase {
     //     return moves[Math.floor(Math.random() * moves.length)];
     // }
 
-    public handleClick(move: string, row: number, col: number, piece?: string): IClickResult {
+    public handleClick(move: string, row: number, col: number, piece?: string, ui?: IHandleClickUi): IClickResult {
         try {
             // placing pieces:
             // - either still pieces in hand
             // - or we're in standard setup and ply 1 or 2, no matter the hands
             const placing = (this.hands !== undefined && this.hands[this.currplayer - 1].length > 0) ||
                 (this.standardSetup() && this.stack.length <= 2);
-            const newmove = placing ? this.setupClick(move, row, col, piece) : this.moveClick(move, row, col);
+            const inputMode = this.resolveActiveInputMode(ui?.inputMode) ?? "basic";
+            // Setup semantics do not change between input modes.
+            const input = placing ? {move: this.setupClick(move, row, col, piece)} :
+                inputClick(this.board, this.currplayer, this.maxSteps(), move,
+                    ArimaaGame.coords2algebraic(col, row),
+                    inputMode === "advanced" ? "advanced" : "basic",
+                    piece === "trap-capture");
+            const newmove = input.move;
             let result = this.validateMove(newmove) as IClickResult;
             if (! result.valid) {
                 result.move = move;
@@ -619,6 +641,9 @@ export class ArimaaGame extends GameBase {
                     result.move = automove;
                 } else {
                     result.move = newmove;
+                }
+                if (input.complete && result.valid && result.complete === 0) {
+                    result.complete = 1;
                 }
             }
             return result;
@@ -1222,7 +1247,7 @@ export class ArimaaGame extends GameBase {
             }
             // otherwise we're good
             else {
-                complete = 1;
+                complete = 0;
                 message = i18next.t("apgames:validation._general.VALID_MOVE");
             }
 
@@ -1334,7 +1359,7 @@ export class ArimaaGame extends GameBase {
         const messages: string[] = [];
         if (used === maxMoves) {
             // auto-completion only when the player has seen every piece that moves
-            result.complete = extra.length === 0 ? 1 : 0;
+            result.complete = 0;
             messages.push(i18next.t("apgames:validation._general.VALID_MOVE"));
         } else {
             result.complete = 0;
