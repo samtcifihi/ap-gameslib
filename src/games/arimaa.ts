@@ -1942,13 +1942,16 @@ export class ArimaaGame extends GameBase {
             const original = this.stack[this.stack.length - 1].board;
             const alternatives = captureAlternatives(original, this.currplayer, this.maxSteps(), this._entryMove);
             if (alternatives.length > 0) {
+                // The stock wedge is not a 45-degree right triangle. Keep
+                // it as an essentially invisible, clickable hit target only;
+                // the precise, visible geometry is a board shading polygon.
+                // Opacity does not disable SVG pointer events on filled paths.
                 legend[ARIMAA_CAPTURE_CHOICE] = {
                     name: "wedge-top-half",
                     colour: "_context_fill",
+                    opacity: 0.001,
                     scale: 1.25,
-                    // The stock right-triangle glyph is anchored at its right
-                    // angle, with that point positioned in the trap corner.
-                    nudge: {dx: 44, dy: -312},
+                    nudge: {dx: 8, dy: -198},
                 };
                 // String board pieces have one glyph per cell. The renderer's
                 // supported layered-grid format lets us overlay the virtual
@@ -1956,6 +1959,26 @@ export class ArimaaGame extends GameBase {
                 const layers = plst.map(line => line.split(",").map(key => key === "-" ? [] : [key]));
                 for (const trap of alternatives) {
                     const [x, y] = ArimaaGame.algebraic2coords(trap);
+                    // Precisely the upper-right half-square triangle:
+                    // both legs are half a cell, meeting at the square's
+                    // actual top-right corner. Flatten the trap icon's 50%
+                    // fill against the board to get the same visible grey
+                    // without darkening its overlap with the trap icon.
+                    (rep.board as BoardBasic).markers!.push({
+                        type: "shading",
+                        colour: {
+                            func: "flatten",
+                            fg: "_context_fill",
+                            bg: "_context_board",
+                            opacity: 0.5,
+                        },
+                        opacity: 1,
+                        points: [
+                            {col: x + 0.5, row: y},
+                            {col: x + 1, row: y},
+                            {col: x + 1, row: y + 0.5},
+                        ],
+                    });
                     layers[y][x].push(ARIMAA_CAPTURE_CHOICE);
                 }
                 rep.pieces = [layers[0], ...layers.slice(1)];
