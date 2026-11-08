@@ -854,6 +854,16 @@ export function resolve(board: Map<string, CellContents>, player: playerid, maxS
  * Whether the player to move has any legal step, or, with at least two steps
  * to spend, any push or pull. Only Dicey Moves allows fewer than two.
  */
+/** Whether an occupied origin participates in an immediately legal step, push or pull. */
+export function canMoveNow(board: Map<string, CellContents>, player: playerid, maxSteps: number, origin: string): boolean {
+    if (maxSteps <= 0) {
+        return false;
+    }
+    const search = new Search(board, player);
+    const id = search.ids[sqIndex(origin)];
+    return id >= 0 && search.atoms(maxSteps).some(atom => atom.some(step => step.pid === id));
+}
+
 export function hasAnyMove(board: Map<string, CellContents>, player: playerid, maxSteps = 4): boolean {
     return new Search(board, player).atoms(Math.min(2, maxSteps)).length > 0;
 }
