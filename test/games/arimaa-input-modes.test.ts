@@ -64,6 +64,25 @@ describe("Arimaa input modes", () => {
         expect(advancedMoved.complete).to.equal(0);
     });
 
+    it("enters an explicitly selected push and pull as ordered chains in Basic", () => {
+        const g = position("Ed4,Hf4,Ra1,Cc1", "re4,ra8,ee8");
+        let p = click(g, "", "d4");
+        p = click(g, p.move!, "e4");
+        expect(p.move).to.equal("d4 e4");
+        p = click(g, p.move!, "e5");
+        expect(p.valid).to.equal(true);
+        expect(p.move).to.equal("re4e5 Ed4e4");
+        expect(p.complete).to.equal(0);
+
+        let pull = click(g, "", "e4");
+        pull = click(g, pull.move!, "d4");
+        expect(pull.move).to.equal("e4 d4");
+        pull = click(g, pull.move!, "c4");
+        expect(pull.valid).to.equal(true);
+        expect(pull.move).to.equal("Ed4c4 re4d4");
+        expect(pull.complete).to.equal(0);
+    });
+
     it("accepts both click modes with a one-step Dicey Moves limit", () => {
         const g = position("Ed4,Ra1", "ra8,ee8");
         g.die = {steps: 1, square: "c4"};
