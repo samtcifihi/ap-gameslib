@@ -1,5 +1,5 @@
 import {
-    arrowToken, captureToken, joinSelections, parseMove, pieceChar, surviveToken,
+    arrowToken, captureToken, joinSelections, parseMove, surviveToken,
     type Token, type Piece, type playerid,
 } from "./notation.js";
 import { resolve, serializeTurn, sqIndex, sqName, type CellContents, type Turn } from "./turns.js";
@@ -102,7 +102,7 @@ function prefCompare(a: Turn, b: Turn): number {
 
 function targetSelection(board: Map<string, CellContents>, player: playerid, limit: number, tokens: Token[], target: string): string | undefined {
     const choices: Array<{turn: Turn; enemy: boolean}> = [];
-    for (const [origin, [piece, owner]] of board) {
+    for (const [origin, [, owner]] of board) {
         if (Math.abs(origin.charCodeAt(0) - target.charCodeAt(0)) +
             Math.abs(Number(origin[1]) - Number(target[1])) > limit) {
             continue;
