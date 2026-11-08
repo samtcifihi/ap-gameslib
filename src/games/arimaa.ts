@@ -1,13 +1,13 @@
-import {  GameBase, IAPGameState, IClickResult, ICustomButton, IIndividualState, IScores, IStatus, IValidationResult, IHandleClickUi, type ChatLogCollectContext, type ChatLogLine, type FlagContext, type GameFlag } from "./_base.js";
+import {  GameBase, IAPGameState, IClickResult, ICustomButton, IIndividualState, IScores, IStatus, IValidationResult, IHandleClickUi, IRenderOpts, type ChatLogCollectContext, type ChatLogLine, type FlagContext, type GameFlag } from "./_base.js";
 import type { APGamesInformation } from "../schemas/gameinfo.js";
-import { APRenderRep, AreaPieces, BoardBasic, Colourfuncs, Glyph, PaintEntry } from "@abstractplay/renderer/build/schemas/schema";
+import { APRenderRep, AreaPieces, BoardBasic, Colourfuncs, Glyph, MarkerLine, PaintEntry } from "@abstractplay/renderer/build/schemas/schema";
 import type { APMoveResult } from "../schemas/moveresults.js";
 import { randomInt, RectGrid, reviver, shuffle, SquareOrthGraph, UserFacingError, cloneState } from "../common/index.js";
 import i18next from "i18next";
 import { arrowToken, captureToken, isArrow, isLegacy, isMark, isHold, joinMove, normalize, parseMove, pieceChar, holdToken, tokenText, NotationError, type ParsedMove, type Token } from "./arimaa/notation.js";
 import { hasAnyMove, inferred, resolve, serializeTurn, sqName, turnFromSteps, type Turn } from "./arimaa/turns.js";
 import { castDie, type IDie } from "./arimaa/dice.js";
-import { captureAlternatives, inputClick } from "./arimaa/input.js";
+import { captureAlternatives, captureControlLines, captureControlSquare, inputClick } from "./arimaa/input.js";
 export const gameApgamesEn = {
     inputModes: {
         basic: {
@@ -630,14 +630,17 @@ export class ArimaaGame extends GameBase {
                 (this.standardSetup() && this.stack.length <= 2);
             const inputMode = this.resolveActiveInputMode(ui?.inputMode) ?? "basic";
             this._inputMode = inputMode === "advanced" ? "advanced" : "basic";
+            // Renderer line markers emit (-1,-1,endpoint-id), rather than a
+            // square click. Decode only one of our active trap-control ids.
+            const triangleTrap = row === -1 && col === -1 ? captureControlSquare(piece) : undefined;
             // The unadvertised status-quo path is retained for compatibility
             // regression tests and click-count comparisons only.
             const input: {move: string; complete?: boolean} = placing ? {move: this.setupClick(move, row, col, piece)} :
                 ui?.inputMode === "status-quo" ? {move: this.moveClick(move, row, col)} :
                 inputClick(this.board, this.currplayer, this.maxSteps(), move,
-                    ArimaaGame.coords2algebraic(col, row),
+                    triangleTrap ?? ArimaaGame.coords2algebraic(col, row),
                     inputMode === "advanced" ? "advanced" : "basic",
-                    piece === "trap-capture");
+                    triangleTrap !== undefined || piece === "trap-capture");
             const newmove = input.move;
             let result = this.validateMove(newmove) as IClickResult;
             if (! result.valid) {
@@ -1746,7 +1749,7 @@ export class ArimaaGame extends GameBase {
         };
     }
 
-    public render(): APRenderRep {
+    public render(opts: IRenderOpts & {inputMode?: string} = {}): APRenderRep {
         // Build piece string
         const plst: string[] = [];
         for (let row = 0; row < 8; row++) {
@@ -1924,7 +1927,7 @@ export class ArimaaGame extends GameBase {
 
         // Advanced mode: offer the alternate trap result only when both
         // survival and capture are possible for the newest selection.
-        if (this._inputMode === "advanced" && this._entryMove !== undefined && this._selected !== undefined) {
+        if ((opts.inputMode ?? this._inputMode) === "advanced" && this._entryMove !== undefined && this._selected !== undefined) {
             const original = this.stack[this.stack.length - 1].board;
             for (const trap of captureAlternatives(original, this.currplayer, this.maxSteps(), this._entryMove)) {
                 const [x, y] = ArimaaGame.algebraic2coords(trap);
@@ -1938,6 +1941,19 @@ export class ArimaaGame extends GameBase {
                         {col: x + 1, row: y + 0.5},
                     ],
                 });
+                // Shading polygons cannot receive clicks in the renderer.
+                // Add transparent clickable strokes across the triangular
+                // region; each reports its endpoints as a synthetic id.
+                for (const hit of captureControlLines(trap)) {
+                    (rep.board as BoardBasic).markers!.push({
+                        type: "line",
+                        points: hit.points,
+                        clickable: true,
+                        width: 10,
+                        colour: "_context_fill",
+                        opacity: 0.005,
+                    } as unknown as MarkerLine);
+                }
             }
         }
 
