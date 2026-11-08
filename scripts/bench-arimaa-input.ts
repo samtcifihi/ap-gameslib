@@ -16,7 +16,7 @@ import { ArimaaGame, type CellContents, type Piece, type playerid } from "../src
 
 type StepResult = {type: string; from?: string; to?: string; where?: string};
 type Ply = {move: string; result?: StepResult[]};
-type Record = {
+type ArchiveGame = {
     header: {game: {variants: string[]}; startingPosition?: string; site?: {gameid?: string}};
     moves: Ply[][];
 };
@@ -38,7 +38,7 @@ const argNumber = (key: string, fallback: number): number => {
 const maxExpansions = argNumber("max-expansions", 80);
 const maxClicks = argNumber("max-clicks", 12);
 const limitGames = argNumber("limit-games", 2147483647);
-const gameRecords = JSON.parse(readFileSync(archive, "utf8")) as Record[];
+const gameRecords = JSON.parse(readFileSync(archive, "utf8")) as ArchiveGame[];
 const modes: Mode[] = ["status-quo", "basic", "advanced"];
 const total = Object.fromEntries(modes.map(mode => [mode, {found: 0, missing: 0, clicks: 0, capped: 0}])) as
     Record<Mode, {found: number; missing: number; clicks: number; capped: number}>;
