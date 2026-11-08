@@ -76,6 +76,32 @@ describe("Arimaa input modes", () => {
         }
     });
 
+    it("treats a same-square token as an assertion, not an obligatory round-trip", () => {
+        const g = position("Ed4,Ra1", "ra8,ee8");
+        const result = g.validateMove("Ed4d4 Ra1a2");
+        expect(result.valid).to.equal(true);
+        const before = g.clone();
+        g.move("Ed4d4 Ra1a2");
+        expect(g.board.get("d4")).to.deep.equal(["E", 1]);
+        expect(g.board.get("a2")).to.deep.equal(["R", 1]);
+        const replay = before.clone();
+        replay.move(g.lastmove!);
+        expect(replay.signature()).to.equal(g.signature());
+    });
+
+    it("drops input-only survival markers from stored notation", () => {
+        const g = position("Ed4,Rc3,Ra1", "ra8,ee8");
+        const before = g.clone();
+        const entered = "Ed4e4 Rc3o";
+        expect(g.validateMove(entered).valid).to.equal(true);
+        g.move(entered);
+        expect(g.lastmove).not.to.contain("o");
+        expect(g.board.has("c3")).to.equal(true);
+        const replay = before.clone();
+        replay.move(g.lastmove!);
+        expect(replay.signature()).to.equal(g.signature());
+    });
+
     it("does not auto-commit a complete four-step Lightvector or legacy move", () => {
         const g = position("Ed4,Ra1", "ra8,ee8");
         expect(g.validateMove("Ed4d5").complete).to.equal(0);
