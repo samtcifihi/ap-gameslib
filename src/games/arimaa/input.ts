@@ -134,7 +134,7 @@ function targetSelection(board: Map<string, CellContents>, player: playerid, lim
 }
 
 /**
- * Exact visible triangle: x in [0.5,1], y in [0,0.5], x + y >= 1.
+ * Exact visible triangle: x in [0.5,1], y in [0,0.5], x - y >= 0.5.
  *
  * The current renderer does not make shading polygons clickable. Its existing
  * clickable line markers can supply a subpixel-precision hit region without a
@@ -168,6 +168,13 @@ export function captureControlLines(square: string): CaptureHitLine[] {
         lines.push({points: [from, to], width,
             id: `${from.col},${from.row}|${to.col},${to.row}`});
     }
+    // Include the diagonal boundary itself. This tiny clickable stroke makes
+    // edge clicks work without allowing a perceptible region outside the
+    // triangle (0.35px of width against a 50px cell).
+    const edgeFrom = {row, col: col + 0.5};
+    const edgeTo = {row: row + 0.5, col: col + 1};
+    lines.push({points: [edgeFrom, edgeTo], width: 0.35,
+        id: `${edgeFrom.col},${edgeFrom.row}|${edgeTo.col},${edgeTo.row}`});
     return lines;
 }
 
