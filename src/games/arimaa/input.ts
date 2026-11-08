@@ -133,6 +133,39 @@ function targetSelection(board: Map<string, CellContents>, player: playerid, lim
     return serializeTurn(board, player, limit, best);
 }
 
+/** 
+ * Four transparent clickable line overlays approximate the upper-right half-cell
+ * triangle. The renderer's shading polygons have pointer-events disabled, but
+ * clickable line markers emit the stable endpoint id through boardClick.
+ */
+export function captureControlLines(square: string): Array<{
+    points: [{row: number; col: number}, {row: number; col: number}];
+    id: string;
+}> {
+    const x = square.charCodeAt(0) - 97;
+    const y = 8 - Number(square[1]);
+    return [0.07, 0.19, 0.31, 0.43].map(offset => {
+        const points: [{row: number; col: number}, {row: number; col: number}] = [
+            {row: y + offset, col: x + 0.5 + offset},
+            {row: y + offset, col: x + 0.96},
+        ];
+        return {points, id: `${points[0].col},${points[0].row}|${points[1].col},${points[1].row}`};
+    });
+}
+
+/** Decode the synthetic renderer click rather than guessing from -1/-1. */
+export function captureControlSquare(markerId: string | undefined): string | undefined {
+    if (markerId === undefined) {
+        return undefined;
+    }
+    for (const trap of ["c3", "f3", "c6", "f6"]) {
+        if (captureControlLines(trap).some(line => line.id === markerId)) {
+            return trap;
+        }
+    }
+    return undefined;
+}
+
 /**
  * Trap squares where the newest selection has both a surviving and a captured
  * legal ending. The renderer can draw the advanced-mode alternative control
@@ -194,7 +227,7 @@ export function inputClick(
     const preview = projected(board, player, limit, tokens);
     const occupancy = preview.occupants;
     const previewBoard = new Map<string, CellContents>(
-        [...occupancy].map(([cell, p]) => [cell, [p.piece, p.owner]])
+        [...occupancy].map(([cell, p]): [string, CellContents] => [cell, [p.piece, p.owner]])
     );
     // A piece is selectable only if it can participate in a legal step,
     // push, or pull *after* the already-entered move, within the steps left.
