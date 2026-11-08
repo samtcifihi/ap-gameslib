@@ -29,7 +29,9 @@ export interface Specifier {
 export type Property =
     | { kind: "dest"; square: string }
     | { kind: "steps"; dirs: Dir[] }
-    | { kind: "capture" };
+    | { kind: "capture" }
+    /** Input-only assertion: the named piece must survive the turn. */
+    | { kind: "survive" };
 
 export interface Token {
     spec: Specifier;
@@ -43,6 +45,8 @@ export interface ParsedMove {
     pending?: string;
     /** The selection before `pending`, kept while a second click on `pending` could complete an arrow from it. Input only. */
     previous?: string;
+    /** All trailing square selections, oldest first. */
+    selections?: string[];
 }
 
 export class NotationError extends Error {
@@ -111,8 +115,8 @@ export function parseToken(text: string): Token {
     const last = text[text.length - 1];
     let specText: string;
     let prop: Property;
-    if (last === "x") {
-        prop = { kind: "capture" };
+    if (last === "x" || last === "o") {
+        prop = { kind: last === "x" ? "capture" : "survive" };
         specText = text.slice(0, -1);
     } else if (/[1-8]/.test(last)) {
         const square = text.slice(-2);
@@ -149,18 +153,14 @@ export function parseToken(text: string): Token {
 export function parseMove(m: string, allowPending = false): ParsedMove {
     const parts = tokenize(m);
     let end = parts.length;
-    let pending: string | undefined;
-    let previous: string | undefined;
-    if (allowPending && end > 0 && squareRe.test(parts[end - 1])) {
-        pending = parts[end - 1];
-        end--;
-        if (end > 0 && squareRe.test(parts[end - 1])) {
-            previous = parts[end - 1];
-            end--;
+    const selections: string[] = [];
+    if (allowPending) {
+        while (end > 0 && squareRe.test(parts[end - 1])) {
+            selections.unshift(parts[--end]);
         }
     }
     const tokens = parts.slice(0, end).map(parseToken);
-    return { tokens, pending, previous };
+    return { tokens, pending: selections[selections.length - 1], previous: selections[selections.length - 2], selections };
 }
 
 export function pieceChar(piece: Piece, owner: playerid): string {
@@ -181,6 +181,11 @@ export function joinMove(tokens: Token[], pending?: string, previous?: string): 
         parts.push(pending);
     }
     return parts.join(" ");
+}
+
+/** Keep any number of pending selections at the end of the move. */
+export function joinSelections(tokens: Token[], selections: string[]): string {
+    return [...tokens.map(tokenText), ...selections].join(" ");
 }
 
 /** Build a destination token for `piece` on `from` ending on `to`. */
@@ -207,6 +212,11 @@ export function isHold(t: Token): boolean {
 /** A capture token for the piece on `square`: it is captured during the turn. */
 export function captureToken(piece: Piece, owner: playerid, square: string): Token {
     return { spec: { piece, owner, square }, prop: { kind: "capture" }, text: `${pieceChar(piece, owner)}${square}x` };
+}
+
+/** An input-only assertion that the piece is not captured; serialization drops it. */
+export function surviveToken(piece: Piece, owner: playerid, square: string): Token {
+    return { spec: { piece, owner, square }, prop: { kind: "survive" }, text: `${pieceChar(piece, owner)}${square}o` };
 }
 
 /** A capture token naming a square: a mark on the piece standing there. */
