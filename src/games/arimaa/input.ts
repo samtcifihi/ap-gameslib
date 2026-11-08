@@ -74,7 +74,10 @@ function chainTokens(board: Map<string, CellContents>, tokens: Token[], selected
     return out;
 }
 
-function resolveChain(board: Map<string, CellContents>, player: playerid, limit: number, tokens: Token[], selected: Occupant[], mode: ArimaaInputMode): string | undefined {
+function resolveChain(
+    board: Map<string, CellContents>, player: playerid, limit: number,
+    tokens: Token[], selected: Occupant[], mode: ArimaaInputMode, closedLoop = false,
+): string | undefined {
     // A chained entry vacates its squares from newest selection to oldest.
     // Basic additionally forbids movement or capture of unselected pieces.
     const allowed = new Set<number>();
@@ -87,6 +90,27 @@ function resolveChain(board: Map<string, CellContents>, player: playerid, limit:
     const r = resolve(board, player, limit, tokens, mode === "advanced", true, turn => {
         if (mode === "basic" && !distinctMoves(turn, allowed)) {
             return false;
+        }
+        // A square specifier can be witnessed by another piece that passes
+        // through it. A click chain, however, refers to the actual selected
+        // occupants. Every one must finish at its explicitly clicked target,
+        // not merely be a possible witness for a token.
+        for (const piece of selected) {
+            const destination = tokens.find(t =>
+                t.spec.square === piece.origin && t.prop.kind === "dest");
+            const tr = turn.trajectories.find(t => t.start === sqIndex(piece.origin));
+            if (destination?.prop.kind !== "dest" || tr === undefined ||
+                tr.visited.length < 2 || tr.final !== sqIndex(destination.prop.square)) {
+                return false;
+            }
+        }
+        // A closed chain has no first square to vacate: one piece must make
+        // a preparatory move to open the loop, then finish after other pieces.
+        // Imposing a reverse order on *final* steps rejects such valid turns.
+        // The explicit endpoints and the rules of movement determine whether
+        // this rotation is possible without moving an unselected piece.
+        if (closedLoop) {
+            return true;
         }
         // The next piece must vacate its square before the preceding piece
         // finishes there. A pusher can take preparatory steps *before* the
@@ -361,23 +385,26 @@ export function inputClick(
         return {move: stripped};
     }
     const last = selectionPieces[selectionPieces.length - 1];
+    // A return click to the first selection is a request to close a loop,
+    // not a request to reselect it. Check the fully specified rotation before
+    // applying the ordinary occupied-square selection priorities.
+    if (square === selections[0] && selections.length > 1 &&
+        selectionPieces.every(p => p !== undefined)) {
+        const selected = selectionPieces as Occupant[];
+        const proposed = chainTokens(board, tokens, selected, selections, square);
+        const resolved = resolveChain(board, player, limit, proposed, selected, mode, true);
+        if (resolved !== undefined) {
+            return {move: resolved};
+        }
+    }
     if (!movable(square)) {
         // While selecting a chain, an immovable enemy cancels the selection
         // rather than becoming another selected piece.
         return {move: stripped};
     }
     if (last !== undefined) {
-        // Selecting the piece to be displaced builds a chain. An immediate
-        // return to the first square closes a cycle rather than leaving an
-        // impossible pending selection.
-        if (square === selections[0] && selections.length > 1) {
-            const selected = selectionPieces as Occupant[];
-            const proposed = chainTokens(board, tokens, selected, selections, square);
-            const resolved = resolveChain(board, player, limit, proposed, selected, mode);
-            if (resolved !== undefined) {
-                return {move: resolved};
-            }
-        }
+        // Selecting the piece to be displaced builds a chain; closed loops
+        // were already handled above, before the ordinary mobility gate.
         if (!selections.includes(square)) {
             return select([...selections, square]);
         }
