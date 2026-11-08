@@ -303,7 +303,7 @@ describe("Arimaa input modes", () => {
         const game = position("Ha2,Hh2,Dd2,De1,Cg2,Rc2,Ra1,Rf1,Rg1,Rh1,Cb2,Rb1,Rc1,Re2,Ee5", "hg7,ra7,ra8,rb8,rf8,rg8,rh8,rh7,dd8,cc7,cf7,rc8,md6,eb5,de4,hb6");
         const move = "Hh2f3 Re2f2";
         expect(game.validateMove(move).valid).to.equal(true);
-        const completed = click(game, move, "a4", "advanced");
+        const completed = click(game, move, "a6", "advanced");
         expect(completed.valid).to.equal(true);
         expect(completed.complete).to.equal(1);
         expect(completed.move).not.to.equal("");
