@@ -88,7 +88,27 @@ function resolveChain(board: Map<string, CellContents>, player: playerid, limit:
         if (mode === "basic" && !distinctMoves(turn, allowed)) {
             return false;
         }
-        const order = selected.map(p => turn.trajectories.find(tr => tr.start === sqIndex(p.origin))?.firstStep ?? -1);
+        // The next piece must vacate its square before the preceding piece
+        // finishes there. A pusher can take preparatory steps *before* the
+        // pushed piece moves (for example f3-e3, e4-d4, e3-e4), so comparing
+        // first steps would wrongly reject a fully explicit chain.
+        const order = selected.map(p => {
+            const tr = turn.trajectories.find(t => t.start === sqIndex(p.origin));
+            if (tr === undefined || tr.visited.length < 2) {
+                return -1;
+            }
+            const pid = turn.steps[tr.firstStep]?.pid;
+            if (pid === undefined) {
+                return -1;
+            }
+            let last = tr.firstStep;
+            for (let i = last + 1; i < turn.steps.length; i++) {
+                if (turn.steps[i].pid === pid) {
+                    last = i;
+                }
+            }
+            return last;
+        });
         return order.every((step, i) => step >= 0 && (i === 0 || order[i - 1] > step));
     });
     const entered = tokens.map(t => t.text).join(" ");
@@ -234,11 +254,39 @@ export function inputClick(
     // Pieces may become movable after supporting steps. When the notation is
     // ambiguous, keep the original board selectable for disambiguating clicks.
     const remaining = preview.resolved ? limit - preview.stepsUsed : limit;
-    const movable = (cell: string): boolean => remaining > 0 &&
-        (canMoveNow(previewBoard, player, remaining, cell) ||
-            canMoveWithin(previewBoard, player, remaining, cell));
-    const clicked = occupancy.get(square);
-    const selectionPieces = selections.map(s => occupancy.get(s));
+    // An inferred pusher in the displayed resolution is not an explicit
+    // instruction. The player may still specify a *different* valid pusher,
+    // even when the preview has used all four steps or moved the original
+    // occupant away from its starting square.
+    const original = (cell: string): Occupant | undefined => {
+        const piece = board.get(cell);
+        if (piece === undefined || tokens.some(t => t.spec.square === cell)) {
+            return undefined;
+        }
+        return {piece: piece[0], owner: piece[1], origin: cell};
+    };
+    const canEditOriginal = (cell: string): boolean => {
+        if (tokens.length === 0 || original(cell) === undefined ||
+            !canMoveWithin(board, player, limit, cell)) {
+            return false;
+        }
+        const at = sqIndex(cell);
+        const r = resolve(board, player, limit, tokens, true, true, turn =>
+            turn.trajectories.some(tr => tr.start === at && tr.visited.length > 1));
+        return r.status !== "unsatisfiable";
+    };
+    const movable = (cell: string): boolean => {
+        if (remaining > 0 && occupancy.has(cell) &&
+            (canMoveNow(previewBoard, player, remaining, cell) ||
+                canMoveWithin(previewBoard, player, remaining, cell))) {
+            return true;
+        }
+        const shown = occupancy.get(cell);
+        return (shown === undefined || shown.origin === cell) && canEditOriginal(cell);
+    };
+    const clicked = occupancy.get(square) ?? (mode === "advanced" ? original(square) : undefined);
+    const selectionPieces = selections.map(s =>
+        occupancy.get(s) ?? (mode === "advanced" ? original(s) : undefined));
     const undo = (): InputClick => ({move: stripped.length ? tokens.slice(0, -1).map(t => t.text).join(" ") : ""});
     const select = (squares: string[]): InputClick => ({move: joinSelections(tokens, squares)});
 
@@ -264,9 +312,15 @@ export function inputClick(
             }
         }
         if (clicked === undefined && stripped.length > 0) {
-            const r = resolve(board, player, limit, tokens, false);
+            const r = resolve(board, player, limit, tokens, true);
             if (r.status === "resolved") {
-                return {move: stripped, complete: true};
+                // The preview may be leniently resolved while the notation
+                // still admits different outcomes. An explicit completion
+                // commits the displayed result with strict, replayable tokens.
+                const committed = r.lenient ? serializeTurn(board, player, limit, r.turn) : stripped;
+                if (committed !== undefined) {
+                    return {move: committed, complete: true};
+                }
             }
         }
         // Only an enemy unable to move using the remaining steps undoes.
