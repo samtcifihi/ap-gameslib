@@ -1,13 +1,13 @@
 import {  GameBase, IAPGameState, IClickResult, ICustomButton, IIndividualState, IScores, IStatus, IValidationResult, IHandleClickUi, IRenderOpts, type ChatLogCollectContext, type ChatLogLine, type FlagContext, type GameFlag } from "./_base.js";
 import type { APGamesInformation } from "../schemas/gameinfo.js";
-import { APRenderRep, AreaPieces, BoardBasic, Colourfuncs, Glyph, PaintEntry } from "@abstractplay/renderer/build/schemas/schema";
+import { APRenderRep, AreaPieces, BoardBasic, Colourfuncs, Glyph, MarkerLine, PaintEntry } from "@abstractplay/renderer/build/schemas/schema";
 import type { APMoveResult } from "../schemas/moveresults.js";
 import { randomInt, RectGrid, reviver, shuffle, SquareOrthGraph, UserFacingError, cloneState } from "../common/index.js";
 import i18next from "i18next";
 import { arrowToken, captureToken, isArrow, isLegacy, isMark, isHold, joinMove, normalize, parseMove, pieceChar, holdToken, tokenText, NotationError, type ParsedMove, type Token } from "./arimaa/notation.js";
 import { hasAnyMove, inferred, resolve, serializeTurn, sqName, turnFromSteps, type Turn } from "./arimaa/turns.js";
 import { castDie, type IDie } from "./arimaa/dice.js";
-import { ARIMAA_CAPTURE_CHOICE, captureAlternatives, inputClick } from "./arimaa/input.js";
+import { captureAlternatives, captureControlLines, captureControlSquare, inputClick } from "./arimaa/input.js";
 export const gameApgamesEn = {
     inputModes: {
         basic: {
@@ -630,16 +630,16 @@ export class ArimaaGame extends GameBase {
                 (this.standardSetup() && this.stack.length <= 2);
             const inputMode = this.resolveActiveInputMode(ui?.inputMode) ?? "basic";
             this._inputMode = inputMode === "advanced" ? "advanced" : "basic";
-            // The virtual triangle uses an ordinary piece click: the renderer
-            // supplies its board coordinates and reserved legend key. It never
-            // enters the game board or the move string as a real piece.
-            const square = row >= 0 && row < 8 && col >= 0 && col < 8 ?
-                ArimaaGame.coords2algebraic(col, row) : undefined;
-            const isCaptureChoice = piece === ARIMAA_CAPTURE_CHOICE;
-            const alternativeCapture = !placing && isCaptureChoice &&
-                inputMode === "advanced" && square !== undefined &&
-                captureAlternatives(this.board, this.currplayer, this.maxSteps(), move).includes(square);
-            if (isCaptureChoice && !alternativeCapture) {
+            // The renderer emits (-1, -1, endpoint-id) for clickable line
+            // markers. Decode only our triangle interior hit markers; ordinary
+            // square clicks still reach the unchanged move selection path.
+            const markerTrap = row === -1 && col === -1 ? captureControlSquare(piece) : undefined;
+            const square = markerTrap ?? (row >= 0 && row < 8 && col >= 0 && col < 8 ?
+                ArimaaGame.coords2algebraic(col, row) : undefined);
+            const alternativeCapture = !placing && markerTrap !== undefined &&
+                inputMode === "advanced" &&
+                captureAlternatives(this.board, this.currplayer, this.maxSteps(), move).includes(markerTrap);
+            if (markerTrap !== undefined && !alternativeCapture) {
                 return {...this.validateMove(move), move};
             }
             // The unadvertised status-quo path is retained for compatibility
@@ -1942,28 +1942,10 @@ export class ArimaaGame extends GameBase {
             const original = this.stack[this.stack.length - 1].board;
             const alternatives = captureAlternatives(original, this.currplayer, this.maxSteps(), this._entryMove);
             if (alternatives.length > 0) {
-                // The stock wedge is not a 45-degree right triangle. Keep
-                // it as an essentially invisible, clickable hit target only;
-                // the precise, visible geometry is a board shading polygon.
-                // Opacity does not disable SVG pointer events on filled paths.
-                legend[ARIMAA_CAPTURE_CHOICE] = {
-                    name: "wedge-top-half",
-                    colour: "_context_fill",
-                    opacity: 0.001,
-                    scale: 1.25,
-                    nudge: {dx: 8, dy: -198},
-                };
-                // String board pieces have one glyph per cell. The renderer's
-                // supported layered-grid format lets us overlay the virtual
-                // triangle without replacing any real game piece.
-                const layers = plst.map(line => line.split(",").map(key => key === "-" ? [] : [key]));
                 for (const trap of alternatives) {
                     const [x, y] = ArimaaGame.algebraic2coords(trap);
-                    // Precisely the upper-right half-square triangle:
-                    // both legs are half a cell, meeting at the square's
-                    // actual top-right corner. Flatten the trap icon's 50%
-                    // fill against the board to get the same visible grey
-                    // without darkening its overlap with the trap icon.
+                    // The visible polygon is the exact half-cell isosceles
+                    // right triangle (1/8 of the square); it has no hitbox.
                     (rep.board as BoardBasic).markers!.push({
                         type: "shading",
                         colour: {
@@ -1979,9 +1961,21 @@ export class ArimaaGame extends GameBase {
                             {col: x + 1, row: y + 0.5},
                         ],
                     });
-                    layers[y][x].push(ARIMAA_CAPTURE_CHOICE);
+                    // The renderer makes line markers clickable, but not
+                    // shading polygons. Fill only the triangular interior
+                    // with subpixel-spaced transparent hit strips instead of
+                    // using an incorrectly shaped and offset virtual piece.
+                    for (const hit of captureControlLines(trap)) {
+                        (rep.board as BoardBasic).markers!.push({
+                            type: "line",
+                            points: hit.points,
+                            width: hit.width,
+                            clickable: true,
+                            colour: "_context_fill",
+                            opacity: 0.001,
+                        } as MarkerLine);
+                    }
                 }
-                rep.pieces = [layers[0], ...layers.slice(1)];
             }
         }
 
