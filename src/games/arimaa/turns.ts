@@ -763,7 +763,7 @@ export function resolve(board: Map<string, CellContents>, player: playerid, maxS
         }
         return key;
     };
-    const memo = stepToks.length === 0;
+    const memo = stepToks.length === 0 && accept === undefined;
 
     for (let k = 1; k <= maxSteps; k++) {
         const found = new Map<string, Turn>();
