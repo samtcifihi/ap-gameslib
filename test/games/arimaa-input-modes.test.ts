@@ -299,4 +299,53 @@ describe("Arimaa input modes", () => {
         }
     });
 
+    it("completes the supplied partially ambiguous horse-and-rabbit move on an empty square", () => {
+        const game = position("Ha2,Hh2,Dd2,De1,Cg2,Rc2,Ra1,Rf1,Rg1,Rh1,Cb2,Rb1,Rc1,Re2,Ee5", "hg7,ra7,ra8,rb8,rf8,rg8,rh8,rh7,dd8,cc7,cf7,rc8,md6,eb5,de4,hb6");
+        const move = "Hh2f3 Re2f2";
+        expect(game.validateMove(move).valid).to.equal(true);
+        const completed = click(game, move, "a4", "advanced");
+        expect(completed.valid).to.equal(true);
+        expect(completed.complete).to.equal(1);
+        expect(completed.move).not.to.equal("");
+        const before = game.clone();
+        game.move(completed.move!);
+        expect(game.board.get("f3")).to.deep.equal(["H", 1]);
+        expect(game.board.get("f2")).to.deep.equal(["R", 1]);
+        expect(before.validateMove(completed.move!).valid).to.equal(true);
+    });
+
+    it("honours every explicitly selected link of the horse-over-elephant push chain", () => {
+        const game = position("Ha2,Dd2,De1,Cg2,Rc2,Ra1,Rf1,Rg1,Rh1,Cb2,Rb1,Rc1,Ee5,Rf2,Hf3", "hg7,ra7,ra8,rb8,rf8,rg8,rh8,cc7,cf7,rc8,md6,eb5,de4,hb6,rh4,dd7");
+        let result = click(game, "", "f3", "advanced");
+        expect(result.move).to.equal("f3");
+        result = click(game, result.move!, "e4", "advanced");
+        expect(result.move).to.equal("f3 e4");
+        result = click(game, result.move!, "d4", "advanced");
+        expect(result.valid).to.equal(true);
+        expect(result.move).to.contain("Hf3e4");
+        expect(result.move).to.contain("de4d4");
+        const after = game.clone().move(result.move!);
+        expect(after.board.get("e4")).to.deep.equal(["H", 1]);
+        expect(after.board.get("d4")).to.deep.equal(["D", 2]);
+        expect(after.board.get("e5")).to.deep.equal(["E", 1]);
+    });
+
+    it("allows a different explicitly selected pusher after an inferred dog flip", () => {
+        const game = position("Ha2,Dd2,De1,Cg2,Rc2,Ra1,Rf1,Rg1,Rh1,Cb2,Rb1,Rc1,Ee5,Rf2,He3", "hg7,ra7,ra8,rb8,rf8,rg8,rh8,cc7,cf7,md6,eb5,de4,hb6,rh4,dd7,rd8");
+        let result = click(game, "", "e4", "advanced");
+        result = click(game, result.move!, "f3", "advanced");
+        expect(result.valid).to.equal(true);
+        const dogMove = result.move!;
+        for (const pusher of ["e5", "e3"]) {
+            const selected = click(game, dogMove, pusher, "advanced");
+            expect(selected.valid, pusher).to.equal(true);
+            expect(selected.move, pusher).to.equal(`${dogMove} ${pusher}`);
+            const directed = click(game, selected.move!, "f4", "advanced");
+            expect(directed.valid, pusher).to.equal(true);
+            const after = game.clone().move(directed.move!);
+            expect(after.board.get("f3"), pusher).to.deep.equal(["D", 2]);
+            expect(after.board.get("f4"), pusher).to.deep.equal([pusher === "e5" ? "E" : "H", 1]);
+        }
+    });
+
 });
