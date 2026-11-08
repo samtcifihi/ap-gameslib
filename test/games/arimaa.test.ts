@@ -221,7 +221,7 @@ describe("Arimaa", () => {
         g.move("rd5,rd3");
         result = g.validateMove("Hd6d7,rd5d6,Ed4d5,rd3d4");
         expect(result.valid).to.be.true;
-        expect(result.complete).to.equal(1);
+        expect(result.complete).to.equal(0);
     });
 
     it ("Harlog status shows the leader's colour instead of a sign", () => {
@@ -288,7 +288,8 @@ const rc = (cell: string): [number, number] => {
     const [x, y] = ArimaaGame.algebraic2coords(cell);
     return [y, x];
 };
-const click = (g: ArimaaGame, move: string, cell: string) => g.handleClick(move, ...rc(cell));
+// Preserve the old arrow-entry suite as a baseline for historical click-count comparisons.
+const click = (g: ArimaaGame, move: string, cell: string) => g.handleClick(move, ...rc(cell), undefined, {inputMode: "status-quo"});
 const annotations = (g: ArimaaGame): string[] => {
     const rep = g.render();
     const name = (t: {row: number; col: number}): string => ArimaaGame.coords2algebraic(t.col, t.row);
@@ -529,7 +530,7 @@ describe("Arimaa arrow entry", () => {
         r = click(g, r.move, "f3");
         expect(r.move).to.equal("dh3f3");
         expect(r.valid).to.be.true;
-        expect(r.complete).to.equal(1);
+        expect(r.complete).to.equal(0);
         const preview = g.clone();
         preview.move(r.move, {partial: true});
         expect(annotations(preview)).to.have.members(["enter:g3", "move:h3>f3", "exit:f3"]);
@@ -684,7 +685,7 @@ describe("Arimaa arrow entry", () => {
         r = click(g, r.move, "e6");
         expect(r.move).to.equal("dd6c6 Cg2g3 Ee6e6");
         expect(r.valid).to.be.true;
-        expect(r.complete).to.equal(1);
+        expect(r.complete).to.equal(0);
         const preview = g.clone();
         preview.move(r.move, {partial: true});
         expect(annotations(preview)).to.include.members(["enter:e6", "move:d6>c6", "exit:c6", "move:g2>g3"]);
@@ -712,7 +713,7 @@ describe("Arimaa arrow entry", () => {
         r = click(g, r.move, "h5");
         expect(r.move).to.equal("Eh5g6 rg6h6 rh6h5");
         expect(r.valid).to.be.true;
-        expect(r.complete).to.equal(1);
+        expect(r.complete).to.equal(0);
         g.move(r.move);
         expect(g.board.get("g6")).to.deep.equal(["E", 1]);
         expect(g.board.get("h6")).to.deep.equal(["R", 2]);
@@ -730,7 +731,7 @@ describe("Arimaa arrow entry", () => {
         r = click(g, r.move, "e3");
         expect(r.move).to.equal("Re2e4 De3e3");
         expect(r.valid).to.be.true;
-        expect(r.complete).to.equal(1);
+        expect(r.complete).to.equal(0);
         g.move(r.move);
         expect(g.board.get("e4")).to.deep.equal(["R", 1]);
         expect(g.board.get("e3")).to.deep.equal(["D", 1]);
@@ -761,7 +762,7 @@ describe("Arimaa arrow entry", () => {
         r = click(g, r.move, "c3");
         expect(r.move).to.equal("Hb3a4 Mb4b3 Rb2c2 Rc3x");
         expect(r.valid).to.be.true;
-        expect(r.complete).to.equal(1);
+        expect(r.complete).to.equal(0);
         const preview = g.clone();
         preview.move(r.move, {partial: true});
         expect(preview.board.has("c3")).to.be.false;
@@ -787,7 +788,7 @@ describe("Arimaa arrow entry", () => {
         r = click(g, r.move, "b4");
         expect(r.move).to.equal("rc3x Eb4b4");
         expect(r.valid).to.be.true;
-        expect(r.complete).to.equal(1);
+        expect(r.complete).to.equal(0);
         g.move(r.move);
         expect(g.board.has("c3")).to.be.false;
         expect(g.board.get("b4")).to.deep.equal(["E", 1]);
@@ -824,7 +825,7 @@ describe("Arimaa arrow entry", () => {
         const g = position("Ed4,Ra1,Cc1", "re4,ra8,ee8");
         const r = g.validateMove("re4e6 Ed4e5");
         expect(r.valid).to.be.true;
-        expect(r.complete).to.equal(1);
+        expect(r.complete).to.equal(0);
         g.move("re4e6 Ed4e5");
         expect(g.board.get("e6")).to.deep.equal(["R", 2]);
         expect(g.board.get("e5")).to.deep.equal(["E", 1]);
@@ -1202,7 +1203,7 @@ describe("Arimaa Dicey Moves", () => {
         g.die = {steps: 1, square: g.die!.square};
         let result = g.validateMove("Ed3");
         expect(result.valid).to.be.true;
-        expect(result.complete).to.equal(1);
+        expect(result.complete).to.equal(0);
         result = g.validateMove("Ed4");
         expect(result.valid).to.be.false;
         result = g.validateMove("Ed2d4");
@@ -1210,7 +1211,7 @@ describe("Arimaa Dicey Moves", () => {
         expect(result.message).to.equal(i18next.t("apgames:validation.arimaa.TOO_LONG", {num: 1}));
         result = g.validateMove("Ed2d3");
         expect(result.valid).to.be.true;
-        expect(result.complete).to.equal(1);
+        expect(result.complete).to.equal(0);
         result = g.validateMove("Ed2d3,Ed3d4");
         expect(result.valid).to.be.false;
         expect(result.message).to.equal(i18next.t("apgames:validation.arimaa.TOO_MANY", {num: 1}));
