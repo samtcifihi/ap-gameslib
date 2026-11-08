@@ -1946,7 +1946,9 @@ export class ArimaaGame extends GameBase {
                     name: "wedge-top-half",
                     colour: "_context_fill",
                     scale: 1.25,
-                    nudge: {dx: -20, dy: -250},
+                    // The stock right-triangle glyph is anchored at its right
+                    // angle, with that point positioned in the trap corner.
+                    nudge: {dx: 44, dy: -312},
                 };
                 // String board pieces have one glyph per cell. The renderer's
                 // supported layered-grid format lets us overlay the virtual
