@@ -3,7 +3,7 @@ import { expect } from "chai";
 import { addResource } from "../../src";
 import { ArimaaGame } from "../../src/games/arimaa";
 import { parseMove, parseToken } from "../../src/games/arimaa/notation";
-import { captureAlternatives, captureControlLines, captureControlSquare } from "../../src/games/arimaa/input";
+import { ARIMAA_CAPTURE_CHOICE, captureAlternatives } from "../../src/games/arimaa/input";
 
 const at = (cell: string): [number, number] => {
     const [col, row] = ArimaaGame.algebraic2coords(cell);
@@ -115,91 +115,56 @@ describe("Arimaa input modes", () => {
         }
     });
 
-    it("renders a clickable Advanced trap triangle and captures the cat on f3", () => {
+    it("uses a single custom-glyph polygon for the visible and clickable Advanced trap triangle", () => {
         const g = position("Rf2,Cg2,Ra1", "ra8,ee8");
         expect(captureAlternatives(g.board, g.currplayer, 4, "g2")).to.include("f3");
+        const before = g.serialize();
         const preview = g.clone().move("g2", {partial: true});
         const advanced = preview.render({inputMode: "advanced"});
-        // The piece board stays unchanged: no virtual wedge or square
-        // hitbox overlaps the other 7/8 of the trap.
-        expect(typeof advanced.pieces).to.equal("string");
-        expect(g.board.has("f3")).to.equal(false);
-        const markers = (advanced.board as {markers?: Array<{
-            type: string;
-            clickable?: boolean;
-            colour?: unknown;
-            opacity?: number;
-            width?: number;
-            points?: Array<{row?: number; col?: number}>;
-        }>}).markers ?? [];
-        const triangle = markers.filter(m => m.type === "shading");
-        expect(triangle).to.have.length(1);
-        expect(triangle[0].points).to.deep.equal([
-            {col: 5.5, row: 5},
-            {col: 6, row: 5},
-            {col: 6, row: 5.5},
-        ]);
-        expect(triangle[0].colour).to.deep.equal({
+
+        // The custom shape has no background rectangle or separate hitbox:
+        // the filled polygon is the only painted geometry. In square-relative
+        // coordinates it covers exactly the upper-right 1/8 of the cell.
+        const definition = advanced.glyphDefs?.["arimaa-trap-choice"];
+        expect(definition?.viewBox).to.deep.equal([0, 0, 100, 100]);
+        expect(definition?.markup).to.equal(
+            '<polygon points="50,0 100,0 100,50" fill="#ffffff" data-slot-fill="fill"/>'
+        );
+        const verts = [[50, 0], [100, 0], [100, 50]];
+        const area = Math.abs(verts.reduce((sum, [x, y], i) => {
+            const [nx, ny] = verts[(i + 1) % verts.length];
+            return sum + x * ny - nx * y;
+        }, 0)) / 2;
+        expect(area / (100 * 100)).to.equal(1 / 8);
+        const glyph = advanced.legend?.[ARIMAA_CAPTURE_CHOICE] as {
+            def?: string; scale?: number; paint?: {fill?: unknown};
+        };
+        expect(glyph.def).to.equal("arimaa-trap-choice");
+        expect(glyph.scale).to.equal(1 / 0.85);
+        expect(glyph.paint?.fill).to.deep.equal({
             func: "flatten",
             fg: "_context_fill",
             bg: "_context_board",
             opacity: 0.5,
         });
-        expect(triangle[0].opacity).to.equal(1);
+        const layers = advanced.pieces as string[][][];
+        expect(layers).to.have.length(8);
+        expect(layers[5][5]).to.deep.equal([ARIMAA_CAPTURE_CHOICE]); // f3
+        expect(layers[5][6]).not.to.include(ARIMAA_CAPTURE_CHOICE);
+        const markers = (advanced.board as {markers?: Array<{type: string; clickable?: boolean}>}).markers ?? [];
+        expect(markers.filter(m => m.type === "line" && m.clickable)).to.have.length(0);
+        expect(markers.filter(m => m.type === "shading")).to.have.length(0);
+        expect(g.serialize()).to.equal(before); // No virtual board occupant.
 
-        const hits = captureControlLines("f3");
-        expect(hits).to.have.length(97);
-        expect(markers.filter(m => m.type === "line" && m.clickable)).to.have.length(97);
-        // Stroke centers occupy only the upper-right half-square triangle,
-        // with subpixel horizontal spacing. No displaced stock wedge exists.
-        for (const hit of hits.slice(0, -1)) {
-            const [a, b] = hit.points;
-            expect(a.row).to.equal(b.row);
-            expect(a.row).to.be.greaterThan(5);
-            expect(a.row).to.be.lessThan(5.5);
-            expect(a.col).to.be.at.least(5.5 + (a.row - 5));
-            expect(b.col).to.be.at.most(6);
-            expect(hit.width).to.be.lessThan(0.3);
-            expect(captureControlSquare(hit.id)).to.equal("f3");
-        }
-        const diagonal = hits[hits.length - 1];
-        expect(diagonal.points).to.deep.equal([
-            {row: 5, col: 5.5},
-            {row: 5.5, col: 6},
-        ]);
-        expect(diagonal.width).to.equal(0.35);
-        expect(captureControlSquare(diagonal.id)).to.equal("f3");
-        expect(captureControlSquare("not-a-control")).to.equal(undefined);
-        // Geometry regression at the renderer's default 50px cell size:
-        // every pixel centre in the intended 1/8-square triangle is
-        // clickable, and none of the other centres in the square is.
-        const distanceToSegment = (px: number, py: number, hit: typeof hits[number]): number => {
-            const [a, b] = hit.points;
-            const dx = b.col - a.col;
-            const dy = b.row - a.row;
-            const t = Math.max(0, Math.min(1, ((px - a.col) * dx + (py - a.row) * dy) / (dx * dx + dy * dy || 1)));
-            return Math.hypot(px - (a.col + t * dx), py - (a.row + t * dy));
-        };
-        let covered = 0;
-        for (let yy = 0; yy < 50; yy++) {
-            for (let xx = 0; xx < 50; xx++) {
-                const px = 5 + (xx + 0.5) / 50;
-                const py = 5 + (yy + 0.5) / 50;
-                const inside = px >= 5.5 && py <= 5.5 && px - py >= 0.5;
-                const clickable = hits.some(hit => distanceToSegment(px, py, hit) <= hit.width / 100);
-                expect(clickable, `hit area at pixel (${xx}, ${yy})`).to.equal(inside);
-                if (clickable) covered++;
-            }
-        }
-        expect(covered).to.equal(325);
+        // The control is absent from Basic and from idle Advanced previews.
         const basic = preview.render({inputMode: "basic"});
+        expect(basic.glyphDefs).to.equal(undefined);
         expect(typeof basic.pieces).to.equal("string");
-        const basicMarkers = (basic.board as {markers?: Array<{type: string; clickable?: boolean}>}).markers ?? [];
-        expect(basicMarkers.some(m => m.type === "line" && m.clickable)).to.equal(false);
-        // No selection means no trap control, even in Advanced mode.
+        expect(basic.legend?.[ARIMAA_CAPTURE_CHOICE]).to.equal(undefined);
         const idle = g.render({inputMode: "advanced"});
-        const idleMarkers = (idle.board as {markers?: Array<{type: string; clickable?: boolean}>}).markers ?? [];
-        expect(idleMarkers.some(m => m.type === "line" && m.clickable)).to.equal(false);
+        expect(idle.glyphDefs).to.equal(undefined);
+        expect(typeof idle.pieces).to.equal("string");
+        expect(idle.legend?.[ARIMAA_CAPTURE_CHOICE]).to.equal(undefined);
 
         const ordinary = click(g, "g2", "f3", "advanced");
         expect(ordinary.move).to.equal("Cg2f3");
@@ -207,19 +172,19 @@ describe("Arimaa input modes", () => {
         const survives = g.clone().move(ordinary.move!);
         expect(survives.board.get("f3")).to.deep.equal(["C", 1]);
 
-        // A marker in the triangular interior reports (-1,-1,endpoint-id).
-        // Ordinary f3 clicks above must still use the default outcome.
-        const special = g.handleClick("g2", -1, -1, hits[32].id, {inputMode: "advanced"});
+        // The renderer reports (row,col,legendKey) for a custom board
+        // piece, exactly as for stock sheet pieces.
+        const special = g.handleClick("g2", ...at("f3"), ARIMAA_CAPTURE_CHOICE, {inputMode: "advanced"});
         expect(special.valid).to.equal(true);
         expect(special.move).to.equal("Cg2f3 Cg2x");
         const captured = g.clone().move(special.move!);
         expect(captured.board.has("f3")).to.equal(false);
         expect(captured.lastmove).not.to.contain("o");
 
-        // Ignore triangle-marker clicks when Basic mode is active.
-        const basicSpecial = g.handleClick("g2", -1, -1, hits[32].id, {inputMode: "basic"});
+        // Forged or out-of-mode custom-piece clicks must do nothing.
+        const basicSpecial = g.handleClick("g2", ...at("f3"), ARIMAA_CAPTURE_CHOICE, {inputMode: "basic"});
         expect(basicSpecial.move).to.equal("g2");
-        expect(g.board.has("f3")).to.equal(false);
+        expect(g.handleClick("g2", ...at("c3"), ARIMAA_CAPTURE_CHOICE, {inputMode: "advanced"}).move).to.equal("g2");
     });
 
     it("keeps the cat alive when the rabbit reaches e3 before the cat reaches f3", () => {
