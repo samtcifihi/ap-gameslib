@@ -69,11 +69,9 @@ function chainTokens(board: Map<string, CellContents>, tokens: Token[], selected
 }
 
 function resolveChain(board: Map<string, CellContents>, player: playerid, limit: number, tokens: Token[], selected: Occupant[], mode: ArimaaInputMode): boolean {
-    if (mode === "advanced") {
-        return resolve(board, player, limit, tokens, true).status !== "unsatisfiable";
-    }
-    // Basic means each moved (or captured) piece must have been explicitly
-    // named, including pieces that move away and come back.
+    // A chained entry vacates its squares from newest selection to oldest.
+    // Basic additionally forbids movement or capture of unselected pieces
+    // and requires one strict result, without guessing between positions.
     const allowed = new Set<number>();
     for (const t of tokens) {
         if (t.spec.square !== undefined) {
@@ -81,16 +79,16 @@ function resolveChain(board: Map<string, CellContents>, player: playerid, limit:
         }
     }
     const chain = new Set(selected.map(p => sqIndex(p.origin)));
-    const r = resolve(board, player, limit, tokens, false, true, turn => {
-        if (!distinctMoves(turn, allowed)) {
+    const r = resolve(board, player, limit, tokens, mode === "advanced", true, turn => {
+        if (mode === "basic" && !distinctMoves(turn, allowed)) {
             return false;
         }
-        // The newest selection vacates first. Chained entries are not
-        // permitted to silently reverse which occupant vacates a square.
         const order = selected.map(p => turn.trajectories.find(tr => tr.start === sqIndex(p.origin))?.firstStep ?? -1);
-        return order.every((step, i) => i === 0 || step >= 0 && order[i - 1] > step);
+        return order.every((step, i) => step >= 0 && (i === 0 || order[i - 1] > step));
     });
-    return r.status === "resolved" && r.turn.trajectories.some(tr => chain.has(tr.start));
+    return mode === "advanced" ?
+        r.status !== "unsatisfiable" :
+        r.status === "resolved" && r.turn.trajectories.some(tr => chain.has(tr.start));
 }
 
 function prefCompare(a: Turn, b: Turn): number {
