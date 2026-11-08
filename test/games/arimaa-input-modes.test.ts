@@ -170,6 +170,28 @@ describe("Arimaa input modes", () => {
         expect(diagonal.width).to.equal(0.35);
         expect(captureControlSquare(diagonal.id)).to.equal("f3");
         expect(captureControlSquare("not-a-control")).to.equal(undefined);
+        // Geometry regression at the renderer's default 50px cell size:
+        // every pixel centre in the intended 1/8-square triangle is
+        // clickable, and none of the other centres in the square is.
+        const distanceToSegment = (px: number, py: number, hit: typeof hits[number]): number => {
+            const [a, b] = hit.points;
+            const dx = b.col - a.col;
+            const dy = b.row - a.row;
+            const t = Math.max(0, Math.min(1, ((px - a.col) * dx + (py - a.row) * dy) / (dx * dx + dy * dy || 1)));
+            return Math.hypot(px - (a.col + t * dx), py - (a.row + t * dy));
+        };
+        let covered = 0;
+        for (let yy = 0; yy < 50; yy++) {
+            for (let xx = 0; xx < 50; xx++) {
+                const px = 5 + (xx + 0.5) / 50;
+                const py = 5 + (yy + 0.5) / 50;
+                const inside = px >= 5.5 && py <= 5.5 && px - py >= 0.5;
+                const clickable = hits.some(hit => distanceToSegment(px, py, hit) <= hit.width / 100);
+                expect(clickable, `hit area at pixel (${xx}, ${yy})`).to.equal(inside);
+                if (clickable) covered++;
+            }
+        }
+        expect(covered).to.equal(325);
         const basic = preview.render({inputMode: "basic"});
         expect(typeof basic.pieces).to.equal("string");
         const basicMarkers = (basic.board as {markers?: Array<{type: string; clickable?: boolean}>}).markers ?? [];
