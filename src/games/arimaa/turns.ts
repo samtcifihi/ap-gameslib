@@ -864,6 +864,56 @@ export function canMoveNow(board: Map<string, CellContents>, player: playerid, m
     return id >= 0 && search.atoms(maxSteps).some(atom => atom.some(step => step.pid === id));
 }
 
+/** Whether a piece can participate after legal preparatory steps this turn. */
+export function canMoveWithin(board: Map<string, CellContents>, player: playerid, maxSteps: number, origin: string): boolean {
+    if (maxSteps <= 0) {
+        return false;
+    }
+    const search = new Search(board, player);
+    const id = search.ids[sqIndex(origin)];
+    if (id < 0) {
+        return false;
+    }
+    const target = search.pieces[id];
+    if (target.owner !== player && !search.pieces.some(p =>
+        p.owner === player && p.strength > target.strength && DIST[p.cur * 64 + target.cur] < maxSteps)) {
+        return false;
+    }
+    const seen = new Set<string>();
+    const reachable = (remaining: number): boolean => {
+        if (search.pieces[id].cur < 0) {
+            return false;
+        }
+        const atoms = search.atoms(remaining);
+        if (atoms.some(atom => atom.some(step => step.pid === id))) {
+            return true;
+        }
+        if (remaining <= 1) {
+            return false;
+        }
+        const key = `${remaining}:${search.signature()}:${search.pieces[id].cur}`;
+        if (seen.has(key)) {
+            return false;
+        }
+        seen.add(key);
+        for (const atom of atoms) {
+            if (atom.length >= remaining) {
+                continue;
+            }
+            const undos = atom.map(step => search.apply(step));
+            const found = reachable(remaining - atom.length);
+            while (undos.length > 0) {
+                search.undo(undos.pop()!);
+            }
+            if (found) {
+                return true;
+            }
+        }
+        return false;
+    };
+    return reachable(maxSteps);
+}
+
 export function hasAnyMove(board: Map<string, CellContents>, player: playerid, maxSteps = 4): boolean {
     return new Search(board, player).atoms(Math.min(2, maxSteps)).length > 0;
 }

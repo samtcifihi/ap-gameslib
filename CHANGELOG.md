@@ -42,6 +42,7 @@ Since the `1.0.0-beta` release, the version in `package.json` has stayed at `1.0
 
 ### Fixed
 
+- **Arimaa input:** allow pieces to be selected before they are unfrozen or unblocked, preserve click disambiguation highlights, enter supported trap moves in Basic, and keep partial setups rendered while a piece is selected from the tray.
 - **Arimaa input:** immovable enemy clicks undo the last entry token instead of selecting the piece; Advanced trap-sacrifice triangles now use one paintable custom SVG definition (`glyphDefs`/`def`) for both exact half-cell geometry and the click target, replacing the 97 line-marker approximation without renderer changes or a game-state version bump.
 - **Quax diamond-board:** square placement clicks map on the squares-diamonds grid when draw context is supplied (vertex fallback when omitted).
 - **`GameBase.sameMove`:** treat empty or missing `move2` as not a match instead of throwing when comparing exploration or premove branches.

@@ -237,4 +237,66 @@ describe("Arimaa input modes", () => {
         expect(g.validateMove("Ed4d5").complete).to.equal(0);
         expect(g.validateMove("Ed4d5, Ed5d6, Ed6d7, Ed7c7").complete).to.equal(0);
     });
+    it("selects a frozen piece after preparatory support and a blocked piece after clearing space", () => {
+        const frozen = position("Rc4,Eb3,Ra1", "ec5,ra8");
+        expect(click(frozen, "", "c4").move).to.equal("c4");
+        let support = click(frozen, "", "b3");
+        support = click(frozen, support.move!, "c3");
+        expect(support.move).to.equal("Eb3c3");
+        let rabbit = click(frozen, support.move!, "c4");
+        expect(rabbit.move).to.equal("Eb3c3 c4");
+        rabbit = click(frozen, rabbit.move!, "d4");
+        expect(rabbit.valid).to.equal(true);
+        expect(frozen.clone().move(rabbit.move!).board.get("d4")).to.deep.equal(["R", 1]);
+
+        const blocked = position("Rb1,Rb2,Ra1,Rc1,Ee2", "ra8,ee8");
+        expect(click(blocked, "", "b1").move).to.equal("b1");
+        const oneStep = position("Rc4,Eb3,Ra1", "ec5,ra8");
+        oneStep.die = {steps: 1, square: "a4"};
+        expect(click(oneStep, "", "c4").move).to.equal("");
+    });
+
+    it("accepts rabbit and cat trap support in either click-entry order in Basic", () => {
+        for (const squares of [["f2", "f3", "e2", "e3"], ["e2", "e3", "f2", "f3"]]) {
+            const game = position("Re2,Cf2", "rb7,mc7");
+            let move = "";
+            for (const square of squares) {
+                const result = click(game, move, square);
+                expect(result.valid, square).to.equal(true);
+                move = result.move!;
+            }
+            expect(game.validateMove(move).valid, squares.join(" ")).to.equal(true);
+            const played = game.clone().move(move);
+            expect(played.board.get("e3")).to.deep.equal(["R", 1]);
+            expect(played.board.get("f3")).to.deep.equal(["C", 1]);
+        }
+    });
+
+    it("keeps selection highlighting available while notation is ambiguous", () => {
+        const game = position("Ed4,Hf4,Ra1", "re4,ra8,ee8");
+        expect(game.validateMove("re4e5").complete).to.equal(-1);
+        const selected = click(game, "re4e5", "d4");
+        expect(selected.valid).to.equal(true);
+        expect(selected.move).to.equal("re4e5 d4");
+        expect(selected.canrender).to.equal(true);
+        const preview = game.clone().move(selected.move!, {partial: true});
+        const markers = (preview.render().board as {
+            markers?: Array<{type: string; points?: Array<{row: number; col: number}>}>;
+        }).markers ?? [];
+        expect(markers.some(marker => marker.type === "flood" &&
+            marker.points?.some(({row, col}) => ArimaaGame.coords2algebraic(col, row) === "d4"))).to.equal(true);
+    });
+
+    it("preserves placed pieces when another piece is selected from either setup tray", () => {
+        for (const variants of [[], ["free"]]) {
+            const game = new ArimaaGame(undefined, variants);
+            const selected = game.handleClick("Ee2", -1, -1, "pC1");
+            expect(selected.move).to.equal("Ee2,C");
+            expect(selected.canrender).to.equal(true);
+            const preview = game.clone().move(selected.move!, {partial: true});
+            expect(preview.board.get("e2")).to.deep.equal(["E", 1]);
+            expect(preview.render().pieces).to.be.a("string").and.include("E1");
+        }
+    });
+
 });

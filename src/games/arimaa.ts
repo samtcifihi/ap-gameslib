@@ -968,6 +968,7 @@ export class ArimaaGame extends GameBase {
                     result.valid = true;
                     result.complete = -1;
                     result.message = i18next.t("apgames:validation.arimaa.PARTIAL_PLACE");
+                    result.canrender = true;
                     return result;
                 }
             }

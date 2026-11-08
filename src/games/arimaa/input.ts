@@ -2,7 +2,7 @@ import {
     arrowToken, captureToken, joinSelections, parseMove, surviveToken,
     type Token, type Piece, type playerid,
 } from "./notation.js";
-import { canMoveNow, resolve, serializeTurn, sqIndex, sqName, type CellContents, type Turn } from "./turns.js";
+import { canMoveNow, canMoveWithin, resolve, serializeTurn, sqIndex, sqName, type CellContents, type Turn } from "./turns.js";
 
 export type ArimaaInputMode = "basic" | "advanced";
 export interface InputClick {
@@ -74,10 +74,9 @@ function chainTokens(board: Map<string, CellContents>, tokens: Token[], selected
     return out;
 }
 
-function resolveChain(board: Map<string, CellContents>, player: playerid, limit: number, tokens: Token[], selected: Occupant[], mode: ArimaaInputMode): boolean {
+function resolveChain(board: Map<string, CellContents>, player: playerid, limit: number, tokens: Token[], selected: Occupant[], mode: ArimaaInputMode): string | undefined {
     // A chained entry vacates its squares from newest selection to oldest.
-    // Basic additionally forbids movement or capture of unselected pieces
-    // and requires one strict result, without guessing between positions.
+    // Basic additionally forbids movement or capture of unselected pieces.
     const allowed = new Set<number>();
     for (const t of tokens) {
         if (t.spec.square !== undefined) {
@@ -92,9 +91,36 @@ function resolveChain(board: Map<string, CellContents>, player: playerid, limit:
         const order = selected.map(p => turn.trajectories.find(tr => tr.start === sqIndex(p.origin))?.firstStep ?? -1);
         return order.every((step, i) => step >= 0 && (i === 0 || order[i - 1] > step));
     });
-    return mode === "advanced" ?
-        r.status !== "unsatisfiable" :
-        r.status === "resolved" && r.turn.trajectories.some(tr => chain.has(tr.start));
+    const entered = tokens.map(t => t.text).join(" ");
+    if (mode === "advanced") {
+        return r.status === "unsatisfiable" ? undefined : entered;
+    }
+    if (r.status === "resolved") {
+        return r.turn.trajectories.some(tr => chain.has(tr.start)) ? entered : undefined;
+    }
+    if (r.status !== "ambiguous") {
+        return undefined;
+    }
+
+    // When selected pieces reach the same squares but a friendly trap occupant
+    // can either survive or die, prefer survival and encode the step order.
+    // Other ambiguities still require explicit disambiguation.
+    const shape = (turn: Turn): string => turn.trajectories
+        .map(tr => `${tr.owner}:${tr.type}:${tr.start}:${tr.final}`).sort().join("|");
+    if (new Set(r.candidates.map(shape)).size !== 1) {
+        return undefined;
+    }
+    const fewestOwnCaptures = Math.min(...r.candidates.map(turn => turn.ownCaptured));
+    if (r.candidates.every(turn => turn.ownCaptured === fewestOwnCaptures)) {
+        return undefined;
+    }
+    const survivors = r.candidates.filter(turn => turn.ownCaptured === fewestOwnCaptures);
+    if (survivors.length !== 1 || !survivors[0].trajectories.some(tr => chain.has(tr.start))) {
+        return undefined;
+    }
+    const explicit = serializeTurn(board, player, limit, survivors[0]);
+    return explicit !== undefined && resolve(board, player, limit, parseMove(explicit).tokens, false).status === "resolved" ?
+        explicit : undefined;
 }
 
 function prefCompare(a: Turn, b: Turn): number {
@@ -205,12 +231,12 @@ export function inputClick(
     const previewBoard = new Map<string, CellContents>(
         [...occupancy].map(([cell, p]): [string, CellContents] => [cell, [p.piece, p.owner]])
     );
-    // A piece is selectable only if it can participate in a legal step,
-    // push, or pull *after* the already-entered move, within the steps left.
-    // In particular, merely having any prior token must never turn every
-    // enemy piece into a selectable one.
-    const movable = (cell: string): boolean => preview.resolved &&
-        canMoveNow(previewBoard, player, limit - preview.stepsUsed, cell);
+    // Pieces may become movable after supporting steps. When the notation is
+    // ambiguous, keep the original board selectable for disambiguating clicks.
+    const remaining = preview.resolved ? limit - preview.stepsUsed : limit;
+    const movable = (cell: string): boolean => remaining > 0 &&
+        (canMoveNow(previewBoard, player, remaining, cell) ||
+            canMoveWithin(previewBoard, player, remaining, cell));
     const clicked = occupancy.get(square);
     const selectionPieces = selections.map(s => occupancy.get(s));
     const undo = (): InputClick => ({move: stripped.length ? tokens.slice(0, -1).map(t => t.text).join(" ") : ""});
@@ -260,8 +286,9 @@ export function inputClick(
                     captureToken(last.piece, last.owner, last.origin) :
                     surviveToken(last.piece, last.owner, last.origin));
             }
-            if (resolveChain(board, player, limit, proposed, selected, mode)) {
-                return {move: proposed.map(t => t.text).join(" ")};
+            const resolved = resolveChain(board, player, limit, proposed, selected, mode);
+            if (resolved !== undefined) {
+                return {move: resolved};
             }
         }
         if (mode === "advanced") {
@@ -292,8 +319,9 @@ export function inputClick(
         if (square === selections[0] && selections.length > 1) {
             const selected = selectionPieces as Occupant[];
             const proposed = chainTokens(board, tokens, selected, selections, square);
-            if (resolveChain(board, player, limit, proposed, selected, mode)) {
-                return {move: proposed.map(t => t.text).join(" ")};
+            const resolved = resolveChain(board, player, limit, proposed, selected, mode);
+            if (resolved !== undefined) {
+                return {move: resolved};
             }
         }
         if (!selections.includes(square)) {
