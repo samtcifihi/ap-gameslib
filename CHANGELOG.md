@@ -42,7 +42,7 @@ Since the `1.0.0-beta` release, the version in `package.json` has stayed at `1.0
 
 ### Fixed
 
-- **Arimaa input:** immovable enemy clicks undo the last entry token instead of selecting the piece; Advanced trap-sacrifice triangles use a precisely aligned, isosceles, trap-grey half-cell shading with an almost-transparent clickable virtual board piece (no renderer changes or line-marker overlays), including after partial preview reconstruction.
+- **Arimaa input:** immovable enemy clicks undo the last entry token instead of selecting the piece; Advanced trap-sacrifice triangles use precisely aligned, isosceles, trap-grey half-cell shading and subpixel-spaced transparent clickable line markers matching the triangular area (no renderer changes or offset virtual-piece hitbox), including after partial preview reconstruction.
 - **Quax diamond-board:** square placement clicks map on the squares-diamonds grid when draw context is supplied (vertex fallback when omitted).
 - **`GameBase.sameMove`:** treat empty or missing `move2` as not a match instead of throwing when comparing exploration or premove branches.
 - **apresults path map:** keep shared `EOG.breakthrough` under `_general` when the Breakthrough game uid is in the registry (fixes `test:scripts` round-trip after catalogue collision).
