@@ -3,6 +3,7 @@ import { expect } from "chai";
 import { addResource } from "../../src";
 import { ArimaaGame } from "../../src/games/arimaa";
 import { parseMove, parseToken } from "../../src/games/arimaa/notation";
+import { captureAlternatives, captureControlLines } from "../../src/games/arimaa/input";
 
 const at = (cell: string): [number, number] => {
     const [col, row] = ArimaaGame.algebraic2coords(cell);
@@ -81,6 +82,67 @@ describe("Arimaa input modes", () => {
         expect(pull.valid).to.equal(true);
         expect(pull.move).to.equal("Ed4c4 re4d4");
         expect(pull.complete).to.equal(0);
+    });
+
+    it("uses immovable enemy clicks to undo the last token in both modes", () => {
+        const g = position("Ed4,Ra1", "ra8,ee8");
+        for (const mode of ["basic", "advanced"] as const) {
+            const result = click(g, "Ed4e4", "a8", mode);
+            expect(result.move, mode).to.equal("");
+            expect(result.valid, mode).to.equal(true);
+            expect(result.complete, mode).to.equal(-1);
+            // During a selection, undo cancels selections, not a move token.
+            const cancel = click(g, "Ed4e4 d4", "a8", mode);
+            expect(cancel.move, mode).to.equal("Ed4e4");
+        }
+    });
+
+    it("does not select an enemy when the only remaining die step cannot complete a push", () => {
+        const g = position("Ed4,Ra1", "re5,ra8,ee8");
+        g.die = {steps: 2, square: "b5"};
+        for (const mode of ["basic", "advanced"] as const) {
+            const r = click(g, "Ed4e4", "e5", mode);
+            expect(r.move, mode).to.equal("");
+        }
+    });
+
+    it("renders a clickable Advanced trap triangle and captures the cat on f3", () => {
+        const g = position("Rf2,Cg2,Ra1", "ra8,ee8");
+        expect(captureAlternatives(g.board, g.currplayer, 4, "g2")).to.include("f3");
+        const preview = g.clone().move("g2", {partial: true});
+        const advanced = preview.render({inputMode: "advanced"});
+        const markers = (advanced.board as {markers?: Array<{
+            type: string; points?: Array<{row?: number; col?: number}>; clickable?: boolean;
+        }>}).markers ?? [];
+        expect(markers.some(m => m.type === "shading" &&
+            m.points?.some(p => p.col === 6 && p.row === 5))).to.equal(true);
+        const control = captureControlLines("f3");
+        expect(control).to.have.length(4);
+        expect(markers.filter(m => m.type === "line" && m.clickable)).to.have.length(4);
+        const basic = preview.render({inputMode: "basic"});
+        expect(((basic.board as {markers?: Array<{type: string; clickable?: boolean}>}).markers ?? [])
+            .some(m => m.type === "line" && m.clickable)).to.equal(false);
+
+        const ordinary = click(g, "g2", "f3", "advanced");
+        expect(ordinary.move).to.equal("Cg2f3");
+        expect(ordinary.valid).to.equal(true);
+        const survives = g.clone().move(ordinary.move!);
+        expect(survives.board.get("f3")).to.deep.equal(["C", 1]);
+
+        // A clickable line marker reports row=col=-1 and its endpoint id.
+        const special = g.handleClick("g2", -1, -1, control[1].id, {inputMode: "advanced"});
+        expect(special.valid).to.equal(true);
+        expect(special.move).to.equal("Cg2f3 Cg2x");
+        const captured = g.clone().move(special.move!);
+        expect(captured.board.has("f3")).to.equal(false);
+        expect(captured.lastmove).not.to.contain("o");
+    });
+
+    it("keeps the cat alive when the rabbit reaches e3 before the cat reaches f3", () => {
+        const g = position("Rf2,Cg2,Ra1", "ra8,ee8");
+        g.move("Cg2f3 Rf2e3");
+        expect(g.board.get("f3")).to.deep.equal(["C", 1]);
+        expect(g.board.get("e3")).to.deep.equal(["R", 1]);
     });
 
     it("accepts both click modes with a one-step Dicey Moves limit", () => {
