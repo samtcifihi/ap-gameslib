@@ -119,6 +119,10 @@ function playgroundRenderOpts(game, gamename, base = {}) {
         getRenderOptions({
             ...base,
             perspective: getRenderPerspective(game, gamename),
+            // The preview engine is reconstructed from committed state on
+            // every move. Carry the per-user input mode into render() so
+            // Advanced-only trap controls remain visible while selecting.
+            ...(gamename === "arimaa" ? {inputMode: effectivePlaygroundInputModeUid(gamename)} : {}),
         }),
     );
 }
