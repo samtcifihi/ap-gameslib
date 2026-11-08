@@ -1,13 +1,13 @@
 import {  GameBase, IAPGameState, IClickResult, ICustomButton, IIndividualState, IScores, IStatus, IValidationResult, IHandleClickUi, IRenderOpts, type ChatLogCollectContext, type ChatLogLine, type FlagContext, type GameFlag } from "./_base.js";
 import type { APGamesInformation } from "../schemas/gameinfo.js";
-import { APRenderRep, AreaPieces, BoardBasic, Colourfuncs, Glyph, MarkerLine, PaintEntry } from "@abstractplay/renderer/build/schemas/schema";
+import { APRenderRep, AreaPieces, BoardBasic, Colourfuncs, Glyph, PaintEntry } from "@abstractplay/renderer/build/schemas/schema";
 import type { APMoveResult } from "../schemas/moveresults.js";
 import { randomInt, RectGrid, reviver, shuffle, SquareOrthGraph, UserFacingError, cloneState } from "../common/index.js";
 import i18next from "i18next";
 import { arrowToken, captureToken, isArrow, isLegacy, isMark, isHold, joinMove, normalize, parseMove, pieceChar, holdToken, tokenText, NotationError, type ParsedMove, type Token } from "./arimaa/notation.js";
 import { hasAnyMove, inferred, resolve, serializeTurn, sqName, turnFromSteps, type Turn } from "./arimaa/turns.js";
 import { castDie, type IDie } from "./arimaa/dice.js";
-import { captureAlternatives, captureControlLines, captureControlSquare, inputClick } from "./arimaa/input.js";
+import { ARIMAA_CAPTURE_CHOICE, captureAlternatives, inputClick } from "./arimaa/input.js";
 export const gameApgamesEn = {
     inputModes: {
         basic: {
@@ -630,16 +630,16 @@ export class ArimaaGame extends GameBase {
                 (this.standardSetup() && this.stack.length <= 2);
             const inputMode = this.resolveActiveInputMode(ui?.inputMode) ?? "basic";
             this._inputMode = inputMode === "advanced" ? "advanced" : "basic";
-            // The renderer emits (-1, -1, endpoint-id) for clickable line
-            // markers. Decode only our triangle interior hit markers; ordinary
-            // square clicks still reach the unchanged move selection path.
-            const markerTrap = row === -1 && col === -1 ? captureControlSquare(piece) : undefined;
-            const square = markerTrap ?? (row >= 0 && row < 8 && col >= 0 && col < 8 ?
-                ArimaaGame.coords2algebraic(col, row) : undefined);
-            const alternativeCapture = !placing && markerTrap !== undefined &&
-                inputMode === "advanced" &&
-                captureAlternatives(this.board, this.currplayer, this.maxSteps(), move).includes(markerTrap);
-            if (markerTrap !== undefined && !alternativeCapture) {
+            // The custom SVG triangle is an ordinary clickable renderer
+            // piece. Its reserved key distinguishes its click from a click on
+            // the trap square itself, without affecting actual board pieces.
+            const square = row >= 0 && row < 8 && col >= 0 && col < 8 ?
+                ArimaaGame.coords2algebraic(col, row) : undefined;
+            const isCaptureChoice = piece === ARIMAA_CAPTURE_CHOICE;
+            const alternativeCapture = !placing && isCaptureChoice &&
+                inputMode === "advanced" && square !== undefined &&
+                captureAlternatives(this.board, this.currplayer, this.maxSteps(), move).includes(square);
+            if (isCaptureChoice && !alternativeCapture) {
                 return {...this.validateMove(move), move};
             }
             // The unadvertised status-quo path is retained for compatibility
@@ -1934,48 +1934,43 @@ export class ArimaaGame extends GameBase {
             });
         }
 
-        // In Advanced mode the non-default trap outcome is an ordinary
-        // clickable renderer piece, visually nudged to the top-right corner.
-        // A marker glyph cannot receive clicks; a piece in rep.pieces can.
-        // This layer changes only the render representation, not this.board.
+        // Advanced non-default trap outcome: one custom SVG triangle is both
+        // the visible control and its hit shape. Unlike an ordinary shading
+        // marker, the renderer gives board pieces a click handler. The only
+        // painted region is the triangular polygon, not the glyph viewBox.
         if ((opts.inputMode ?? this._inputMode) === "advanced" && this._entryMove !== undefined && this._selected !== undefined) {
             const original = this.stack[this.stack.length - 1].board;
             const alternatives = captureAlternatives(original, this.currplayer, this.maxSteps(), this._entryMove);
             if (alternatives.length > 0) {
-                for (const trap of alternatives) {
-                    const [x, y] = ArimaaGame.algebraic2coords(trap);
-                    // The visible polygon is the exact half-cell isosceles
-                    // right triangle (1/8 of the square); it has no hitbox.
-                    (rep.board as BoardBasic).markers!.push({
-                        type: "shading",
-                        colour: {
+                rep.glyphDefs = {
+                    "arimaa-trap-choice": {
+                        viewBox: [0, 0, 100, 100],
+                        markup: '<polygon points="50,0 100,0 100,50" fill="#ffffff" data-slot-fill="fill"/>',
+                    },
+                };
+                legend[ARIMAA_CAPTURE_CHOICE] = {
+                    def: "arimaa-trap-choice",
+                    // Board pieces normally have a 0.85 placement inset.
+                    // Cancel it to align the polygon exactly to the grid:
+                    // x=[0.5,1], y=[0,0.5] of the trap cell.
+                    scale: 1 / 0.85,
+                    paint: {
+                        fill: {
                             func: "flatten",
                             fg: "_context_fill",
                             bg: "_context_board",
                             opacity: 0.5,
                         },
-                        opacity: 1,
-                        points: [
-                            {col: x + 0.5, row: y},
-                            {col: x + 1, row: y},
-                            {col: x + 1, row: y + 0.5},
-                        ],
-                    });
-                    // The renderer makes line markers clickable, but not
-                    // shading polygons. Fill only the triangular interior
-                    // with subpixel-spaced transparent hit strips instead of
-                    // using an incorrectly shaped and offset virtual piece.
-                    for (const hit of captureControlLines(trap)) {
-                        (rep.board as BoardBasic).markers!.push({
-                            type: "line",
-                            points: hit.points,
-                            width: hit.width,
-                            clickable: true,
-                            colour: "_context_fill",
-                            opacity: 0.001,
-                        } as MarkerLine);
-                    }
+                    },
+                };
+                // This is a render-only extra layer. The actual game board,
+                // saved moves and the mode-independent pieces stay unchanged.
+                const layers = plst.map(line => line.split(",").map(key => key === "-" ? [] : [key]));
+                for (const trap of alternatives) {
+                    const [x, y] = ArimaaGame.algebraic2coords(trap);
+                    layers[y][x].push(ARIMAA_CAPTURE_CHOICE);
                 }
+                rep.pieces = [layers[0], ...layers.slice(1)];
             }
         }
 
