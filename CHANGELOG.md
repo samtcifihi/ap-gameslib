@@ -15,10 +15,11 @@ Since the `1.0.0-beta` release, the version in `package.json` has stayed at `1.0
 
 - **New games (dev / experimental only):** Agents of MARS, Bagh Chal, Bashni, Bricka, Croda, Dama, Ice Palace, Neutron, Outbound, QBF, Squares, Thricewise.
 
-## [1.0.0-ci] - 2026-11-06
+## [1.0.0-ci] - 2026-11-08
 
 ### Added
 
+- **Arimaa input:** Basic (default) and Advanced click modes, chained-piece selection, advanced target shortcuts and trap-capture choices, plus a bounded historical-record click benchmark; existing game-state version and trusted legacy replays unchanged.
 - **Input modes (catalogue + contract):** optional **`inputModes`** on game metadata (schema/registry), optional **`inputMode`** on **`IHandleClickUi`** for `handleClick`; shared **`apgames:inputModes`** copy for picker UI; **`sanitizeInputModeForGame`** and related helpers exported for clients; playground persists selected mode and passes **`ui.inputMode`** when a game declares modes.
 - **New games:** Clear Path, Kill-All Go, Selfo, Thue-Morse Go, Yodd, Yonkoma (Kill-All Go handicap opening variant remains unrated).
 - **Quax:** optional **Diamond board** display (`squares-diamonds` with connection flood fill; vertex board remains default).
@@ -32,6 +33,7 @@ Since the `1.0.0-beta` release, the version in `package.json` has stayed at `1.0
 
 ### Changed
 
+- **Arimaa:** complete movement entries remain editable until the player explicitly completes them, and selected-piece move entries support input-only survival assertions without storing those markers in canonical turn notation.
 - **Cubeo:** faster legal move listing on midgame boards (including d10/d12) via shared slide-topology pass caching; unchanged rules and move strings for clients using automove or full movelists.
 - **Locale merge / translate:** `locale-en merge --write` name seeding keeps managed `apgames.json` in **English key order**; `locale-prune` and `translate` **reshape on disk** when translations are up to date (no Gemini) so merge-only runs do not leave `descriptions`-first drift.
 - **Alien City:** faster placement legality (board-local road graph instead of full-state clones), cached road distances for scoring, **`hasLegalPlacement`** for pass validation, **`no-moves` removed** so legal move lists are available to clients again; reject endgame tower claims when no legal placements remain; structured move log includes **`nullifyClaim`** when a claim is voided at game end.
