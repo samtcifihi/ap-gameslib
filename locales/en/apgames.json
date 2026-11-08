@@ -545,7 +545,17 @@
   },
   "inputModes": {
     "section": "Input mode",
-    "description": "How the board interprets your clicks for this game."
+    "description": "How the board interprets your clicks for this game.",
+    "arimaa": {
+      "basic": {
+        "name": "Basic",
+        "description": "Move only pieces you explicitly select. Every completed click sequence has an unambiguous result."
+      },
+      "advanced": {
+        "name": "Advanced",
+        "description": "Select by origin or target, and use inferred movements and trap-capture controls."
+      }
+    }
   },
   "status": {
     "_player": "{{player}}",
