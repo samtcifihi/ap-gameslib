@@ -2,7 +2,7 @@ import {
     arrowToken, captureToken, joinSelections, parseMove, surviveToken,
     type Token, type Piece, type playerid,
 } from "./notation.js";
-import { resolve, serializeTurn, sqIndex, sqName, type CellContents, type Turn } from "./turns.js";
+import { canMoveNow, resolve, serializeTurn, sqIndex, sqName, type CellContents, type Turn } from "./turns.js";
 
 export type ArimaaInputMode = "basic" | "advanced";
 export interface InputClick {
@@ -46,7 +46,7 @@ function projected(board: Map<string, CellContents>, player: playerid, limit: nu
 }
 
 function distinctMoves(turn: Turn, allowed: Set<number>): boolean {
-    return turn.trajectories.every(tr => allowed.has(tr.start));
+    return turn.trajectories.every(tr => tr.visited.length === 1 || allowed.has(tr.start));
 }
 
 function moveToken(board: Map<string, CellContents>, origin: string, dest: string): Token {
@@ -147,7 +147,7 @@ export function inputClick(
     const select = (squares: string[]): InputClick => ({move: joinSelections(tokens, squares)});
 
     if (selections.length === 0) {
-        if (clicked !== undefined) {
+        if (clicked !== undefined && (tokens.length > 0 || canMoveNow(board, player, limit, square))) {
             return select([square]);
         }
         if (mode === "advanced") {
@@ -171,10 +171,11 @@ export function inputClick(
                 return {move: stripped, complete: true};
             }
         }
-        if (clicked === undefined) {
-            return {move: stripped};
+        // An immovable enemy is the undo control when nothing is selected.
+        if (clicked !== undefined && clicked.owner !== player) {
+            return undo();
         }
-        return undo();
+        return {move: stripped};
     }
 
     if (clicked === undefined) {
