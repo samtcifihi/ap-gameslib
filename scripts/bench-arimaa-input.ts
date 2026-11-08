@@ -132,6 +132,7 @@ for (const record of gameRecords.slice(0, limitGames)) {
     for (const round of record.moves) {
         for (const ply of round) {
             number++;
+            console.error(`Game ${record.header.site?.gameid ?? "unknown"}, ply ${number}`);
             const actions = ply.result ?? [];
             const playable = actions.some(a => a.type === "move");
             const setup = actions.some(a => a.type === "place");
