@@ -3,7 +3,7 @@ import { expect } from "chai";
 import { addResource } from "../../src";
 import { ArimaaGame } from "../../src/games/arimaa";
 import { parseMove, parseToken } from "../../src/games/arimaa/notation";
-import { captureAlternatives, captureControlLines } from "../../src/games/arimaa/input";
+import { ARIMAA_CAPTURE_CHOICE, captureAlternatives } from "../../src/games/arimaa/input";
 
 const at = (cell: string): [number, number] => {
     const [col, row] = ArimaaGame.algebraic2coords(cell);
@@ -120,17 +120,24 @@ describe("Arimaa input modes", () => {
         expect(captureAlternatives(g.board, g.currplayer, 4, "g2")).to.include("f3");
         const preview = g.clone().move("g2", {partial: true});
         const advanced = preview.render({inputMode: "advanced"});
-        const markers = (advanced.board as {markers?: Array<{
-            type: string; points?: Array<{row?: number; col?: number}>; clickable?: boolean;
-        }>}).markers ?? [];
-        expect(markers.some(m => m.type === "shading" &&
-            m.points?.some(p => p.col === 6 && p.row === 5))).to.equal(true);
-        const control = captureControlLines("f3");
-        expect(control).to.have.length(4);
-        expect(markers.filter(m => m.type === "line" && m.clickable)).to.have.length(4);
+        const layers = advanced.pieces as string[][][];
+        // f3 is row 5, col 5 in renderer coordinates. The triangular
+        // action appears above ordinary board pieces but is never game state.
+        expect(layers[5][5]).to.include(ARIMAA_CAPTURE_CHOICE);
+        expect(advanced.legend![ARIMAA_CAPTURE_CHOICE]).to.deep.include({
+            name: "wedge-top-half",
+            colour: "_context_fill",
+        });
+        expect([...g.board.keys()]).not.to.include(ARIMAA_CAPTURE_CHOICE);
+        expect(g.board.has("f3")).to.equal(false);
+        const markers = (advanced.board as {markers?: Array<{type: string; clickable?: boolean}>}).markers ?? [];
+        expect(markers.some(m => m.type === "line" && m.clickable)).to.equal(false);
         const basic = preview.render({inputMode: "basic"});
-        expect(((basic.board as {markers?: Array<{type: string; clickable?: boolean}>}).markers ?? [])
-            .some(m => m.type === "line" && m.clickable)).to.equal(false);
+        expect(typeof basic.pieces).to.equal("string");
+        expect(basic.legend![ARIMAA_CAPTURE_CHOICE]).to.equal(undefined);
+        // No square selection means no control, even in Advanced mode.
+        const idle = g.render({inputMode: "advanced"});
+        expect(typeof idle.pieces).to.equal("string");
 
         const ordinary = click(g, "g2", "f3", "advanced");
         expect(ordinary.move).to.equal("Cg2f3");
@@ -138,13 +145,19 @@ describe("Arimaa input modes", () => {
         const survives = g.clone().move(ordinary.move!);
         expect(survives.board.get("f3")).to.deep.equal(["C", 1]);
 
-        // A clickable line marker reports row=col=-1 and its endpoint id.
-        const special = g.handleClick("g2", -1, -1, control[1].id, {inputMode: "advanced"});
+        // A clickable virtual piece reports the normal f3 coordinates and
+        // its reserved piece key. An ordinary f3 click above still survives.
+        const special = g.handleClick("g2", ...at("f3"), ARIMAA_CAPTURE_CHOICE, {inputMode: "advanced"});
         expect(special.valid).to.equal(true);
         expect(special.move).to.equal("Cg2f3 Cg2x");
         const captured = g.clone().move(special.move!);
         expect(captured.board.has("f3")).to.equal(false);
         expect(captured.lastmove).not.to.contain("o");
+
+        // The virtual piece key is ignored when the control is unavailable.
+        const basicSpecial = g.handleClick("g2", ...at("f3"), ARIMAA_CAPTURE_CHOICE, {inputMode: "basic"});
+        expect(basicSpecial.move).to.equal("g2");
+        expect(g.board.has("f3")).to.equal(false);
     });
 
     it("keeps the cat alive when the rabbit reaches e3 before the cat reaches f3", () => {
