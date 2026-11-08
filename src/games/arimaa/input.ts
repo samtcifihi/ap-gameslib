@@ -134,11 +134,52 @@ function targetSelection(board: Map<string, CellContents>, player: playerid, lim
 }
 
 /**
- * A virtual, clickable board piece for the Advanced-only alternate trap result.
- * Its square comes from the renderer's ordinary piece-click coordinates.
- * It is rendered only in the preview, never stored on the Arimaa board.
+ * Exact visible triangle: x in [0.5,1], y in [0,0.5], x + y >= 1.
+ *
+ * The current renderer does not make shading polygons clickable. Its existing
+ * clickable line markers can supply a subpixel-precision hit region without a
+ * renderer change. Tile horizontal strokes *inside* the triangle: clicks in
+ * the rest of the square remain ordinary board clicks. At 50px per cell, the
+ * maximum diagonal-edge inset is under 0.3px (96 slices).
  */
-export const ARIMAA_CAPTURE_CHOICE = "ARIMAA_CAPTURE_CHOICE";
+const CAPTURE_HIT_SLICES = 96;
+const CAPTURE_RENDER_CELL_PX = 50;
+
+export interface CaptureHitLine {
+    points: [{row: number; col: number}, {row: number; col: number}];
+    width: number;
+    id: string;
+}
+
+export function captureControlLines(square: string): CaptureHitLine[] {
+    const col = square.charCodeAt(0) - 97;
+    const row = 8 - Number(square[1]);
+    const step = 0.5 / CAPTURE_HIT_SLICES;
+    const width = CAPTURE_RENDER_CELL_PX * step;
+    const lines: CaptureHitLine[] = [];
+    for (let i = 0; i < CAPTURE_HIT_SLICES; i++) {
+        const y = row + (i + 0.5) * step;
+        // Butt joins aren't configurable on the existing marker, so keep
+        // its round stroke ends strictly within the diagonal boundary.
+        const x0 = Math.min(col + 0.5 + (i + 1.5) * step, col + 1 - step / 2);
+        const x1 = col + 1 - step / 2;
+        const from = {row: y, col: x0};
+        const to = {row: y, col: x1};
+        lines.push({points: [from, to], width,
+            id: `${from.col},${from.row}|${to.col},${to.row}`});
+    }
+    return lines;
+}
+
+export function captureControlSquare(clickId: string | undefined): string | undefined {
+    if (!clickId) return undefined;
+    for (const trap of ["c3", "f3", "c6", "f6"]) {
+        if (captureControlLines(trap).some(line => line.id === clickId)) {
+            return trap;
+        }
+    }
+    return undefined;
+}
 
 /**
  * Trap squares where the newest selection has both a surviving and a captured
