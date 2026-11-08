@@ -13,6 +13,7 @@
  */
 import { readFileSync } from "node:fs";
 import { ArimaaGame, type CellContents, type Piece, type playerid } from "../src/games/arimaa.js";
+import { ARIMAA_CAPTURE_CHOICE, captureAlternatives } from "../src/games/arimaa/input.js";
 
 type StepResult = {type: string; from?: string; to?: string; where?: string};
 type Ply = {move: string; result?: StepResult[]};
@@ -42,8 +43,11 @@ const gameRecords = JSON.parse(readFileSync(archive, "utf8")) as ArchiveGame[];
 const modes: Mode[] = ["status-quo", "basic", "advanced"];
 const total = Object.fromEntries(modes.map(mode => [mode, {found: 0, missing: 0, clicks: 0, capped: 0}])) as
     Record<Mode, {found: number; missing: number; clicks: number; capped: number}>;
-let legalPlies = 0, illegalPlies = 0, setupPlies = 0, skippedFirstEEE = 0, replays = 0;
+let legalPlies = 0, illegalPlies = 0, incompletePlies = 0, setupPlies = 0, skippedFirstEEE = 0, replays = 0;
 const missing: Array<{game: string; ply: number; mode: Mode; move: string}> = [];
+// Compare average clicks only on plies found in every mode, not three different samples.
+let commonFoundPlies = 0;
+const commonClicks = Object.fromEntries(modes.map(mode => [mode, 0])) as Record<Mode, number>;
 
 const cell = (square: string): [number, number] => {
     const [x, y] = ArimaaGame.algebraic2coords(square);
@@ -84,6 +88,9 @@ const opts = (step: Ply, game: ArimaaGame): string[] => {
     }
     return [...interest];
 };
+// Mirror ArimaaGame.maxSteps() (private), including Dicey Moves and the EEE opening.
+const stepLimit = (game: ArimaaGame): number =>
+    game.die?.steps ?? (game.variants.includes("eee") && game.stack.length === 1 ? 2 : 4);
 const find = (game: ArimaaGame, step: Ply, expected: string, mode: Mode): {clicks?: number; capped: boolean} => {
     const candidates = opts(step, game);
     const queue: Array<{move: string; clicks: number}> = [{move: "", clicks: 0}];
@@ -92,14 +99,27 @@ const find = (game: ArimaaGame, step: Ply, expected: string, mode: Mode): {click
     for (let head = 0; head < queue.length && expanded < maxExpansions; head++) {
         const state = queue[head];
         if (state.move.length > 0 && signature(game, state.move) === expected) {
-            return {clicks: state.clicks, capped: false};
+            // A matching preview is not enough: it must be legal to submit.
+            const validation = game.validateMove(state.move);
+            if (validation.valid && (validation.complete ?? -1) >= 0) {
+                return {clicks: state.clicks, capped: false};
+            }
         }
         if (state.clicks >= maxClicks) continue;
         expanded++;
-        for (const sq of candidates) {
+        // Only Advanced has the renderer's capture-choice triangle. Query its
+        // actual legal squares for this particular partial entry, so these are
+        // real UI clicks rather than hypothetical trap clicks.
+        const captureChoices = mode === "advanced" ?
+            captureAlternatives(game.board, game.currplayer, stepLimit(game), state.move) : [];
+        const clicks: Array<{square: string; piece?: string}> = candidates.map(square => ({square}));
+        for (const square of captureChoices) {
+            clicks.push({square, piece: ARIMAA_CAPTURE_CHOICE});
+        }
+        for (const {square, piece} of clicks) {
             let result: ReturnType<ArimaaGame["handleClick"]>;
             try {
-                result = game.handleClick(state.move, ...cell(sq), undefined, {inputMode: mode});
+                result = game.handleClick(state.move, ...cell(square), piece, {inputMode: mode});
             } catch {
                 continue;
             }
@@ -139,17 +159,21 @@ for (const record of gameRecords.slice(0, limitGames)) {
             if (setup) setupPlies++;
             if (eee && number === 1) skippedFirstEEE++;
             const before = game.clone();
-            const legal = playable && before.validateMove(ply.move).valid;
+            const validation = playable ? before.validateMove(ply.move) : undefined;
+            const legal = validation?.valid === true && (validation.complete ?? -1) >= 0;
             const eligible = legal && !setup && !(eee && number === 1);
-            if (playable && !legal) illegalPlies++;
+            if (playable && validation?.valid === false) illegalPlies++;
+            if (playable && validation?.valid === true && (validation.complete ?? -1) < 0) incompletePlies++;
             let expected: string | undefined;
             if (eligible) {
                 expected = signature(before, ply.move);
                 if (expected !== undefined) {
                     legalPlies++;
+                    const foundClicks: Partial<Record<Mode, number>> = {};
                     for (const mode of modes) {
                         const result = find(before, ply, expected, mode);
                         if (result.clicks !== undefined) {
+                            foundClicks[mode] = result.clicks;
                             total[mode].found++;
                             total[mode].clicks += result.clicks;
                         } else {
@@ -158,6 +182,12 @@ for (const record of gameRecords.slice(0, limitGames)) {
                             if (missing.length < 200) {
                                 missing.push({game: record.header.site?.gameid ?? "unknown", ply: number, mode, move: ply.move});
                             }
+                        }
+                    }
+                    if (modes.every(mode => foundClicks[mode] !== undefined)) {
+                        commonFoundPlies++;
+                        for (const mode of modes) {
+                            commonClicks[mode] += foundClicks[mode]!;
                         }
                     }
                 }
@@ -177,10 +207,18 @@ for (const record of gameRecords.slice(0, limitGames)) {
 }
 console.log(JSON.stringify({
     games: Math.min(gameRecords.length, limitGames), replays, legalPlies,
-    illegalPlies, setupPlies, skippedFirstEEE,
+    illegalPlies, incompletePlies, setupPlies, skippedFirstEEE,
     search: {maxExpansions, maxClicks, completionClickCounted: false},
     modes: Object.fromEntries(modes.map(mode => [mode, {
         ...total[mode],
         averageClicksOnFound: total[mode].found === 0 ? null : total[mode].clicks / total[mode].found,
-    }])), examplesNotFound: missing,
+    }])),
+    comparisonOnCommonFound: {
+        plies: commonFoundPlies,
+        modes: Object.fromEntries(modes.map(mode => [mode, {
+            clicks: commonClicks[mode],
+            averageClicks: commonFoundPlies === 0 ? null : commonClicks[mode] / commonFoundPlies,
+        }])),
+    },
+    examplesNotFound: missing,
 }, null, 2));
