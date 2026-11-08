@@ -3,7 +3,7 @@ import { expect } from "chai";
 import { addResource } from "../../src";
 import { ArimaaGame } from "../../src/games/arimaa";
 import { parseMove, parseToken } from "../../src/games/arimaa/notation";
-import { ARIMAA_CAPTURE_CHOICE, captureAlternatives } from "../../src/games/arimaa/input";
+import { captureAlternatives, captureControlLines, captureControlSquare } from "../../src/games/arimaa/input";
 
 const at = (cell: string): [number, number] => {
     const [col, row] = ArimaaGame.algebraic2coords(cell);
@@ -120,26 +120,18 @@ describe("Arimaa input modes", () => {
         expect(captureAlternatives(g.board, g.currplayer, 4, "g2")).to.include("f3");
         const preview = g.clone().move("g2", {partial: true});
         const advanced = preview.render({inputMode: "advanced"});
-        const layers = advanced.pieces as string[][][];
-        // f3 is row 5, col 5 in renderer coordinates. The triangular
-        // action appears above ordinary board pieces but is never game state.
-        expect(layers[5][5]).to.include(ARIMAA_CAPTURE_CHOICE);
-        expect(advanced.legend![ARIMAA_CAPTURE_CHOICE]).to.deep.include({
-            name: "wedge-top-half",
-            colour: "_context_fill",
-            opacity: 0.001,
-            nudge: {dx: 8, dy: -198},
-        });
-        expect([...g.board.keys()]).not.to.include(ARIMAA_CAPTURE_CHOICE);
+        // The piece board stays unchanged: no virtual wedge or square
+        // hitbox overlaps the other 7/8 of the trap.
+        expect(typeof advanced.pieces).to.equal("string");
         expect(g.board.has("f3")).to.equal(false);
         const markers = (advanced.board as {markers?: Array<{
             type: string;
             clickable?: boolean;
             colour?: unknown;
             opacity?: number;
+            width?: number;
             points?: Array<{row?: number; col?: number}>;
         }>}).markers ?? [];
-        expect(markers.some(m => m.type === "line" && m.clickable)).to.equal(false);
         const triangle = markers.filter(m => m.type === "shading");
         expect(triangle).to.have.length(1);
         expect(triangle[0].points).to.deep.equal([
@@ -154,12 +146,31 @@ describe("Arimaa input modes", () => {
             opacity: 0.5,
         });
         expect(triangle[0].opacity).to.equal(1);
+
+        const hits = captureControlLines("f3");
+        expect(hits).to.have.length(96);
+        expect(markers.filter(m => m.type === "line" && m.clickable)).to.have.length(96);
+        // Stroke centers occupy only the upper-right half-square triangle,
+        // with subpixel horizontal spacing. No displaced stock wedge exists.
+        for (const hit of hits) {
+            const [a, b] = hit.points;
+            expect(a.row).to.equal(b.row);
+            expect(a.row).to.be.greaterThan(5);
+            expect(a.row).to.be.lessThan(5.5);
+            expect(a.col).to.be.at.least(5.5 + (a.row - 5));
+            expect(b.col).to.be.at.most(6);
+            expect(hit.width).to.be.lessThan(0.3);
+            expect(captureControlSquare(hit.id)).to.equal("f3");
+        }
+        expect(captureControlSquare("not-a-control")).to.equal(undefined);
         const basic = preview.render({inputMode: "basic"});
         expect(typeof basic.pieces).to.equal("string");
-        expect(basic.legend![ARIMAA_CAPTURE_CHOICE]).to.equal(undefined);
-        // No square selection means no control, even in Advanced mode.
+        const basicMarkers = (basic.board as {markers?: Array<{type: string; clickable?: boolean}>}).markers ?? [];
+        expect(basicMarkers.some(m => m.type === "line" && m.clickable)).to.equal(false);
+        // No selection means no trap control, even in Advanced mode.
         const idle = g.render({inputMode: "advanced"});
-        expect(typeof idle.pieces).to.equal("string");
+        const idleMarkers = (idle.board as {markers?: Array<{type: string; clickable?: boolean}>}).markers ?? [];
+        expect(idleMarkers.some(m => m.type === "line" && m.clickable)).to.equal(false);
 
         const ordinary = click(g, "g2", "f3", "advanced");
         expect(ordinary.move).to.equal("Cg2f3");
@@ -167,17 +178,17 @@ describe("Arimaa input modes", () => {
         const survives = g.clone().move(ordinary.move!);
         expect(survives.board.get("f3")).to.deep.equal(["C", 1]);
 
-        // A clickable virtual piece reports the normal f3 coordinates and
-        // its reserved piece key. An ordinary f3 click above still survives.
-        const special = g.handleClick("g2", ...at("f3"), ARIMAA_CAPTURE_CHOICE, {inputMode: "advanced"});
+        // A marker in the triangular interior reports (-1,-1,endpoint-id).
+        // Ordinary f3 clicks above must still use the default outcome.
+        const special = g.handleClick("g2", -1, -1, hits[32].id, {inputMode: "advanced"});
         expect(special.valid).to.equal(true);
         expect(special.move).to.equal("Cg2f3 Cg2x");
         const captured = g.clone().move(special.move!);
         expect(captured.board.has("f3")).to.equal(false);
         expect(captured.lastmove).not.to.contain("o");
 
-        // The virtual piece key is ignored when the control is unavailable.
-        const basicSpecial = g.handleClick("g2", ...at("f3"), ARIMAA_CAPTURE_CHOICE, {inputMode: "basic"});
+        // Ignore triangle-marker clicks when Basic mode is active.
+        const basicSpecial = g.handleClick("g2", -1, -1, hits[32].id, {inputMode: "basic"});
         expect(basicSpecial.move).to.equal("g2");
         expect(g.board.has("f3")).to.equal(false);
     });
