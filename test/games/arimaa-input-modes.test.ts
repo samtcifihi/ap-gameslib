@@ -348,4 +348,42 @@ describe("Arimaa input modes", () => {
         }
     });
 
+    it("closes a two-piece loop in Basic and Advanced, in either selection direction", () => {
+        // The square to close onto is occupied at the outset. The elephant
+        // must take a detour so the horse can take its original square.
+        // This has no acyclic last-step ordering, but is a legal four-step
+        // rotation involving only the two explicitly selected pieces.
+        const game = position("Ed4,He4,Ra1", "ra8,ee8");
+        for (const mode of ["basic", "advanced"] as const) {
+            for (const sequence of [["d4", "e4", "d4"], ["e4", "d4", "e4"]]) {
+                let move = "";
+                for (const [index, square] of sequence.entries()) {
+                    const result = click(game, move, square, mode);
+                    expect(result.valid, `${mode}: ${sequence.join(" ")} at ${index}`).to.equal(true);
+                    move = result.move!;
+                    if (index === 1) {
+                        expect(move).to.equal(sequence.slice(0, 2).join(" "));
+                    }
+                }
+                expect(move, `${mode}: ${sequence.join(" ")}`).to.contain("Ed4e4");
+                expect(move, `${mode}: ${sequence.join(" ")}`).to.contain("He4d4");
+                expect(game.validateMove(move).valid, mode).to.equal(true);
+                const after = game.clone().move(move);
+                expect(after.board.get("e4"), mode).to.deep.equal(["E", 1]);
+                expect(after.board.get("d4"), mode).to.deep.equal(["H", 1]);
+                expect(after.board.get("a1"), mode).to.deep.equal(["R", 1]);
+            }
+        }
+    });
+
+    it("does not treat an unfinishable occupied-square loop as a Basic move", () => {
+        const game = position("Ed4,He4,Ra1", "ra8,ee8");
+        game.die = {steps: 3, square: "c4"};
+        let selected = click(game, "", "d4");
+        selected = click(game, selected.move!, "e4");
+        const rejected = click(game, selected.move!, "d4");
+        expect(rejected.move).to.equal("");
+        expect(rejected.complete).to.equal(-1);
+    });
+
 });
