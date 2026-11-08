@@ -19,17 +19,23 @@ interface Occupant {
 // Work from the board the player is looking at rather than the turn's original
 // occupancy. A piece already moved by a preceding token still retains its
 // original identity when another arrow extends its destination.
-function projected(board: Map<string, CellContents>, player: playerid, limit: number, tokens: Token[]): Map<string, Occupant> {
+interface Projection {
+    occupants: Map<string, Occupant>;
+    stepsUsed: number;
+    resolved: boolean;
+}
+
+function projected(board: Map<string, CellContents>, player: playerid, limit: number, tokens: Token[]): Projection {
     const out = new Map<string, Occupant>();
     for (const [square, [piece, owner]] of board) {
         out.set(square, {piece, owner, origin: square});
     }
     if (tokens.length === 0) {
-        return out;
+        return {occupants: out, stepsUsed: 0, resolved: true};
     }
     const r = resolve(board, player, limit, tokens, true);
     if (r.status !== "resolved") {
-        return out;
+        return {occupants: out, stepsUsed: 0, resolved: false};
     }
     for (const step of r.turn.steps) {
         const from = sqName(step.from), to = sqName(step.to);
@@ -42,7 +48,7 @@ function projected(board: Map<string, CellContents>, player: playerid, limit: nu
             out.delete(sqName(cap.square));
         }
     }
-    return out;
+    return {occupants: out, stepsUsed: r.turn.steps.length, resolved: true};
 }
 
 function distinctMoves(turn: Turn, allowed: Set<number>): boolean {
@@ -145,7 +151,7 @@ export function captureAlternatives(
     if (selectionSquares.length === 0) {
         return [];
     }
-    const occupants = projected(board, player, limit, parsed.tokens);
+    const {occupants} = projected(board, player, limit, parsed.tokens);
     const selected = selectionSquares.map(s => occupants.get(s));
     if (selected.some(p => p === undefined)) {
         return [];
@@ -185,39 +191,51 @@ export function inputClick(
     const tokens = parsed.tokens;
     const selections = parsed.selections ?? [];
     const stripped = tokens.map(t => t.text).join(" ");
-    const occupancy = projected(board, player, limit, tokens);
+    const preview = projected(board, player, limit, tokens);
+    const occupancy = preview.occupants;
+    const previewBoard = new Map<string, CellContents>(
+        [...occupancy].map(([cell, p]) => [cell, [p.piece, p.owner]])
+    );
+    // A piece is selectable only if it can participate in a legal step,
+    // push, or pull *after* the already-entered move, within the steps left.
+    // In particular, merely having any prior token must never turn every
+    // enemy piece into a selectable one.
+    const movable = (cell: string): boolean => preview.resolved &&
+        canMoveNow(previewBoard, player, limit - preview.stepsUsed, cell);
     const clicked = occupancy.get(square);
     const selectionPieces = selections.map(s => occupancy.get(s));
     const undo = (): InputClick => ({move: stripped.length ? tokens.slice(0, -1).map(t => t.text).join(" ") : ""});
     const select = (squares: string[]): InputClick => ({move: joinSelections(tokens, squares)});
 
     if (selections.length === 0) {
-        if (clicked !== undefined && (tokens.length > 0 || canMoveNow(board, player, limit, square))) {
+        if (clicked !== undefined && movable(square)) {
             return select([square]);
         }
         if (mode === "advanced") {
             // An emptied original square points at the piece that used to
             // stand there, but only if it is still on the board.
-            if (board.has(square)) {
-                for (const [current, p] of occupancy) {
-                    if (p.origin === square) {
-                        return select([current]);
+            if (clicked === undefined) {
+                if (board.has(square)) {
+                    for (const [current, p] of occupancy) {
+                        if (p.origin === square && movable(current)) {
+                            return select([current]);
+                        }
                     }
                 }
-            }
-            const byTarget = targetSelection(board, player, limit, tokens, square);
-            if (byTarget !== undefined) {
-                return {move: byTarget};
+                const byTarget = targetSelection(board, player, limit, tokens, square);
+                if (byTarget !== undefined) {
+                    return {move: byTarget};
+                }
             }
         }
-        if (stripped.length > 0) {
+        if (clicked === undefined && stripped.length > 0) {
             const r = resolve(board, player, limit, tokens, false);
             if (r.status === "resolved") {
                 return {move: stripped, complete: true};
             }
         }
-        // An immovable enemy is the undo control when nothing is selected.
-        if (clicked !== undefined && clicked.owner !== player) {
+        // Only an enemy unable to move using the remaining steps undoes.
+        if (clicked !== undefined && clicked.owner !== player && !movable(square)) {
             return undo();
         }
         return {move: stripped};
@@ -253,6 +271,11 @@ export function inputClick(
         return {move: stripped};
     }
     const last = selectionPieces[selectionPieces.length - 1];
+    if (!movable(square)) {
+        // While selecting a chain, an immovable enemy cancels the selection
+        // rather than becoming another selected piece.
+        return {move: stripped};
+    }
     if (last !== undefined) {
         // Selecting the piece to be displaced builds a chain. An immediate
         // return to the first square closes a cycle rather than leaving an
