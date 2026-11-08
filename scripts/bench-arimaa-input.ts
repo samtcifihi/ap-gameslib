@@ -52,7 +52,7 @@ const cell = (square: string): [number, number] => {
 const signature = (game: ArimaaGame, notation: string): string | undefined => {
     try {
         const copy = game.clone();
-        copy.move(notation, {trusted: true});
+        copy.move(notation, {trusted: true, partial: true});
         return copy.signature();
     } catch {
         return undefined;
