@@ -127,11 +127,33 @@ describe("Arimaa input modes", () => {
         expect(advanced.legend![ARIMAA_CAPTURE_CHOICE]).to.deep.include({
             name: "wedge-top-half",
             colour: "_context_fill",
+            opacity: 0.001,
+            nudge: {dx: 8, dy: -198},
         });
         expect([...g.board.keys()]).not.to.include(ARIMAA_CAPTURE_CHOICE);
         expect(g.board.has("f3")).to.equal(false);
-        const markers = (advanced.board as {markers?: Array<{type: string; clickable?: boolean}>}).markers ?? [];
+        const markers = (advanced.board as {markers?: Array<{
+            type: string;
+            clickable?: boolean;
+            colour?: unknown;
+            opacity?: number;
+            points?: Array<{row?: number; col?: number}>;
+        }>}).markers ?? [];
         expect(markers.some(m => m.type === "line" && m.clickable)).to.equal(false);
+        const triangle = markers.filter(m => m.type === "shading");
+        expect(triangle).to.have.length(1);
+        expect(triangle[0].points).to.deep.equal([
+            {col: 5.5, row: 5},
+            {col: 6, row: 5},
+            {col: 6, row: 5.5},
+        ]);
+        expect(triangle[0].colour).to.deep.equal({
+            func: "flatten",
+            fg: "_context_fill",
+            bg: "_context_board",
+            opacity: 0.5,
+        });
+        expect(triangle[0].opacity).to.equal(1);
         const basic = preview.render({inputMode: "basic"});
         expect(typeof basic.pieces).to.equal("string");
         expect(basic.legend![ARIMAA_CAPTURE_CHOICE]).to.equal(undefined);
