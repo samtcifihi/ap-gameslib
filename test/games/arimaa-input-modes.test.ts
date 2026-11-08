@@ -148,11 +148,11 @@ describe("Arimaa input modes", () => {
         expect(triangle[0].opacity).to.equal(1);
 
         const hits = captureControlLines("f3");
-        expect(hits).to.have.length(96);
-        expect(markers.filter(m => m.type === "line" && m.clickable)).to.have.length(96);
+        expect(hits).to.have.length(97);
+        expect(markers.filter(m => m.type === "line" && m.clickable)).to.have.length(97);
         // Stroke centers occupy only the upper-right half-square triangle,
         // with subpixel horizontal spacing. No displaced stock wedge exists.
-        for (const hit of hits) {
+        for (const hit of hits.slice(0, -1)) {
             const [a, b] = hit.points;
             expect(a.row).to.equal(b.row);
             expect(a.row).to.be.greaterThan(5);
@@ -162,6 +162,13 @@ describe("Arimaa input modes", () => {
             expect(hit.width).to.be.lessThan(0.3);
             expect(captureControlSquare(hit.id)).to.equal("f3");
         }
+        const diagonal = hits[hits.length - 1];
+        expect(diagonal.points).to.deep.equal([
+            {row: 5, col: 5.5},
+            {row: 5.5, col: 6},
+        ]);
+        expect(diagonal.width).to.equal(0.35);
+        expect(captureControlSquare(diagonal.id)).to.equal("f3");
         expect(captureControlSquare("not-a-control")).to.equal(undefined);
         const basic = preview.render({inputMode: "basic"});
         expect(typeof basic.pieces).to.equal("string");
