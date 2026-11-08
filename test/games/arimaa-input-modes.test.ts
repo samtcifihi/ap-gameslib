@@ -90,7 +90,7 @@ describe("Arimaa input modes", () => {
     });
 
     it("drops input-only survival markers from stored notation", () => {
-        const g = position("Ed4,Rc3,Ra1", "ra8,ee8");
+        const g = position("Ed4,Rc3,Cc2,Ra1", "ra8,ee8");
         const before = g.clone();
         const entered = "Ed4e4 Rc3o";
         expect(g.validateMove(entered).valid).to.equal(true);
