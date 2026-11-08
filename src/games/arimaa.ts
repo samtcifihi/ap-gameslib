@@ -625,7 +625,7 @@ export class ArimaaGame extends GameBase {
                 (this.standardSetup() && this.stack.length <= 2);
             const inputMode = this.resolveActiveInputMode(ui?.inputMode) ?? "basic";
             // Setup semantics do not change between input modes.
-            const input = placing ? {move: this.setupClick(move, row, col, piece)} :
+            const input: {move: string; complete?: boolean} = placing ? {move: this.setupClick(move, row, col, piece)} :
                 inputClick(this.board, this.currplayer, this.maxSteps(), move,
                     ArimaaGame.coords2algebraic(col, row),
                     inputMode === "advanced" ? "advanced" : "basic",
