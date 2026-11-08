@@ -177,8 +177,15 @@ describe("Arimaa input modes", () => {
         const special = g.handleClick("g2", ...at("f3"), ARIMAA_CAPTURE_CHOICE, {inputMode: "advanced"});
         expect(special.valid).to.equal(true);
         expect(special.move).to.equal("Cg2f3 Cg2x");
-        const captured = g.clone().move(special.move!);
+        // The triangle explicitly asks for capture, but does not say where
+        // the supporting rabbit on f2 moves. Multiple outcomes are legal, so
+        // this is an incomplete instruction until the rabbit is directed.
+        expect(special.complete).to.equal(-1);
+        const withRabbit = `Rf2e2 ${special.move!}`;
+        expect(g.validateMove(withRabbit).valid).to.equal(true);
+        const captured = g.clone().move(withRabbit);
         expect(captured.board.has("f3")).to.equal(false);
+        expect(captured.board.get("e2")).to.deep.equal(["R", 1]);
         expect(captured.lastmove).not.to.contain("o");
 
         // Forged or out-of-mode custom-piece clicks must do nothing.
@@ -342,9 +349,19 @@ describe("Arimaa input modes", () => {
             expect(selected.move, pusher).to.equal(`${dogMove} ${pusher}`);
             const directed = click(game, selected.move!, "f4", "advanced");
             expect(directed.valid, pusher).to.equal(true);
+            expect(directed.move, pusher).to.contain(
+                pusher === "e5" ? "Ee5f4" : "He3f4"
+            );
             const after = game.clone().move(directed.move!);
-            expect(after.board.get("f3"), pusher).to.deep.equal(["D", 2]);
-            expect(after.board.get("f4"), pusher).to.deep.equal([pusher === "e5" ? "E" : "H", 1]);
+            // f3 is a trap without adjacent silver support: the pushed dog
+            // is captured, not left standing on f3.
+            expect(after.board.has("f3"), pusher).to.equal(false);
+            expect(after.results.some(r =>
+                r.type === "destroy" && r.where === "f3" && r.what === "d"
+            ), pusher).to.equal(true);
+            expect(after.board.get("f4"), pusher).to.deep.equal([
+                pusher === "e5" ? "E" : "H", 1
+            ]);
         }
     });
 
