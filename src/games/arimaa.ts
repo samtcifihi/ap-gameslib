@@ -7,7 +7,7 @@ import i18next from "i18next";
 import { arrowToken, captureToken, isArrow, isLegacy, isMark, isHold, joinMove, normalize, parseMove, pieceChar, holdToken, tokenText, NotationError, type ParsedMove, type Token } from "./arimaa/notation.js";
 import { hasAnyMove, inferred, resolve, serializeTurn, sqName, turnFromSteps, type Turn } from "./arimaa/turns.js";
 import { castDie, type IDie } from "./arimaa/dice.js";
-import { inputClick } from "./arimaa/input.js";
+import { captureAlternatives, inputClick } from "./arimaa/input.js";
 export const gameApgamesEn = {
     inputModes: {
         basic: {
@@ -361,6 +361,9 @@ export class ArimaaGame extends GameBase {
     public stack!: Array<IMoveState>;
     public results: Array<APMoveResult> = [];
     private _selected: string|undefined;
+    private _selections: string[]|undefined;
+    private _entryMove: string|undefined;
+    private _inputMode: "basic"|"advanced" = "basic";
     // the player's arrows, kept for drawing when they do not yet resolve to a move
     private _arrows: Array<[string, string]>|undefined;
     // the squares of the player's holds and capture marks, drawn whether or not the move resolves
@@ -441,6 +444,8 @@ export class ArimaaGame extends GameBase {
         // what a turn did is drawn from its results; anything left over from a
         // partial move belongs to the entry being typed, not to this state
         this._selected = undefined;
+        this._selections = undefined;
+        this._entryMove = undefined;
         this._arrows = undefined;
         this._holds = undefined;
         this._marks = undefined;
@@ -624,6 +629,7 @@ export class ArimaaGame extends GameBase {
             const placing = (this.hands !== undefined && this.hands[this.currplayer - 1].length > 0) ||
                 (this.standardSetup() && this.stack.length <= 2);
             const inputMode = this.resolveActiveInputMode(ui?.inputMode) ?? "basic";
+            this._inputMode = inputMode === "advanced" ? "advanced" : "basic";
             // The unadvertised status-quo path is retained for compatibility
             // regression tests and click-count comparisons only.
             const input: {move: string; complete?: boolean} = placing ? {move: this.setupClick(move, row, col, piece)} :
@@ -1454,6 +1460,8 @@ export class ArimaaGame extends GameBase {
             this.results.push({type: "roll", values: [this.die.steps]});
         }
         this._selected = undefined;
+        this._selections = undefined;
+        this._entryMove = undefined;
         this._arrows = undefined;
         this._holds = undefined;
         this._marks = undefined;
@@ -1626,6 +1634,8 @@ export class ArimaaGame extends GameBase {
         // a selection never blocks a submission: it is simply dropped
         const parsed = parseMove(m, true);
         this._selected = parsed.pending;
+        this._selections = parsed.selections;
+        this._entryMove = m;
         if (parsed.tokens.length === 0) {
             return undefined;
         }
@@ -1912,6 +1922,25 @@ export class ArimaaGame extends GameBase {
             });
         }
 
+        // Advanced mode: offer the alternate trap result only when both
+        // survival and capture are possible for the newest selection.
+        if (this._inputMode === "advanced" && this._entryMove !== undefined && this._selected !== undefined) {
+            const original = this.stack[this.stack.length - 1].board;
+            for (const trap of captureAlternatives(original, this.currplayer, this.maxSteps(), this._entryMove)) {
+                const [x, y] = ArimaaGame.algebraic2coords(trap);
+                (rep.board as BoardBasic).markers!.push({
+                    type: "shading",
+                    colour: "_context_fill",
+                    opacity: 0.5,
+                    points: [
+                        {col: x + 0.5, row: y},
+                        {col: x + 1, row: y},
+                        {col: x + 1, row: y + 0.5},
+                    ],
+                });
+            }
+        }
+
         // Add annotations: one arrow per piece from where it started the turn
         // to where it ended up, the enter glyph for a piece back where it began,
         // and the exit glyph on a trap that claimed a piece
@@ -1962,16 +1991,16 @@ export class ArimaaGame extends GameBase {
                 }
             }
         }
-        // show selected piece if present
-        if (this._selected !== undefined) {
-            const [x, y] = ArimaaGame.algebraic2coords(this._selected);
+        // A chain can have several selected pieces. Highlight each square,
+        // including an enemy which is about to be pushed or pulled.
+        for (const square of this._selections ?? (this._selected === undefined ? [] : [this._selected])) {
+            const [x, y] = ArimaaGame.algebraic2coords(square);
             (rep.board as BoardBasic).markers!.push({
                 type: "flood",
                 colour: this.getPlayerColour(this.currplayer),
                 opacity: 0.25,
                 points: [{row: y, col: x}],
             });
-            // rep.annotations.push({type: "enter", targets: [{row: y, col: x}]});
         }
         if (rep.annotations.length === 0) {
             delete rep.annotations;
