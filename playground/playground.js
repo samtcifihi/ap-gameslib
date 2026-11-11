@@ -119,10 +119,6 @@ function playgroundRenderOpts(game, gamename, base = {}) {
         getRenderOptions({
             ...base,
             perspective: getRenderPerspective(game, gamename),
-            // The preview engine is reconstructed from committed state on
-            // every move. Carry the per-user input mode into render() so
-            // Advanced-only trap controls remain visible while selecting.
-            ...(gamename === "arimaa" ? {inputMode: effectivePlaygroundInputModeUid(gamename)} : {}),
         }),
     );
 }
@@ -584,7 +580,8 @@ function applyPlaygroundClickResult(game, gamename, result) {
         movebox.classList.add("move-ready");
     }
     if ( ( (result.hasOwnProperty("canrender")) && (result.canrender === true) ) || (result.complete >= 0) ) {
-        let renderOpts = playgroundRenderOpts(game, gamename);
+        // a click result's opts are meant for render(), as on the live site
+        let renderOpts = playgroundRenderOpts(game, gamename, result.opts);
         applyPlaygroundDisplayRenderOpts(renderOpts);
         applyInterimPartialRender(gamename, result.move, renderOpts);
     } else {
