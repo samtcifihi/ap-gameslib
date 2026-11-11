@@ -5,14 +5,14 @@ import type { APMoveResult } from "../schemas/moveresults.js";
 import { randomInt, RectGrid, reviver, shuffle, SquareOrthGraph, UserFacingError, cloneState } from "../common/index.js";
 import i18next from "i18next";
 import { arrowToken, captureToken, isArrow, isLegacy, isMark, isHold, joinMove, normalize, parseMove, pieceChar, holdToken, tokenText, NotationError, type ParsedMove, type Token } from "./arimaa/notation.js";
-import { hasAnyMove, inferred, resolve, serializeTurn, sqName, turnFromSteps, type Turn } from "./arimaa/turns.js";
+import { display, hasAnyMove, inferred, resolve, serializeTurn, sqName, turnFromSteps, type Turn } from "./arimaa/turns.js";
 import { castDie, type IDie } from "./arimaa/dice.js";
 import { ARIMAA_CAPTURE_CHOICE, captureAlternatives, inputClick } from "./arimaa/input.js";
 export const gameApgamesEn = {
     inputModes: {
         basic: {
             name: "Basic",
-            description: "Move only pieces you explicitly select. Every completed click sequence has an unambiguous result.",
+            description: "Move only pieces you explicitly select, in the order you enter them. Every completed click sequence has an unambiguous result.",
         },
         advanced: {
             name: "Advanced",
@@ -53,9 +53,10 @@ export const gameApgamesEn = {
         NO_MOVE_FROZEN: "The piece on {{from}} is frozen, and nothing can free it in time.",
         NO_MOVE_REACH: "The piece on {{from}} cannot get to {{to}} within {{num}} steps.",
         NO_MOVE_TOGETHER: "Each of those works on its own, but not all of them within {{num}} steps.",
-        AMBIGUOUS: "That fits {{count}} different moves. Say where another piece ends up to settle it.",
+        AMBIGUOUS: "That fits {{count}} different moves, and the one shown is the one that will be played. Say where another piece ends up to choose another.",
+        IDLE: "Nothing moves yet. Say where a piece ends up.",
         INFERRED: "Also moving: {{pieces}}.",
-        INCOMPLETE: "A piece is selected. Click a square to send it there, or click it again to keep it where it is.",
+        INCOMPLETE: "A piece is selected. Click a square to send it there.",
         TOO_LONG: "What you have drawn needs more than {{num}} steps.",
         DIE_one: "The die allows a single step this turn.",
         DIE_other: "The die allows up to {{count}} steps this turn.",
@@ -139,6 +140,11 @@ interface ILegendObj {
     [key: string]: Glyph|[Glyph, ...Glyph[]];
 }
 
+/** `inputMode` is the mode a click was made in, as `handleClick` returns it in its result's `opts`. */
+interface IArimaaRenderOpts extends IRenderOpts {
+    inputMode?: string;
+}
+
 function isLower(character: string): boolean {
   return character === character.toLowerCase() && character !== character.toUpperCase();
 }
@@ -151,7 +157,7 @@ export class ArimaaGame extends GameBase {
         version: "20251223",
         dateAdded: "2026-01-23",
         description: "The pieces are animals of various strengths jockeying for position, trying to get one of their rabbits to the far row. But watch out for traps!",
-        notes: "Made available under section 3 of the [Arimaa public license](https://arimaa.com/arimaa/license/).\n\nDuring standard setup, you only need to place your eight non-rabbits. Once they are down, Complete Move fills the rest of your setup area with rabbits. You can still place any or all of the rabbits yourself first if you want them somewhere in particular.\n\nArimaa has Basic and Advanced input modes. Basic (the default) moves only explicitly selected pieces, including those in pushes, pulls and chains. Advanced can infer additional movements and also supports target clicks and trap-capture choices. Click a piece and its destination, or select several pieces to chain a movement. In Basic mode select every piece that needs to move; in Advanced mode you can rely on the engine to infer supporting movements. When Advanced offers an upper-right triangle on a trap, click it instead of the square to request the non-default capture result. Click an empty square to finish a legal move. The wiki page explains rarer movements and captures.\n\nMoves are recorded in Lightvector notation, which names each piece and where it ends up rather than listing every step. You can type it into the move box, and the older step-by-step notation is still accepted. The wiki page explains the notation in full.\n\nHarlog is an accepted method for determining material advantage. Positive scores favour Gold, negative Silver. The hard range is ±112, but in practice ±20 is a very strong advantage.\n\nIn Dicey Moves, a player whose die allows a single step has no move, and loses, when only pushes and pulls remain.\n\nBecause we can't generate comprehensive lists of moves, the system cannot detect the rare cases where your only available moves are illegal due to position repetition. The system won't let you make those illegal repetitions, and you'll have to resign manually.",
+        notes: "Made available under section 3 of the [Arimaa public license](https://arimaa.com/arimaa/license/).\n\nDuring standard setup, you only need to place your eight non-rabbits. Once they are down, Complete Move fills the rest of your setup area with rabbits. You can still place any or all of the rabbits yourself first if you want them somewhere in particular.\n\nArimaa has Basic and Advanced input modes. Basic (the default) moves only explicitly selected pieces, including those in pushes, pulls and chains, and plays your steps in the order you enter them. Advanced can infer additional movements and also supports target clicks and trap-capture choices. Click a piece and its destination, or select several pieces to chain a movement. In Basic mode select every piece that needs to move; in Advanced mode you can rely on the engine to infer supporting movements, and when what you have entered fits more than one move it shows the one it will play. In Advanced mode, click a selected piece again to keep it where it is. When Advanced offers an upper-right triangle on a trap, click it instead of the square to have your own piece captured there, or an enemy piece survive there. Click an empty square to finish a legal move. The wiki page explains rarer movements and captures.\n\nMoves are recorded in Lightvector notation, which names each piece and where it ends up rather than listing every step. You can type it into the move box, and the older step-by-step notation is still accepted. The wiki page explains the notation in full.\n\nHarlog is an accepted method for determining material advantage. Positive scores favour Gold, negative Silver. The hard range is ±112, but in practice ±20 is a very strong advantage.\n\nIn Dicey Moves, a player whose die allows a single step has no move, and loses, when only pushes and pulls remain.\n\nBecause we can't generate comprehensive lists of moves, the system cannot detect the rare cases where your only available moves are illegal due to position repetition. The system won't let you make those illegal repetitions, and you'll have to resign manually.",
         urls: [
             "https://arimaa.com/arimaa/",
             "https://arimaa.com/arimaa/learn/rulesIntro.html",
@@ -363,7 +369,6 @@ export class ArimaaGame extends GameBase {
     private _selected: string|undefined;
     private _selections: string[]|undefined;
     private _entryMove: string|undefined;
-    private _inputMode: "basic"|"advanced" = "basic";
     // the player's arrows, kept for drawing when they do not yet resolve to a move
     private _arrows: Array<[string, string]>|undefined;
     // the squares of the player's holds and capture marks, drawn whether or not the move resolves
@@ -628,8 +633,7 @@ export class ArimaaGame extends GameBase {
             // - or we're in standard setup and ply 1 or 2, no matter the hands
             const placing = (this.hands !== undefined && this.hands[this.currplayer - 1].length > 0) ||
                 (this.standardSetup() && this.stack.length <= 2);
-            const inputMode = this.resolveActiveInputMode(ui?.inputMode) ?? "basic";
-            this._inputMode = inputMode === "advanced" ? "advanced" : "basic";
+            const advanced = this.resolveActiveInputMode(ui?.inputMode) === "advanced";
             // The custom SVG triangle is an ordinary clickable renderer
             // piece. Its reserved key distinguishes its click from a click on
             // the trap square itself, without affecting actual board pieces.
@@ -637,19 +641,29 @@ export class ArimaaGame extends GameBase {
                 ArimaaGame.coords2algebraic(col, row) : undefined;
             const isCaptureChoice = piece === ARIMAA_CAPTURE_CHOICE;
             const alternativeCapture = !placing && isCaptureChoice &&
-                inputMode === "advanced" && square !== undefined &&
+                advanced && square !== undefined &&
                 captureAlternatives(this.board, this.currplayer, this.maxSteps(), move).includes(square);
-            if (isCaptureChoice && !alternativeCapture) {
-                return {...this.validateMove(move), move};
+            // render() is not told the input mode and runs on a fresh game
+            // object, but clients hand a click's `opts` on to it: that is how
+            // the preview of an Advanced entry gets its trap controls.
+            const withMode = (r: IClickResult): IClickResult => {
+                if (advanced && !placing && r.move.length > 0) {
+                    const opts: IArimaaRenderOpts = {inputMode: "advanced"};
+                    r.opts = opts;
+                }
+                return r;
+            };
+            // a control that is not on offer does nothing, and neither does
+            // a click off the board once the pieces are down
+            if ((isCaptureChoice && !alternativeCapture) || (!placing && square === undefined)) {
+                return withMode({...this.validateMove(move), move});
             }
             // The unadvertised status-quo path is retained for compatibility
             // regression tests and click-count comparisons only.
             const input: {move: string; complete?: boolean} = placing ? {move: this.setupClick(move, row, col, piece)} :
                 ui?.inputMode === "status-quo" ? {move: this.moveClick(move, row, col)} :
-                inputClick(this.board, this.currplayer, this.maxSteps(), move,
-                    square ?? ArimaaGame.coords2algebraic(col, row),
-                    inputMode === "advanced" ? "advanced" : "basic",
-                    alternativeCapture);
+                inputClick(this.board, this.currplayer, this.maxSteps(), move, square!,
+                    advanced ? "advanced" : "basic", alternativeCapture);
             const newmove = input.move;
             let result = this.validateMove(newmove) as IClickResult;
             if (! result.valid) {
@@ -666,7 +680,7 @@ export class ArimaaGame extends GameBase {
                     result.complete = 1;
                 }
             }
-            return result;
+            return withMode(result);
         } catch (e) {
             // console.log(e);
             return {
@@ -1266,7 +1280,7 @@ export class ArimaaGame extends GameBase {
                 complete = 0;
                 message = i18next.t("apgames:validation.arimaa.PARTIAL", {count: remaining});
             }
-            // otherwise we're good
+            // otherwise we're good, but only the player completes a move
             else {
                 complete = 0;
                 message = i18next.t("apgames:validation._general.VALID_MOVE");
@@ -1330,9 +1344,10 @@ export class ArimaaGame extends GameBase {
         return `${pc}${sqName(tr.start)}${sqName(tr.final)}`;
     }
 
-    // Lightvector notation: resolve the tokens leniently and report: invalid for
-    // unreadable or unsatisfiable input, -1 while ambiguous, selecting or
-    // repeating, 1 only for a full turn with nothing inferred, otherwise 0.
+    // Lightvector notation: find the turn the tokens are shown as and report:
+    // invalid for unreadable or unsatisfiable input; -1 while nothing moves
+    // yet, a piece is only selected, or the position would repeat; otherwise
+    // 0, so that the move stays open to editing until the player completes it.
     private validateNotation(m: string): IValidationResult {
         const result: IValidationResult = {valid: false, message: i18next.t("apgames:validation._general.DEFAULT_HANDLER")};
         let parsed: ParsedMove;
@@ -1355,43 +1370,45 @@ export class ArimaaGame extends GameBase {
             result.message = i18next.t("apgames:validation.arimaa.PARTIAL_MOVE");
             return result;
         }
-        const r = resolve(this.board, this.currplayer, maxMoves, parsed.tokens, true);
-        if (r.status === "unsatisfiable") {
+        const d = display(this.board, this.currplayer, maxMoves, parsed.tokens);
+        if (d.status === "unsatisfiable") {
             result.message = this.explainUnsatisfiable(parsed.tokens, maxMoves);
             return result;
         }
         result.valid = true;
         result.canrender = true;
-        if (r.status === "ambiguous") {
-            result.complete = -1;
-            result.message = i18next.t("apgames:validation.arimaa.AMBIGUOUS", {count: r.positions});
-            return result;
-        }
-        // the move is known; repetition is checked only now
-        const cloned = this.clone();
-        cloned.applyTurn(r.turn);
-        if (cloned.numRepeats() >= 2) {
-            result.complete = -1;
-            result.message = i18next.t("apgames:validation.arimaa.REPEAT");
-            return result;
-        }
-        const extra = inferred(r.turn, parsed.tokens);
-        const used = r.turn.steps.length;
         const messages: string[] = [];
-        if (used === maxMoves) {
-            // auto-completion only when the player has seen every piece that moves
-            result.complete = 0;
-            messages.push(i18next.t("apgames:validation._general.VALID_MOVE"));
+        if (d.status === "idle") {
+            // pieces are only held where they stand: there is no move to submit yet
+            result.complete = -1;
+            messages.push(i18next.t("apgames:validation.arimaa.IDLE"));
         } else {
+            // the move is known; repetition is checked only now
+            const cloned = this.clone();
+            cloned.applyTurn(d.turn);
+            if (cloned.numRepeats() >= 2) {
+                result.complete = -1;
+                result.message = i18next.t("apgames:validation.arimaa.REPEAT");
+                return result;
+            }
             result.complete = 0;
-            messages.push(i18next.t("apgames:validation.arimaa.PARTIAL", {count: maxMoves - used}));
-        }
-        if (extra.length > 0) {
-            messages.push(i18next.t("apgames:validation.arimaa.INFERRED", {pieces: extra.map(tr => this.describeTrajectory(tr)).join(", ")}));
+            const used = d.turn.steps.length;
+            if (used === maxMoves) {
+                messages.push(i18next.t("apgames:validation._general.VALID_MOVE"));
+            } else {
+                messages.push(i18next.t("apgames:validation.arimaa.PARTIAL", {count: maxMoves - used}));
+            }
+            const extra = inferred(d.turn, parsed.tokens);
+            if (extra.length > 0) {
+                messages.push(i18next.t("apgames:validation.arimaa.INFERRED", {pieces: extra.map(tr => this.describeTrajectory(tr)).join(", ")}));
+            }
+            if (d.by === "choice") {
+                // what is shown is one of several moves the entry fits, and it is the one a submission plays
+                messages.push(i18next.t("apgames:validation.arimaa.AMBIGUOUS", {count: d.positions}));
+            }
         }
         if (parsed.pending !== undefined) {
-            // a selected piece never submits on its own; the hint says what a click does
-            result.complete = 0;
+            // a selection is dropped on submission; the hint says what a click does
             messages.push(i18next.t("apgames:validation.arimaa.INCOMPLETE"));
         }
         result.message = messages.join(" ");
@@ -1641,8 +1658,9 @@ export class ArimaaGame extends GameBase {
         return {steps: taken, legacy};
     }
 
-    // Lightvector notation: resolve and play the turn. Returns nothing when a
-    // partial move does not (yet) denote one; the arrows are kept for drawing.
+    // Lightvector notation: play the turn the tokens are shown as. Returns
+    // nothing when a partial move does not (yet) denote one; the arrows are
+    // kept for drawing.
     private applyNotation(m: string, partial: boolean): Turn|undefined {
         // a selection never blocks a submission: it is simply dropped
         const parsed = parseMove(m, true);
@@ -1652,10 +1670,10 @@ export class ArimaaGame extends GameBase {
         if (parsed.tokens.length === 0) {
             return undefined;
         }
-        const r = resolve(this.board, this.currplayer, this.maxSteps(), parsed.tokens, true);
-        if (r.status !== "resolved") {
+        const d = display(this.board, this.currplayer, this.maxSteps(), parsed.tokens);
+        if (d.status !== "turn") {
             if (!partial) {
-                throw new UserFacingError("VALIDATION_GENERAL", i18next.t(r.status === "ambiguous" ? "apgames:validation.arimaa.AMBIGUOUS" : "apgames:validation.arimaa.NO_MOVE", {count: r.status === "ambiguous" ? r.positions : 0}));
+                throw new UserFacingError("VALIDATION_GENERAL", i18next.t(d.status === "idle" ? "apgames:validation.arimaa.NOPASS" : "apgames:validation.arimaa.NO_MOVE"));
             }
             // the move does not yet denote a turn, so draw what was entered
             this._arrows = parsed.tokens.filter(isArrow).map(t => [t.spec.square!, (t.prop as {square: string}).square]);
@@ -1663,14 +1681,14 @@ export class ArimaaGame extends GameBase {
             this._marks = parsed.tokens.filter(isMark).map(t => t.spec.square!);
             return undefined;
         }
-        this.applyTurn(r.turn);
+        this.applyTurn(d.turn);
         if (partial) {
             // the turn's own results draw its arrows and captures, but a held
             // piece leaves no trace in them, and the player needs to see that
-            // the hold is there (a click on it lifts it)
+            // the hold is there
             this._holds = parsed.tokens.filter(isHold).map(t => t.spec.square!);
         }
-        return r.turn;
+        return d.turn;
     }
 
     protected checkEOG(): ArimaaGame {
@@ -1759,7 +1777,7 @@ export class ArimaaGame extends GameBase {
         };
     }
 
-    public render(opts: IRenderOpts & {inputMode?: string} = {}): APRenderRep {
+    public render(opts: IArimaaRenderOpts = {}): APRenderRep {
         // Build piece string
         const plst: string[] = [];
         for (let row = 0; row < 8; row++) {
@@ -1935,11 +1953,11 @@ export class ArimaaGame extends GameBase {
             });
         }
 
-        // Advanced non-default trap outcome: one custom SVG triangle is both
-        // the visible control and its hit shape. Unlike an ordinary shading
+        // Advanced trap capture control: one custom SVG triangle is both the
+        // visible control and its hit shape. Unlike an ordinary shading
         // marker, the renderer gives board pieces a click handler. The only
         // painted region is the triangular polygon, not the glyph viewBox.
-        if ((opts.inputMode ?? this._inputMode) === "advanced" && this._entryMove !== undefined && this._selected !== undefined) {
+        if (opts.inputMode === "advanced" && this._entryMove !== undefined && this._selected !== undefined) {
             const original = this.stack[this.stack.length - 1].board;
             const alternatives = captureAlternatives(original, this.currplayer, this.maxSteps(), this._entryMove);
             if (alternatives.length > 0) {

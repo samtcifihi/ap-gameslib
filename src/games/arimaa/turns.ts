@@ -364,7 +364,11 @@ export type Resolution =
  * Strict resolution is the notation's meaning; lenient resolution breaks a
  * tie in the first bucket by fewest own captures, then most enemy captures.
  * `prune` disables the search heuristic; it exists so tests can check that
- * pruning never changes an answer.
+ * pruning never changes an answer. `accept` narrows the turns considered to
+ * those it returns true for; click entry uses it to ask for more than tokens
+ * can say. It may look only at where each piece starts, passes and ends, not
+ * at the order of the steps: the search does not try every order that reaches
+ * a state.
  */
 export function resolve(board: Map<string, CellContents>, player: playerid, maxSteps: number, tokens: Token[], lenient: boolean, prune = true, accept?: (turn: Turn) => boolean): Resolution {
     const s = new Search(board, player);
@@ -394,16 +398,19 @@ export function resolve(board: Map<string, CellContents>, player: playerid, maxS
     const visitedOk = (p: PieceState, t: PTok): boolean => t.sq < 0 || p.visited.includes(t.sq);
     const finalOf = (p: PieceState): number => p.cur < 0 ? p.capturedAt : p.cur;
 
-    // Longest prefix of a step token some piece has taken so far, ignoring the
-    // ordering between tokens (a lower bound on what remains).
-    const bestPrefix = (t: PTok): number => {
-        let best = 0;
+    // How far the steps taken after index `after` go towards a step token:
+    // the index at which some piece first completes it, or failing that the
+    // longest prefix of it any piece has taken.
+    const witness = (t: PTok, after: number): { end: number; prefix: number } => {
+        let end = Infinity;
+        let prefix = 0;
         for (const p of s.pieces) {
             if (!typeMatch(p, t)) {
                 continue;
             }
             let j = 0;
-            for (const st of s.steps) {
+            for (let i = after + 1; i < s.steps.length; i++) {
+                const st = s.steps[i];
                 if (st.pid !== p.id) {
                     continue;
                 }
@@ -413,15 +420,18 @@ export function resolve(board: Map<string, CellContents>, player: playerid, maxS
                 if (st.dir === t.dirs[j]) {
                     j++;
                     if (j === t.dirs.length) {
+                        if (i < end) {
+                            end = i;
+                        }
                         break;
                     }
                 }
             }
-            if (j > best) {
-                best = j;
+            if (j > prefix) {
+                prefix = j;
             }
         }
-        return best;
+        return { end, prefix };
     };
 
     // Pieces a token could be witnessed by, and for a destination group the
@@ -682,16 +692,30 @@ export function resolve(board: Map<string, CellContents>, player: playerid, maxS
                 return max;
             }
         }
+        // Step tokens are witnessed in the order written, each by steps taken
+        // after the one before it was completed, so what they still lack adds
+        // up: the rest of the first one not yet completed and every step of
+        // those after it.
+        let after = -1;
+        let lacking = 0;
+        let open = false;
         for (const t of stepToks) {
             if (t.type === "R" && t.owner === s.player && t.dirs.includes(backwardDir)) {
                 return Infinity;
             }
-            const left = t.dirs.length - bestPrefix(t);
-            if (left > max) {
-                max = left;
+            if (open) {
+                lacking += t.dirs.length;
+                continue;
+            }
+            const w = witness(t, after);
+            if (w.end === Infinity) {
+                open = true;
+                lacking += t.dirs.length - w.prefix;
+            } else {
+                after = w.end;
             }
         }
-        return Math.max(sum, max);
+        return Math.max(sum, max, lacking);
     };
 
     const satisfies = (): boolean => {
@@ -716,37 +740,10 @@ export function resolve(board: Map<string, CellContents>, player: playerid, maxS
         // completion of each leaves the most room for the next
         let after = -1;
         for (const t of stepToks) {
-            let bestEnd = Infinity;
-            for (const p of s.pieces) {
-                if (!typeMatch(p, t)) {
-                    continue;
-                }
-                let j = 0;
-                let end = -1;
-                for (let i = after + 1; i < s.steps.length; i++) {
-                    const st = s.steps[i];
-                    if (st.pid !== p.id) {
-                        continue;
-                    }
-                    if (j === 0 && t.sq >= 0 && st.from !== t.sq) {
-                        continue;
-                    }
-                    if (st.dir === t.dirs[j]) {
-                        j++;
-                        end = i;
-                        if (j === t.dirs.length) {
-                            break;
-                        }
-                    }
-                }
-                if (j === t.dirs.length && end < bestEnd) {
-                    bestEnd = end;
-                }
-            }
-            if (bestEnd === Infinity) {
+            after = witness(t, after).end;
+            if (after === Infinity) {
                 return false;
             }
-            after = bestEnd;
         }
         return true;
     };
@@ -754,6 +751,7 @@ export function resolve(board: Map<string, CellContents>, player: playerid, maxS
     // Everything the search asks of a state, except the order of the steps
     // that led to it, is in the board and each moved piece's visited squares.
     // Step tokens are the exception, so the memo is off while any is present.
+    // `accept` is held to the same rule.
     const stateKey = (): string => {
         let key = s.signature();
         for (const p of s.pieces) {
@@ -763,7 +761,7 @@ export function resolve(board: Map<string, CellContents>, player: playerid, maxS
         }
         return key;
     };
-    const memo = stepToks.length === 0 && accept === undefined;
+    const memo = stepToks.length === 0;
 
     for (let k = 1; k <= maxSteps; k++) {
         const found = new Map<string, Turn>();
@@ -850,18 +848,66 @@ export function resolve(board: Map<string, CellContents>, player: playerid, maxS
     return { status: "unsatisfiable" };
 }
 
+// Whether every token already holds of the position as it stands: holds and
+// survival assertions about pieces that are where the tokens say.
+function standing(board: Map<string, CellContents>, tokens: Token[]): boolean {
+    return tokens.every(t => {
+        if (t.prop.kind !== "dest" && t.prop.kind !== "survive") {
+            return false;
+        }
+        const matches = ([piece, owner]: CellContents): boolean => t.spec.piece === undefined || (t.spec.piece === piece && t.spec.owner === owner);
+        const at = t.prop.kind === "dest" ? t.prop.square : t.spec.square;
+        if (at === undefined) {
+            return [...board.values()].some(matches);
+        }
+        if (t.spec.square !== undefined && t.spec.square !== at) {
+            return false;
+        }
+        const there = board.get(at);
+        return there !== undefined && matches(there);
+    });
+}
+
+export type Displayed =
+    | { status: "unsatisfiable" }
+    /** every token already holds of the position as it stands: nothing moves yet */
+    | { status: "idle" }
+    /** `by` says what settled on the turn; `positions` is how many the notation alone fits */
+    | { status: "turn"; turn: Turn; by: "notation" | "captures" | "choice"; positions: number };
+
 /**
- * Whether the player to move has any legal step, or, with at least two steps
- * to spend, any push or pull. Only Dicey Moves allows fewer than two.
+ * What a token list is shown as and, once the player completes it, played as:
+ * the notation's own meaning where it has one, and otherwise, of the turns in
+ * its first bucket, the one capturing the fewest own pieces, then the most
+ * enemy pieces, then (so that there is always an answer) the one whose
+ * position sorts first. What is stored for a turn is always written by
+ * `serializeTurn`, which needs none of these preferences to be read back.
  */
-/** Whether an occupied origin participates in an immediately legal step, push or pull. */
-export function canMoveNow(board: Map<string, CellContents>, player: playerid, maxSteps: number, origin: string): boolean {
-    if (maxSteps <= 0) {
-        return false;
+export function display(board: Map<string, CellContents>, player: playerid, maxSteps: number, tokens: Token[], accept?: (turn: Turn) => boolean): Displayed {
+    if (accept === undefined && standing(board, tokens)) {
+        return { status: "idle" };
     }
-    const search = new Search(board, player);
-    const id = search.ids[sqIndex(origin)];
-    return id >= 0 && search.atoms(maxSteps).some(atom => atom.some(step => step.pid === id));
+    const r = resolve(board, player, maxSteps, tokens, true, true, accept);
+    if (r.status === "unsatisfiable") {
+        return r;
+    }
+    if (r.status === "resolved") {
+        return { status: "turn", turn: r.turn, by: r.lenient ? "captures" : "notation", positions: r.positions };
+    }
+    let best = r.candidates[0];
+    for (const t of r.candidates) {
+        if (t.ownCaptured !== best.ownCaptured ? t.ownCaptured < best.ownCaptured :
+            t.enemyCaptured !== best.enemyCaptured ? t.enemyCaptured > best.enemyCaptured :
+            t.signature < best.signature) {
+            best = t;
+        }
+    }
+    return { status: "turn", turn: best, by: "choice", positions: r.positions };
+}
+
+/** The position signature turns are compared by. */
+export function boardSignature(board: Map<string, CellContents>): string {
+    return new Search(board, 1).signature();
 }
 
 /** Whether a piece can participate after legal preparatory steps this turn. */
@@ -914,6 +960,10 @@ export function canMoveWithin(board: Map<string, CellContents>, player: playerid
     return reachable(maxSteps);
 }
 
+/**
+ * Whether the player to move has any legal step, or, with at least two steps
+ * to spend, any push or pull. Only Dicey Moves allows fewer than two.
+ */
 export function hasAnyMove(board: Map<string, CellContents>, player: playerid, maxSteps = 4): boolean {
     return new Search(board, player).atoms(Math.min(2, maxSteps)).length > 0;
 }

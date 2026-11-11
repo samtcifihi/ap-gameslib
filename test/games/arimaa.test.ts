@@ -280,7 +280,7 @@ describe("Arimaa", () => {
 // Lightvector notation and arrow entry
 
 import { isLegacy, parseMove, parseToken, NotationError } from "../../src/games/arimaa/notation";
-import { resolve, serializeTurn, sqName, turnFromSteps, type CellContents } from "../../src/games/arimaa/turns";
+import { resolve, serializeTurn, sqIndex, sqName, turnFromSteps, type CellContents, type Turn } from "../../src/games/arimaa/turns";
 import { arimaaRecords } from "../fixtures/arimaa/records";
 import { allTurns, boardOf as coverageBoard, unsupportedOnTrap, type Owner } from "../fixtures/arimaa/coverage";
 
@@ -510,7 +510,21 @@ describe("Arimaa resolution", () => {
             const parsed = parseMove(tokens.join(" ")).tokens;
             const pruned = resolve(b, player, maxSteps, parsed, false, true);
             const full = resolve(b, player, maxSteps, parsed, false, false);
-            expect(key(pruned), `${[...b.entries()].map(([c, [p, o]]) => (o === 1 ? p : p.toLowerCase()) + c).join(" ")} / ${tokens.join(" ")} / player ${player} / ${maxSteps} steps`).to.equal(key(full));
+            const label = `${[...b.entries()].map(([c, [p, o]]) => (o === 1 ? p : p.toLowerCase()) + c).join(" ")} / ${tokens.join(" ")} / player ${player} / ${maxSteps} steps`;
+            expect(key(pruned), label).to.equal(key(full));
+            // nor with a filter of the kinds click entry passes, which read
+            // only where pieces start, pass and end: one piece has to move,
+            // or nothing else may
+            if (cells.length > 0) {
+                const chosen = sqIndex(cells[tokens.length % cells.length]);
+                for (const [name, accept] of [
+                    ["moves", (turn: Turn): boolean => turn.trajectories.some(tr => tr.start === chosen && tr.visited.length > 1)],
+                    ["alone", (turn: Turn): boolean => turn.trajectories.every(tr => tr.start === chosen || tr.visited.length === 1)],
+                ] as Array<[string, (turn: Turn) => boolean]>) {
+                    expect(key(resolve(b, player, maxSteps, parsed, false, true, accept)), `${label} / ${name}`)
+                        .to.equal(key(resolve(b, player, maxSteps, parsed, false, false, accept)));
+                }
+            }
         };
         for (let trial = 0; trial < 150; trial++) {
             check(4 + rnd(4), 4);
@@ -547,7 +561,9 @@ describe("Arimaa arrow entry", () => {
         let r = click(g, "", "e4");
         r = click(g, r.move, "e5");
         expect(r.move).to.equal("re4e5");
-        expect(r.complete).to.equal(-1);
+        // either pusher fits: one is shown, and the entry says so
+        expect(r.complete).to.equal(0);
+        expect(r.message).to.contain(i18next.t("apgames:validation.arimaa.AMBIGUOUS", {count: 2}));
         r = click(g, r.move, "d4");
         expect(r.move).to.equal("re4e5 d4");
         r = click(g, r.move, "e4");
@@ -582,7 +598,8 @@ describe("Arimaa arrow entry", () => {
         // and where it goes is still open
         expect(r.move).to.equal("Ed4f4");
         expect(r.valid).to.be.true;
-        expect(r.complete).to.equal(-1);
+        expect(r.complete).to.equal(0);
+        expect(r.message).to.contain(i18next.t("apgames:validation.arimaa.AMBIGUOUS", {count: 6}));
         r = click(g, "d4", "d6");
         expect(r.move).to.equal("Ed4d6");
         r = click(g, r.move, "d6");

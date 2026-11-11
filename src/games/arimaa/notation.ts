@@ -11,6 +11,9 @@
  * captured. The move meant is found in the first (steps, displaced pieces)
  * bucket holding a satisfying turn, provided every satisfying turn there
  * reaches the same position.
+ *
+ * Click entry also writes the property `o`, the opposite of `x`: the piece is
+ * not captured. It is understood wherever a move is read but never stored.
  */
 
 export type Piece = "E" | "M" | "H" | "D" | "C" | "R";
@@ -104,9 +107,10 @@ export function parseSpecifier(s: string): Specifier | undefined {
 
 /**
  * Properties are self-delimiting, so one pass from the right splits a token:
- * a trailing `x` is a capture; a trailing digit ends a square; otherwise the
- * maximal trailing run of `[nsew]` is the step list, backing off one character
- * if that would leave no specifier (`ee` is the Silver elephant stepping east).
+ * a trailing `x` is a capture and a trailing `o` its opposite; a trailing
+ * digit ends a square; otherwise the maximal trailing run of `[nsew]` is the
+ * step list, backing off one character if that would leave no specifier
+ * (`ee` is the Silver elephant stepping east).
  */
 export function parseToken(text: string): Token {
     if (text.length < 2) {
@@ -146,9 +150,9 @@ export function parseToken(text: string): Token {
 }
 
 /**
- * Parse a whole move. With `allowPending`, up to two final bare squares are
- * returned separately, as the pending selection and the selection before it,
- * instead of being rejected.
+ * Parse a whole move. With `allowPending`, the bare squares it ends with are
+ * returned separately, as the selections (oldest first, so the last of them
+ * is the pending one), instead of being rejected.
  */
 export function parseMove(m: string, allowPending = false): ParsedMove {
     const parts = tokenize(m);
