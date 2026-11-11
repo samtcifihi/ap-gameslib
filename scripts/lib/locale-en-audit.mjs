@@ -30,7 +30,7 @@ export function runLocaleEnAudit(namespace) {
     if (namespace === "apgames") {
         const overlay = discoverGameApgamesEnOverlay();
         const withExport = new Set();
-        for (const section of ["validation", "variants", "displays", "buttons", "status"]) {
+        for (const section of ["validation", "variants", "displays", "buttons", "status", "inputModes"]) {
             for (const u of Object.keys(overlay[section] ?? {})) {
                 withExport.add(u);
             }
@@ -44,7 +44,7 @@ export function runLocaleEnAudit(namespace) {
         console.log("merge + overlay", `${Date.now() - t0}ms`);
 
         const bucketFromIssueLine = (line) => {
-            const m = line.match(/apgames:((?:validation|variants|displays|buttons|status)\.[^)\s]+)/);
+            const m = line.match(/apgames:((?:validation|variants|displays|buttons|status|inputModes)\.[^)\s]+)/);
             if (!m) {
                 return "other";
             }

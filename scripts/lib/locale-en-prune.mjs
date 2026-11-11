@@ -8,7 +8,7 @@ import { findOrphanApresultsLeaves, resetApresultsGamesContextCache } from "./ch
 import { loadGamesProject } from "./apgames-extract-ts.mjs";
 import { REPO_ROOT } from "./locale-en-namespace-config.mjs";
 
-const APGAMES_UID_SECTIONS = ["validation", "variants", "displays", "buttons", "status"];
+const APGAMES_UID_SECTIONS = ["validation", "variants", "displays", "buttons", "status", "inputModes"];
 
 /**
  * @param {import("ts-morph").ObjectLiteralExpression} obj
@@ -54,7 +54,7 @@ export function runLocaleEnPrune(namespace, opts = {}) {
 
         const byFile = new Map();
         for (const line of orphans) {
-            const m = line.match(/apgames:((?:validation|variants|displays|buttons|status)\.[^)\s]+)/);
+            const m = line.match(/apgames:((?:validation|variants|displays|buttons|status|inputModes)\.[^)\s]+)/);
             const leaf = m?.[1];
             if (!leaf) {
                 continue;
