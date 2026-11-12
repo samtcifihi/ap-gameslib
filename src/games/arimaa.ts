@@ -7,7 +7,7 @@ import i18next from "i18next";
 import { arrowToken, captureToken, isArrow, isLegacy, isMark, isHold, joinMove, normalize, parseMove, pieceChar, holdToken, tokenText, NotationError, type ParsedMove, type Token } from "./arimaa/notation.js";
 import { display, hasAnyMove, inferred, resolve, serializeTurn, sqName, turnFromSteps, type Turn } from "./arimaa/turns.js";
 import { castDie, type IDie } from "./arimaa/dice.js";
-import { ARIMAA_CAPTURE_CHOICE, captureAlternatives, inputClick } from "./arimaa/input.js";
+import { ARIMAA_CAPTURE_CHOICE, captureAlternatives, declared, inputClick, type InputClick } from "./arimaa/input.js";
 export const gameApgamesEn = {
     inputModes: {
         basic: {
@@ -157,7 +157,7 @@ export class ArimaaGame extends GameBase {
         version: "20251223",
         dateAdded: "2026-01-23",
         description: "The pieces are animals of various strengths jockeying for position, trying to get one of their rabbits to the far row. But watch out for traps!",
-        notes: "Made available under section 3 of the [Arimaa public license](https://arimaa.com/arimaa/license/).\n\nDuring standard setup, you only need to place your eight non-rabbits. Once they are down, Complete Move fills the rest of your setup area with rabbits. You can still place any or all of the rabbits yourself first if you want them somewhere in particular.\n\nArimaa has Basic and Advanced input modes. Basic (the default) moves only explicitly selected pieces, including those in pushes, pulls and chains, and plays your steps in the order you enter them. Advanced can infer additional movements and also supports target clicks and trap-capture choices. Click a piece and its destination, or select several pieces to chain a movement. In Basic mode select every piece that needs to move; in Advanced mode you can rely on the engine to infer supporting movements, and when what you have entered fits more than one move it shows the one it will play. In Advanced mode, click a selected piece again to keep it where it is. When Advanced offers an upper-right triangle on a trap, click it instead of the square to have your own piece captured there, or an enemy piece survive there. Click an empty square to finish a legal move. The wiki page explains rarer movements and captures.\n\nMoves are recorded in Lightvector notation, which names each piece and where it ends up rather than listing every step. You can type it into the move box, and the older step-by-step notation is still accepted. The wiki page explains the notation in full.\n\nHarlog is an accepted method for determining material advantage. Positive scores favour Gold, negative Silver. The hard range is ±112, but in practice ±20 is a very strong advantage.\n\nIn Dicey Moves, a player whose die allows a single step has no move, and loses, when only pushes and pulls remain.\n\nBecause we can't generate comprehensive lists of moves, the system cannot detect the rare cases where your only available moves are illegal due to position repetition. The system won't let you make those illegal repetitions, and you'll have to resign manually.",
+        notes: "Made available under section 3 of the [Arimaa public license](https://arimaa.com/arimaa/license/).\n\nDuring standard setup, you only need to place your eight non-rabbits. Once they are down, Complete Move fills the rest of your setup area with rabbits. You can still place any or all of the rabbits yourself first if you want them somewhere in particular.\n\nArimaa has Basic and Advanced input modes. Basic (the default) moves only explicitly selected pieces, including those in pushes, pulls and chains, and plays your steps in the order you enter them. Advanced can infer additional movements and also supports target clicks and trap-capture choices. Click a piece and its destination, or select several pieces to chain a movement. In Basic mode select every piece that needs to move; in Advanced mode you can rely on the engine to infer supporting movements. It disturbs as few pieces as it can, even at the cost of steps: a piece you have not sent anywhere ends the turn where it started whenever that is possible. So a piece walks round another rather than have it make way, and a piece that pushes steps back afterwards, unless you send that other piece somewhere too. When what you have entered still fits more than one move it shows the one it will play, and where the notation alone would be read as some other move the move box also lists the steps of the move shown. In Advanced mode, click a selected piece again to keep it where it is. When Advanced offers an upper-right triangle on a trap, click it instead of the square to have your own piece captured there, or an enemy piece survive there. Click an empty square to finish a legal move. The wiki page explains rarer movements and captures.\n\nMoves are recorded in Lightvector notation, which names each piece and where it ends up rather than listing every step. You can type it into the move box, and the older step-by-step notation is still accepted. The wiki page explains the notation in full.\n\nHarlog is an accepted method for determining material advantage. Positive scores favour Gold, negative Silver. The hard range is ±112, but in practice ±20 is a very strong advantage.\n\nIn Dicey Moves, a player whose die allows a single step has no move, and loses, when only pushes and pulls remain.\n\nBecause we can't generate comprehensive lists of moves, the system cannot detect the rare cases where your only available moves are illegal due to position repetition. The system won't let you make those illegal repetitions, and you'll have to resign manually.",
         urls: [
             "https://arimaa.com/arimaa/",
             "https://arimaa.com/arimaa/learn/rulesIntro.html",
@@ -660,7 +660,7 @@ export class ArimaaGame extends GameBase {
             }
             // The unadvertised status-quo path is retained for compatibility
             // regression tests and click-count comparisons only.
-            const input: {move: string; complete?: boolean} = placing ? {move: this.setupClick(move, row, col, piece)} :
+            const input: InputClick = placing ? {move: this.setupClick(move, row, col, piece)} :
                 ui?.inputMode === "status-quo" ? {move: this.moveClick(move, row, col)} :
                 inputClick(this.board, this.currplayer, this.maxSteps(), move, square!,
                     advanced ? "advanced" : "basic", alternativeCapture);
@@ -678,6 +678,9 @@ export class ArimaaGame extends GameBase {
                 }
                 if (input.complete && result.valid && result.complete === 0) {
                     result.complete = 1;
+                } else if (input.oneOf !== undefined && result.valid && result.complete === 0) {
+                    // the click had more than one equally good way to go
+                    result.message = `${result.message} ${i18next.t("apgames:validation.arimaa.AMBIGUOUS", {count: input.oneOf})}`;
                 }
             }
             return withMode(result);
@@ -1398,7 +1401,8 @@ export class ArimaaGame extends GameBase {
             } else {
                 messages.push(i18next.t("apgames:validation.arimaa.PARTIAL", {count: maxMoves - used}));
             }
-            const extra = inferred(d.turn, parsed.tokens);
+            // an entry that ends with the steps of its turn names every piece in them: what else it says is what was asked for
+            const extra = inferred(d.turn, declared(parsed.tokens, d.turn));
             if (extra.length > 0) {
                 messages.push(i18next.t("apgames:validation.arimaa.INFERRED", {pieces: extra.map(tr => this.describeTrajectory(tr)).join(", ")}));
             }

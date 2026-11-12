@@ -280,7 +280,7 @@ describe("Arimaa", () => {
 // Lightvector notation and arrow entry
 
 import { isLegacy, parseMove, parseToken, NotationError } from "../../src/games/arimaa/notation";
-import { resolve, serializeTurn, sqIndex, sqName, turnFromSteps, type CellContents, type Turn } from "../../src/games/arimaa/turns";
+import { fewestDisplaced, resolve, serializeTurn, sqIndex, sqName, turnFromSteps, type CellContents, type Found, type Turn } from "../../src/games/arimaa/turns";
 import { arimaaRecords } from "../fixtures/arimaa/records";
 import { allTurns, boardOf as coverageBoard, unsupportedOnTrap, type Owner } from "../fixtures/arimaa/coverage";
 
@@ -442,6 +442,21 @@ describe("Arimaa resolution", () => {
         const r2 = resolve(c, 2, 4, parseMove("rb6x mb5x Ra5b5").tokens, false);
         expect(r2.status).to.equal("resolved");
     });
+    it("counts a right-sized pull even where the position is first reached without one", () => {
+        // The cat steps north and the rabbit follows it; then the dog takes
+        // the rabbit's square. Those same three steps are also the cat
+        // stepping away and the dog pushing the rabbit, which the search
+        // comes to first, and a dog is not one rank above a rabbit while
+        // there is a cat on the board.
+        const b = boardOf("Ce5 Dd4 Ra1 re4 ra8 ee8");
+        const tokens = parseMove("re4e5 Ce5e6 Dd4f4").tokens;
+        for (const prune of [true, false]) {
+            const found = fewestDisplaced(b, 1, 4, tokens, undefined, prune);
+            expect(found, `prune ${prune}`).to.have.length(1);
+            expect(found[0].turn.steps, `prune ${prune}`).to.have.length(4);
+            expect(found[0].rightSized, `prune ${prune}`).to.equal(1);
+        }
+    });
     it("pruning never changes an answer", function () {
         this.timeout(120000);
         // deterministic pseudo-random positions and token sets: sparse boards
@@ -512,6 +527,12 @@ describe("Arimaa resolution", () => {
             const full = resolve(b, player, maxSteps, parsed, false, false);
             const label = `${[...b.entries()].map(([c, [p, o]]) => (o === 1 ? p : p.toLowerCase()) + c).join(" ")} / ${tokens.join(" ")} / player ${player} / ${maxSteps} steps`;
             expect(key(pruned), label).to.equal(key(full));
+            // nor when displaced pieces are counted before steps, as click
+            // entry in Advanced mode counts them: then a longer turn can beat
+            // a shorter one, and the count of right-sized pushes matters
+            const bucket = (found: Found[]): string => found.map(f => `${f.turn.signature}:${f.turn.displaced}:${f.turn.steps.length}:${f.rightSized}`).sort().join(" ");
+            expect(bucket(fewestDisplaced(b, player, maxSteps, parsed)), `${label} / displaced first`)
+                .to.equal(bucket(fewestDisplaced(b, player, maxSteps, parsed, undefined, false)));
             // nor with a filter of the kinds click entry passes, which read
             // only where pieces start, pass and end: one piece has to move,
             // or nothing else may

@@ -63,6 +63,22 @@ function dirBetween(from: number, to: number): Dir {
 
 const STRENGTH: Record<Piece, number> = { R: 1, C: 2, D: 3, H: 4, M: 5, E: 6 };
 
+// Whether strength `strong` is exactly one rank above `weak` among the pieces
+// on a board, `held[s]` being how many of either colour have strength `s`. A
+// strength nobody holds is no rank: with no dog left, a horse is one rank
+// above a cat.
+function oneRankAbove(held: Int8Array, strong: number, weak: number): boolean {
+    if (strong <= weak) {
+        return false;
+    }
+    for (let s = weak + 1; s < strong; s++) {
+        if (held[s] > 0) {
+            return false;
+        }
+    }
+    return true;
+}
+
 interface PieceState {
     id: number;
     type: Piece;
@@ -130,6 +146,8 @@ class Search {
     public readonly pieces: PieceState[] = [];
     public readonly steps: TurnStep[] = [];
     public readonly captures: CaptureRec[] = [];
+    /** how many pieces of each strength, of either colour, are on the board */
+    public readonly held = new Int8Array(7);
     public readonly startSig: string;
 
     constructor(board: Map<string, CellContents>, public readonly player: playerid) {
@@ -139,6 +157,7 @@ class Search {
             this.pieces.push({ id, type, owner, strength: STRENGTH[type], start: i, cur: i, capturedAt: -1, visited: [i] });
             this.cells[i] = owner === 1 ? STRENGTH[type] : -STRENGTH[type];
             this.ids[i] = id;
+            this.held[STRENGTH[type]]++;
         }
         this.startSig = this.signature();
     }
@@ -265,6 +284,7 @@ class Search {
             this.ids[t] = -1;
             qp.cur = -1;
             qp.capturedAt = t;
+            this.held[qp.strength]--;
             this.captures.push({ pid: q, piece: qp.type, owner: qp.owner, square: t, afterStep: this.steps.length - 1 });
             undo.caps.push({ pid: q, square: t, code: c });
         }
@@ -278,6 +298,7 @@ class Search {
             this.ids[square] = pid;
             this.pieces[pid].cur = square;
             this.pieces[pid].capturedAt = -1;
+            this.held[this.pieces[pid].strength]++;
             this.captures.pop();
         }
         const p = this.pieces[u.st.pid];
@@ -301,6 +322,48 @@ class Search {
             }
         }
         return n;
+    }
+
+    // The fewest pieces that can still be displaced `remaining` steps from
+    // now. A piece off its square needs a step for every square of the way
+    // back; one captured away from home stays away, and so does a rabbit of
+    // the mover's that has gone forward.
+    public leastDisplaced(remaining: number): number {
+        let n = 0;
+        const back: number[] = [];
+        for (const p of this.pieces) {
+            if (p.visited.length === 1) {
+                continue;
+            }
+            if (p.cur < 0) {
+                if (p.capturedAt !== p.start) {
+                    n++;
+                }
+            } else if (p.cur !== p.start) {
+                n++;
+                if (p.type !== "R" || p.owner !== this.player || (p.cur >> 3) === (p.start >> 3)) {
+                    back.push(DIST[p.cur * 64 + p.start]);
+                }
+            }
+        }
+        back.sort((a, b) => a - b);
+        for (const d of back) {
+            if (d > remaining) {
+                break;
+            }
+            remaining -= d;
+            n--;
+        }
+        return n;
+    }
+
+    /** Whether a push or pull is made by a piece exactly one rank above the piece it moves, as the board stands. */
+    public rightSized(atom: TurnStep[]): boolean {
+        if (atom.length !== 2) {
+            return false;
+        }
+        const [own, other] = atom[0].owner === this.player ? atom : [atom[1], atom[0]];
+        return oneRankAbove(this.held, STRENGTH[own.piece], STRENGTH[other.piece]);
     }
 
     public snapshot(displaced: number, signature: string): Turn {
@@ -360,17 +423,23 @@ export type Resolution =
     | { status: "resolved"; bucket: [number, number]; turn: Turn; positions: number; lenient: boolean };
 
 /**
- * Find the move a token list denotes from `board` with `player` to move.
- * Strict resolution is the notation's meaning; lenient resolution breaks a
- * tie in the first bucket by fewest own captures, then most enemy captures.
- * `prune` disables the search heuristic; it exists so tests can check that
- * pruning never changes an answer. `accept` narrows the turns considered to
- * those it returns true for; click entry uses it to ask for more than tokens
- * can say. It may look only at where each piece starts, passes and ends, not
- * at the order of the steps: the search does not try every order that reaches
- * a state.
+ * A turn a search found for a position, and the most pushes and pulls made by
+ * a piece exactly one rank above the piece it moves that any way of playing
+ * that position has, in as many steps and displacing as few pieces. Only a
+ * search that puts displaced pieces first counts them.
  */
-export function resolve(board: Map<string, CellContents>, player: playerid, maxSteps: number, tokens: Token[], lenient: boolean, prune = true, accept?: (turn: Turn) => boolean): Resolution {
+export interface Found {
+    turn: Turn;
+    rightSized: number;
+}
+
+// Every position that a turn fitting the tokens reaches, with a turn for each,
+// from the first bucket holding any. The notation orders buckets by steps and
+// then by displaced pieces. With `displacedFirst` they are ordered by
+// displaced pieces and then by steps, as click entry in Advanced mode asks,
+// which can put a longer turn before a shorter one. `prune` and `accept` are
+// described at `resolve`.
+function firstBucket(board: Map<string, CellContents>, player: playerid, maxSteps: number, tokens: Token[], prune: boolean, accept: ((turn: Turn) => boolean) | undefined, displacedFirst: boolean): Found[] {
     const s = new Search(board, player);
     const toks = prepare(tokens);
     const destGroups = new Map<number, PTok[]>();
@@ -763,12 +832,27 @@ export function resolve(board: Map<string, CellContents>, player: playerid, maxS
     };
     const memo = stepToks.length === 0;
 
+    // No turn that fits displaces fewer pieces than this: a destination that
+    // the piece standing on it does not answer for takes a piece from
+    // elsewhere, and distinct destinations take distinct pieces.
+    let floor = 0;
+    for (const [dest, group] of destGroups) {
+        const there = s.ids[dest];
+        if (there < 0 || !group.every(t => typeMatch(s.pieces[there], t))) {
+            floor++;
+        }
+    }
+
+    let best: Found[] = [];
+    // displaced pieces a turn has to stay under to be worth its extra steps
+    let under = Infinity;
+    let rightSized = 0;
     for (let k = 1; k <= maxSteps; k++) {
-        const found = new Map<string, Turn>();
-        // States already searched with at least as many steps left. Every
-        // shallower iteration came up empty, so reaching a state again with
-        // fewer steps left can only lead to ends found there or ends that
-        // would have satisfied a shallower iteration.
+        const found = new Map<string, Found>();
+        // States already searched with at least as many steps left, and as
+        // many right-sized pushes and pulls behind them. Whatever a state
+        // leads to with fewer steps left was within reach of a shallower
+        // iteration, which either came up empty or found it in fewer steps.
         const seen = new Map<string, number>();
         const dfs = (remaining: number): void => {
             if (remaining === 0) {
@@ -777,36 +861,47 @@ export function resolve(board: Map<string, CellContents>, player: playerid, maxS
                     return;
                 }
                 const displaced = s.displaced();
+                if (displaced >= under) {
+                    return;
+                }
                 const candidate = s.snapshot(displaced, sig);
                 if (accept !== undefined && !accept(candidate)) {
                     return;
                 }
                 const existing = found.get(sig);
-                if (existing === undefined || displaced < existing.displaced) {
-                    found.set(sig, candidate);
+                if (existing === undefined || displaced < existing.turn.displaced ||
+                    (displaced === existing.turn.displaced && rightSized > existing.rightSized)) {
+                    found.set(sig, { turn: candidate, rightSized });
                 }
                 return;
             }
             if (prune && heuristic(remaining) > remaining) {
                 return;
             }
+            if (prune && under !== Infinity && s.leastDisplaced(remaining) >= under) {
+                return;
+            }
             if (prune && memo && remaining < k) {
                 const key = stateKey();
-                const best = seen.get(key);
-                if (best !== undefined && best >= remaining) {
+                const reached = remaining * (maxSteps + 1) + rightSized;
+                const before = seen.get(key);
+                if (before !== undefined && before >= reached) {
                     return;
                 }
-                seen.set(key, remaining);
+                seen.set(key, reached);
             }
             for (const atom of s.atoms(remaining)) {
                 if (atom.length > remaining) {
                     continue;
                 }
+                const counts = displacedFirst && s.rightSized(atom) ? 1 : 0;
                 const undos: Undo[] = [];
                 for (const st of atom) {
                     undos.push(s.apply(st));
                 }
+                rightSized += counts;
                 dfs(remaining - atom.length);
+                rightSized -= counts;
                 while (undos.length > 0) {
                     s.undo(undos.pop()!);
                 }
@@ -817,40 +912,75 @@ export function resolve(board: Map<string, CellContents>, player: playerid, maxS
             continue;
         }
         let minDisplaced = Infinity;
-        for (const t of found.values()) {
-            if (t.displaced < minDisplaced) {
-                minDisplaced = t.displaced;
+        for (const f of found.values()) {
+            if (f.turn.displaced < minDisplaced) {
+                minDisplaced = f.turn.displaced;
             }
         }
-        const candidates = [...found.values()].filter(t => t.displaced === minDisplaced);
-        const bucket: [number, number] = [k, minDisplaced];
-        if (candidates.length === 1) {
-            return { status: "resolved", bucket, turn: candidates[0], positions: 1, lenient: false };
+        best = [...found.values()].filter(f => f.turn.displaced === minDisplaced);
+        if (!displacedFirst || minDisplaced <= floor) {
+            break;
         }
-        if (lenient) {
-            const score = (t: Turn): number => t.ownCaptured * 100 - t.enemyCaptured;
-            let best = candidates[0];
-            let tie = false;
-            for (const t of candidates.slice(1)) {
-                if (score(t) < score(best)) {
-                    best = t;
-                    tie = false;
-                } else if (score(t) === score(best)) {
-                    tie = true;
-                }
-            }
-            if (!tie) {
-                return { status: "resolved", bucket, turn: best, positions: candidates.length, lenient: true };
-            }
-        }
-        return { status: "ambiguous", bucket, positions: candidates.length, candidates };
+        under = minDisplaced;
     }
-    return { status: "unsatisfiable" };
+    return best;
 }
 
-// Whether every token already holds of the position as it stands: holds and
-// survival assertions about pieces that are where the tokens say.
-function standing(board: Map<string, CellContents>, tokens: Token[]): boolean {
+/**
+ * Find the move a token list denotes from `board` with `player` to move.
+ * Strict resolution is the notation's meaning; lenient resolution breaks a
+ * tie in the first bucket by fewest own captures, then most enemy captures.
+ * `prune` disables the search heuristic; it exists so tests can check that
+ * pruning never changes an answer. `accept` narrows the turns considered to
+ * those it returns true for; click entry uses it to ask for more than tokens
+ * can say. It may look only at where each piece starts, passes and ends, not
+ * at the order of the steps: the search does not try every order that reaches
+ * a state.
+ */
+export function resolve(board: Map<string, CellContents>, player: playerid, maxSteps: number, tokens: Token[], lenient: boolean, prune = true, accept?: (turn: Turn) => boolean): Resolution {
+    const candidates = firstBucket(board, player, maxSteps, tokens, prune, accept, false).map(f => f.turn);
+    if (candidates.length === 0) {
+        return { status: "unsatisfiable" };
+    }
+    const bucket: [number, number] = [candidates[0].steps.length, candidates[0].displaced];
+    if (candidates.length === 1) {
+        return { status: "resolved", bucket, turn: candidates[0], positions: 1, lenient: false };
+    }
+    if (lenient) {
+        const score = (t: Turn): number => t.ownCaptured * 100 - t.enemyCaptured;
+        let best = candidates[0];
+        let tie = false;
+        for (const t of candidates.slice(1)) {
+            if (score(t) < score(best)) {
+                best = t;
+                tie = false;
+            } else if (score(t) === score(best)) {
+                tie = true;
+            }
+        }
+        if (!tie) {
+            return { status: "resolved", bucket, turn: best, positions: candidates.length, lenient: true };
+        }
+    }
+    return { status: "ambiguous", bucket, positions: candidates.length, candidates };
+}
+
+/**
+ * The turns that fit a token list when what is asked of a turn is, before
+ * anything else, to displace as few pieces as it can, and only then to take as
+ * few steps: one for each position in the first such bucket, and none if no
+ * turn fits. This is how click entry in Advanced mode reads what a player has
+ * said so far. It is not what the notation means: `resolve` is.
+ */
+export function fewestDisplaced(board: Map<string, CellContents>, player: playerid, maxSteps: number, tokens: Token[], accept?: (turn: Turn) => boolean, prune = true): Found[] {
+    return firstBucket(board, player, maxSteps, tokens, prune, accept, true);
+}
+
+/**
+ * Whether every token already holds of the position as it stands: holds and
+ * survival assertions about pieces that are where the tokens say.
+ */
+export function standing(board: Map<string, CellContents>, tokens: Token[]): boolean {
     return tokens.every(t => {
         if (t.prop.kind !== "dest" && t.prop.kind !== "survive") {
             return false;
@@ -872,8 +1002,13 @@ export type Displayed =
     | { status: "unsatisfiable" }
     /** every token already holds of the position as it stands: nothing moves yet */
     | { status: "idle" }
-    /** `by` says what settled on the turn; `positions` is how many the notation alone fits */
-    | { status: "turn"; turn: Turn; by: "notation" | "captures" | "choice"; positions: number };
+    /**
+     * `by` says what settled on the turn: the notation's own meaning, a
+     * preference for some captures over others, the whole of Advanced click
+     * entry's preferences (`choose`), or, with "choice", nothing but the
+     * order positions sort in. `positions` is how many the first bucket holds.
+     */
+    | { status: "turn"; turn: Turn; by: "notation" | "captures" | "preference" | "choice"; positions: number };
 
 /**
  * What a token list is shown as and, once the player completes it, played as:
@@ -903,6 +1038,74 @@ export function display(board: Map<string, CellContents>, player: playerid, maxS
         }
     }
     return { status: "turn", turn: best, by: "choice", positions: r.positions };
+}
+
+/**
+ * What click entry in Advanced mode takes a token list to mean, which is not
+ * what the notation means by it (`display`). Beyond what the tokens say it
+ * asks for as little as it can: of every turn that fits, the fewest pieces
+ * displaced, then the fewest steps, the fewest own pieces captured, the most
+ * enemy pieces captured, the most pushes and pulls of a piece exactly one rank
+ * weaker, and then (so that there is always an answer) the position that
+ * sorts first. An entry that is to be played as this turn has to say so in
+ * terms the notation reads the same way.
+ */
+export function choose(board: Map<string, CellContents>, player: playerid, maxSteps: number, tokens: Token[], accept?: (turn: Turn) => boolean): Displayed {
+    if (accept === undefined && standing(board, tokens)) {
+        return { status: "idle" };
+    }
+    const found = fewestDisplaced(board, player, maxSteps, tokens, accept);
+    if (found.length === 0) {
+        return { status: "unsatisfiable" };
+    }
+    const preference = (a: Found, b: Found): number =>
+        a.turn.ownCaptured - b.turn.ownCaptured ||
+        b.turn.enemyCaptured - a.turn.enemyCaptured ||
+        b.rightSized - a.rightSized;
+    let best = found[0];
+    let tied = false;
+    for (const f of found.slice(1)) {
+        const c = preference(f, best);
+        if (c < 0) {
+            best = f;
+            tied = false;
+        } else if (c === 0) {
+            tied = true;
+            if (f.turn.signature < best.turn.signature) {
+                best = f;
+            }
+        }
+    }
+    return { status: "turn", turn: best.turn, by: tied ? "choice" : "preference", positions: found.length };
+}
+
+/**
+ * How many of `side`'s pieces, in the position a signature describes, stand
+ * next to an enemy piece exactly one rank stronger. Ranks are counted over
+ * the pieces on the board, as for a right-sized push.
+ */
+export function wrongPieces(signature: string, side: playerid): number {
+    const cells = new Int8Array(64);
+    const held = new Int8Array(7);
+    for (let i = 0; i < 64; i++) {
+        const ch = signature[i];
+        if (ch !== "-") {
+            const strength = STRENGTH[ch.toUpperCase() as Piece];
+            cells[i] = ch === ch.toUpperCase() ? strength : -strength;
+            held[strength]++;
+        }
+    }
+    let n = 0;
+    for (let i = 0; i < 64; i++) {
+        const c = cells[i];
+        if (c === 0 || (c > 0) !== (side === 1)) {
+            continue;
+        }
+        if (NEIGHBOURS[i].some(j => cells[j] !== 0 && (cells[j] > 0) !== (c > 0) && oneRankAbove(held, Math.abs(cells[j]), Math.abs(c)))) {
+            n++;
+        }
+    }
+    return n;
 }
 
 /** The position signature turns are compared by. */

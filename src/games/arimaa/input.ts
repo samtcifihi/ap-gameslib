@@ -10,23 +10,31 @@
  * steps of the selected pieces, written as step tokens, after the steps
  * already entered, so that steps happen in the order they were entered.
  *
- * Advanced says where pieces end up and leaves the rest to the resolver, as
- * typed notation does. Its tokens name a piece by the square it started the
- * turn on, and sending a piece somewhere else replaces what was said of it.
+ * Advanced says where pieces end up and leaves the rest to the engine. Its
+ * tokens name a piece by the square it started the turn on, and sending a
+ * piece somewhere else replaces what was said of it. What is left open it
+ * settles by preferences of its own (`choose`), which are not the notation's:
+ * above all it moves no piece it was not told to if it can help it, even at
+ * the cost of steps. An entry is read by the notation wherever it goes next,
+ * so when the notation would read what was said as some other turn, the entry
+ * ends with the steps of the turn meant, and those it can read no other way.
  */
 import {
     arrowToken, captureToken, holdToken, joinSelections, parseMove, pieceChar, surviveToken,
     type Dir, type ParsedMove, type Piece, type Token, type playerid,
 } from "./notation.js";
 import {
-    boardSignature, canMoveWithin, display, manhattan, resolve, serializeTurn, sqIndex, sqName,
-    type CellContents, type Turn, type TurnStep,
+    boardSignature, canMoveWithin, choose, display, fewestDisplaced, manhattan, resolve, serializeTurn,
+    sqIndex, sqName, standing, wrongPieces,
+    type CellContents, type Found, type Turn, type TurnStep,
 } from "./turns.js";
 
 export type ArimaaInputMode = "basic" | "advanced";
 export interface InputClick {
     move: string;
     complete?: boolean;
+    /** Advanced: how many moves what was said fits, when the one shown is no better than another of them */
+    oneOf?: number;
 }
 
 /**
@@ -52,6 +60,10 @@ interface Shown {
 /** What the player is looking at: the turn the tokens are shown as and the board after it. */
 interface View {
     tokens: Token[];
+    /** whether the tokens end with the list of the steps of the turn shown, as an Advanced entry may */
+    listed: boolean;
+    /** what Advanced takes the tokens to say of the turn */
+    said: Token[];
     /** false when no turn fits the tokens */
     fits: boolean;
     turn?: Turn;
@@ -84,19 +96,58 @@ function look(board: Board, player: playerid, limit: number, tokens: Token[]): V
         });
     }
     const after: Board = new Map([...shown].map(([cell, p]): [string, CellContents] => [cell, [p.piece, p.owner]]));
+    const stated = declared(tokens, turn);
     return {
         tokens, turn, shown, after,
+        listed: stated.length < tokens.length,
+        said: turn === undefined ? stated : endings(stated, turn),
         fits: d.status !== "unsatisfiable",
         settled: d.status === "turn" && d.by === "notation",
         left: limit - (turn?.steps.length ?? 0),
     };
 }
 
+/**
+ * The tokens of an entry less the list of the steps of the turn it is shown
+ * as, when it ends with one after saying something else. That list is how an
+ * Advanced entry makes the notation read it as the turn meant; it is not
+ * something the player said.
+ */
+export function declared(tokens: Token[], turn: Turn | undefined): Token[] {
+    const listed = turn === undefined ? [] : runs(turn.steps);
+    const at = tokens.length - listed.length;
+    if (listed.length > 0 && at > 0 && listed.every((t, i) => tokens[at + i].text === t.text)) {
+        return tokens.slice(0, at);
+    }
+    return tokens;
+}
+
+// What tokens say of where pieces end up. Advanced goes by nothing else, and
+// a step token, typed or entered in Basic, says only that a piece took a
+// step: left at that, the piece would be walked back to where it started.
+// So in place of step tokens, every piece the turn shown displaces or
+// captures is said to end as it does there.
+function endings(tokens: Token[], turn: Turn): Token[] {
+    if (!tokens.some(t => t.prop.kind === "steps")) {
+        return tokens;
+    }
+    const out = tokens.filter(t => t.prop.kind !== "steps");
+    for (const tr of turn.trajectories) {
+        const start = sqName(tr.start);
+        const t = tr.captured ? captureToken(tr.type, tr.owner, start) :
+            tr.final !== tr.start ? arrowToken(tr.type, tr.owner, start, sqName(tr.final)) : undefined;
+        if (t !== undefined && !out.some(o => o.text === t.text)) {
+            out.push(t);
+        }
+    }
+    return out;
+}
+
 // What an explicit completion submits: the entry itself where it needs no
 // preference to be read and holds nothing that is only for input, otherwise
 // the turn shown, written so that it does.
 function committed(board: Board, player: playerid, limit: number, v: View): string {
-    if (v.settled && !v.tokens.some(t => t.prop.kind === "survive")) {
+    if (v.settled && !v.listed && !v.tokens.some(t => t.prop.kind === "survive")) {
         return text(v.tokens);
     }
     return serializeTurn(board, player, limit, v.turn!) ?? text(v.tokens);
@@ -261,7 +312,8 @@ function describes(t: Token, piece: Shown, f: Fate): boolean {
         case "dest": return f.final === sqIndex(t.prop.square);
         case "capture": return f.captured;
         case "survive": return !f.captured;
-        default: return f.visited.length > 1;
+        // no step token is among what Advanced takes to be said
+        default: return false;
     }
 }
 
@@ -284,9 +336,9 @@ function links(v: View, squares: string[], target: string): Link[] | undefined {
     return out;
 }
 
-// The entry with what it said of each link replaced by an arrow to where the
-// link is now sent, newest selection first.
-function sent(v: View, chain: Link[], tokens = v.tokens): Token[] {
+// What was said with what it said of each link replaced by an arrow to where
+// the link is now sent, newest selection first.
+function sent(v: View, chain: Link[], tokens = v.said): Token[] {
     const fates = chain.map(l => fate(v.turn, l.piece.origin));
     return [
         ...tokens.filter(t => !chain.some((l, i) => describes(t, l.piece, fates[i]))),
@@ -301,7 +353,7 @@ function placed(v: View, l: Link): boolean {
     }
     const f = fate(v.turn, l.piece.origin);
     const at = sqIndex(l.at);
-    return v.tokens.some(t => t.prop.kind === "dest" && sqIndex(t.prop.square) === at && describes(t, l.piece, f));
+    return v.said.some(t => t.prop.kind === "dest" && sqIndex(t.prop.square) === at && describes(t, l.piece, f));
 }
 
 // What a turn must do to be the chain: every link ends where it was sent, and
@@ -315,32 +367,58 @@ function obeys(v: View, chain: Link[]): (turn: Turn) => boolean {
     });
 }
 
-// The entry after a chain is sent on its way. The arrows are returned as they
-// are when they are shown as a turn the chain allows; when they would be read
-// as some shorter turn that ignores it, more is said until they are not.
-function advancedChain(board: Board, player: playerid, limit: number, v: View, chain: Link[], extra: Token[] = []): string | undefined {
-    const tokens = [...sent(v, chain), ...extra];
-    const plain = display(board, player, limit, tokens);
-    if (plain.status !== "turn") {
-        return plain.status === "idle" ? text(tokens) : undefined;
+// The entry for `said` when it is to be shown, and played, as `turn`, which
+// fits it: the tokens alone if the notation reads them as that turn, and
+// otherwise the steps of the turn after them.
+function entry(board: Board, player: playerid, limit: number, said: Token[], turn: Turn): string {
+    const r = resolve(board, player, limit, said, false);
+    if (r.status === "resolved" && r.turn.signature === turn.signature) {
+        return text(said);
     }
-    const want = display(board, player, limit, tokens, obeys(v, chain));
+    return text([...said, ...runs(turn.steps)]);
+}
+
+// The entry for what is now said, shown as the turn Advanced takes it to mean.
+function restated(board: Board, player: playerid, limit: number, said: Token[]): InputClick {
+    const c = choose(board, player, limit, said);
+    if (c.status !== "turn") {
+        return {move: text(said)};
+    }
+    return {move: entry(board, player, limit, said, c.turn), oneOf: c.by === "choice" ? c.positions : undefined};
+}
+
+// The entry after a chain is sent on its way: what is now said, shown as the
+// turn Advanced prefers of those in which the chain happens. `captured` is
+// what a trap's triangle asks of the newest selection, which is then said
+// too. It is asked of that very piece: the token alone would be met by
+// another piece of its kind that crossed the square it started on.
+function advancedChain(board: Board, player: playerid, limit: number, v: View, chain: Link[], captured?: boolean): InputClick | undefined {
+    const last = chain[chain.length - 1].piece;
+    const tokens = sent(v, chain);
+    if (captured !== undefined) {
+        tokens.push((captured ? captureToken : surviveToken)(last.piece, last.owner, last.origin));
+    }
+    if (standing(board, tokens)) {
+        return {move: text(tokens)};
+    }
+    const follows = obeys(v, chain);
+    const want = choose(board, player, limit, tokens, captured === undefined ? follows :
+        turn => follows(turn) && fate(turn, last.origin).captured === captured);
     if (want.status !== "turn") {
         return undefined;
     }
-    if (plain.turn.signature === want.turn.signature) {
-        return text(tokens);
-    }
+    // A link sent on from a square the player had put it on is said to have
+    // been there, if the arrows alone would be taken some other way.
     const through = chain.filter((l, i) => i > 0 && l.at !== l.piece.origin && placed(v, l))
         .map(l => arrowToken(l.piece.piece, l.piece.owner, l.at, l.to));
+    let said = tokens;
     if (through.length > 0) {
-        const more = [...tokens, ...through];
-        const d = display(board, player, limit, more);
-        if (d.status === "turn" && d.turn.signature === want.turn.signature) {
-            return text(more);
+        const plain = choose(board, player, limit, tokens);
+        if (plain.status !== "turn" || plain.turn.signature !== want.turn.signature) {
+            said = [...tokens, ...through];
         }
     }
-    return serializeTurn(board, player, limit, want.turn);
+    return {move: entry(board, player, limit, said, want.turn), oneOf: want.by === "choice" ? want.positions : undefined};
 }
 
 // Whether the chain could go on through the clicked piece: the newest
@@ -352,54 +430,80 @@ function advancedChainable(board: Board, player: playerid, limit: number, v: Vie
         return false;
     }
     const f = fate(v.turn, x.origin);
-    const tokens = sent(v, chain, v.tokens.filter(t => !describes(t, x, f)));
+    const tokens = sent(v, chain, v.said.filter(t => !describes(t, x, f)));
     const follows = obeys(v, chain);
     const there = sqIndex(clicked);
     return display(board, player, limit, tokens, turn => fate(turn, x.origin).final !== there && follows(turn)).status === "turn";
 }
 
-function prefer(a: Turn, b: Turn): number {
-    return a.steps.length - b.steps.length ||
-        a.displaced - b.displaced ||
-        a.ownCaptured - b.ownCaptured ||
-        b.enemyCaptured - a.enemyCaptured;
+/** A turn that brings a piece to the square a target click names, and the arrow that says so. */
+interface Aim {
+    found: Found;
+    arrow: Token;
+    /** enemy pieces, less own pieces, left beside an opposing piece exactly one rank stronger */
+    wrong: number;
 }
 
-// The move a click on an empty square asks for by itself: of the turns that
-// fit the entry and end with a piece on (or captured on) `target`, those
-// moving an enemy piece there if any do, then the fewest steps, the fewest
-// pieces displaced, the fewest own pieces captured and the most enemy pieces
-// captured. Nothing if that still leaves more than one position.
-function targetSelection(board: Board, player: playerid, limit: number, tokens: Token[], target: string): string | undefined {
+// The move a click on an empty square asks for by itself. Of the turns that
+// fit what was said and end with a piece on (or captured on) `target`: those
+// taking a rabbit of the player's to goal there if any do, otherwise those
+// moving an enemy piece there if any do; then the fewest pieces displaced,
+// the fewest steps, the fewest own pieces captured, the most enemy pieces
+// captured, the most enemy pieces less own pieces left beside an opposing
+// piece exactly one rank stronger, and the most pushes and pulls of a piece
+// exactly one rank weaker. Nothing if that still leaves more than one
+// position.
+function targetSelection(board: Board, player: playerid, limit: number, said: Token[], target: string): InputClick | undefined {
     const there = sqIndex(target);
-    const choices: Array<{turn: Turn; enemy: boolean}> = [];
-    for (const [origin, [piece, owner]] of board) {
-        const start = sqIndex(origin);
-        if (manhattan(start, there) > limit) {
+    const enemy: playerid = player === 1 ? 2 : 1;
+    const goal = target[1] === (player === 1 ? "8" : "1");
+    // the pieces within reach, by which of those preferences their coming meets
+    const classes: Array<Array<[string, CellContents]>> = [[], [], []];
+    for (const [origin, contents] of board) {
+        const [piece, owner] = contents;
+        // an enemy piece takes two steps a square
+        if (manhattan(sqIndex(origin), there) * (owner === player ? 1 : 2) <= limit) {
+            classes[owner !== player ? 1 : goal && piece === "R" ? 0 : 2].push([origin, contents]);
+        }
+    }
+    for (const pieces of classes) {
+        let aims: Aim[] = [];
+        for (const [origin, [piece, owner]] of pieces) {
+            const start = sqIndex(origin);
+            const arrow = arrowToken(piece, owner, origin, target);
+            const found = fewestDisplaced(board, player, limit, [...said, arrow], turn =>
+                turn.trajectories.some(tr => tr.start === start && tr.final === there && (tr.visited.length > 1 || tr.captured)));
+            if (found.length === 0) {
+                continue;
+            }
+            const sooner = aims.length === 0 ? -1 :
+                found[0].turn.displaced - aims[0].found.turn.displaced || found[0].turn.steps.length - aims[0].found.turn.steps.length;
+            if (sooner < 0) {
+                aims = [];
+            }
+            if (sooner <= 0) {
+                aims.push(...found.map(f => ({
+                    found: f, arrow,
+                    wrong: wrongPieces(f.turn.signature, enemy) - wrongPieces(f.turn.signature, player),
+                })));
+            }
+        }
+        if (aims.length === 0) {
             continue;
         }
-        const r = resolve(board, player, limit, [...tokens, arrowToken(piece, owner, origin, target)], false, true, turn =>
-            turn.trajectories.some(tr => tr.start === start && tr.final === there && (tr.visited.length > 1 || tr.captured)));
-        for (const turn of r.status === "resolved" ? [r.turn] : r.status === "ambiguous" ? r.candidates : []) {
-            choices.push({turn, enemy: owner !== player});
+        const order = (a: Aim, b: Aim): number =>
+            a.found.turn.ownCaptured - b.found.turn.ownCaptured ||
+            b.found.turn.enemyCaptured - a.found.turn.enemyCaptured ||
+            b.wrong - a.wrong ||
+            b.found.rightSized - a.found.rightSized;
+        aims.sort(order);
+        const first = aims[0];
+        if (aims.some(a => order(a, first) === 0 && a.found.turn.signature !== first.found.turn.signature)) {
+            return undefined;
         }
+        return {move: entry(board, player, limit, [...said, first.arrow], first.found.turn)};
     }
-    if (choices.length === 0) {
-        return undefined;
-    }
-    const enemy = choices.some(c => c.enemy);
-    const preferred = choices.filter(c => c.enemy === enemy).map(c => c.turn).sort(prefer);
-    if (preferred.some(t => prefer(t, preferred[0]) === 0 && t.signature !== preferred[0].signature)) {
-        return undefined;
-    }
-    return serializeTurn(board, player, limit, preferred[0]);
-}
-
-/** The token a click on a trap's triangle adds: an own piece is captured there, an enemy piece is not. */
-function choice(player: playerid, last: Shown): Token {
-    return last.owner === player ?
-        captureToken(last.piece, last.owner, last.origin) :
-        surviveToken(last.piece, last.owner, last.origin);
+    return undefined;
 }
 
 /**
@@ -428,8 +532,9 @@ export function captureAlternatives(board: Board, player: playerid, limit: numbe
         const last = chain[chain.length - 1].piece;
         const tokens = sent(v, chain);
         const follows = obeys(v, chain);
-        const can = (t: Token): boolean => display(board, player, limit, [...tokens, t], follows).status === "turn";
-        if (can(captureToken(last.piece, last.owner, last.origin)) && can(surviveToken(last.piece, last.owner, last.origin))) {
+        const can = (captured: boolean): boolean => display(board, player, limit, tokens, turn =>
+            follows(turn) && fate(turn, last.origin).captured === captured).status === "turn";
+        if (can(true) && can(false)) {
             out.push(trap);
         }
     }
@@ -442,7 +547,7 @@ function advancedClick(board: Board, player: playerid, limit: number, v: View, s
     const select = (squares: string[]): InputClick => ({move: joinSelections(v.tokens, squares)});
     // A piece can be selected if it can still move once the turn shown has
     // been played, if it moves in that turn (it can be sent elsewhere), or
-    // if the entry leaves room for it to move in place of what was inferred.
+    // if what was said leaves room for it to move in place of what was inferred.
     const movable = (cell: string): boolean => {
         const p = v.shown.get(cell);
         if (p === undefined) {
@@ -459,7 +564,7 @@ function advancedClick(board: Board, player: playerid, limit: number, v: View, s
             return false;
         }
         const start = sqIndex(p.origin);
-        return display(board, player, limit, v.tokens.filter(t => !describes(t, p, f)), turn =>
+        return display(board, player, limit, v.said.filter(t => !describes(t, p, f)), turn =>
             turn.trajectories.some(tr => tr.start === start && tr.visited.length > 1)).status === "turn";
     };
     // an emptied square stands for the piece that started the turn on it
@@ -471,10 +576,7 @@ function advancedClick(board: Board, player: playerid, limit: number, v: View, s
         }
         return undefined;
     };
-    const aimed = (): InputClick | undefined => {
-        const move = targetSelection(board, player, limit, v.tokens, square);
-        return move === undefined ? undefined : {move};
-    };
+    const aimed = (): InputClick | undefined => targetSelection(board, player, limit, v.said, square);
 
     if (selections.length === 0) {
         if (clicked === undefined) {
@@ -484,7 +586,8 @@ function advancedClick(board: Board, player: playerid, limit: number, v: View, s
         if (movable(square)) {
             return select([square]);
         }
-        return clicked.owner === player ? stay : {move: text(v.tokens.slice(0, -1))};
+        // undo: one thing less is said
+        return clicked.owner === player ? stay : restated(board, player, limit, v.said.slice(0, -1));
     }
 
     const chain = links(v, selections, square);
@@ -492,24 +595,26 @@ function advancedClick(board: Board, player: playerid, limit: number, v: View, s
         return stay;
     }
     if (clicked === undefined) {
-        const extra = triangle && TRAPS.includes(square) ? [choice(player, chain[chain.length - 1].piece)] : [];
-        const move = advancedChain(board, player, limit, v, chain, extra);
-        return move !== undefined ? {move} : cameFrom(square) ?? aimed() ?? stay;
+        // a trap's triangle: an own piece is captured there, an enemy piece is not
+        const captured = triangle && TRAPS.includes(square) ? chain[chain.length - 1].piece.owner === player : undefined;
+        return advancedChain(board, player, limit, v, chain, captured) ?? cameFrom(square) ?? aimed() ?? stay;
     }
     if (square === selections[0]) {
         if (selections.length > 1) {
-            const move = advancedChain(board, player, limit, v, chain);
-            if (move !== undefined) {
-                return {move};
+            const looped = advancedChain(board, player, limit, v, chain);
+            if (looped !== undefined) {
+                return looped;
             }
         } else {
-            // the piece stays where it is drawn, which the entry may say already
+            // the piece stays where it is drawn, which may have been said already
             const f = fate(v.turn, clicked.origin);
             const here = sqIndex(square);
-            if (v.tokens.some(t => t.prop.kind === "dest" && sqIndex(t.prop.square) === here && describes(t, clicked, f))) {
+            if (v.said.some(t => t.prop.kind === "dest" && sqIndex(t.prop.square) === here && describes(t, clicked, f))) {
                 return stay;
             }
-            return {move: text([...v.tokens, holdToken(clicked.piece, clicked.owner, square)])};
+            // that is true of the turn shown, which therefore stays as it is
+            const held = [...v.said, holdToken(clicked.piece, clicked.owner, square)];
+            return {move: v.turn === undefined ? text(held) : entry(board, player, limit, held, v.turn)};
         }
     }
     if (!selections.includes(square) && advancedChainable(board, player, limit, v, selections, square)) {

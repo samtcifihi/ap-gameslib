@@ -6,7 +6,7 @@ import { ArimaaGame } from "../../src/games/arimaa";
 import { parseMove, parseToken } from "../../src/games/arimaa/notation";
 import { ARIMAA_CAPTURE_CHOICE, captureAlternatives } from "../../src/games/arimaa/input";
 import { resolve } from "../../src/games/arimaa/turns";
-import { allTurns, boardOf, type Owner } from "../fixtures/arimaa/coverage";
+import { allPlays, allTurns, boardOf, neighbours, oneRankAbove, signature, type Board, type Owner, type Path, type Play } from "../fixtures/arimaa/coverage";
 
 type Mode = "basic" | "advanced";
 const MODES: Mode[] = ["basic", "advanced"];
@@ -40,6 +40,24 @@ const played = (game: ArimaaGame, move: string): ArimaaGame => {
     expect(v.valid, `${move}: ${v.message}`).to.equal(true);
     expect(v.complete, `${move}: ${v.message}`).to.be.at.least(0);
     return game.clone().move(move);
+};
+
+/** What an Advanced entry says, apart from the steps of the move shown that it may list after that. */
+const said = (move: string): string[] => parseMove(move, true).tokens.filter(t => t.prop.kind !== "steps").map(t => t.text);
+const listed = (move: string): string[] => parseMove(move, true).tokens.filter(t => t.prop.kind === "steps").map(t => t.text);
+const ambiguous = (count: number): string => i18next.t("apgames:validation.arimaa.AMBIGUOUS", {count});
+const withDie = (game: ArimaaGame, steps: number): ArimaaGame => {
+    game.die = {steps, square: "a4"};
+    return game;
+};
+/** A position to click on, with no hands and the given player to move. */
+const ready = (board: Board, player: Owner): ArimaaGame => {
+    const g = new ArimaaGame(undefined, ["free"]);
+    g.stack[0].board = new Map(board) as ArimaaGame["board"];
+    g.stack.push({...g.stack[0], _results: [], _timestamp: new Date(), currplayer: player, board: new Map(board) as ArimaaGame["board"], hands: undefined, lastmove: "x"});
+    g.load();
+    g.hands = undefined;
+    return g;
 };
 
 describe("Arimaa input modes", () => {
@@ -383,22 +401,25 @@ describe("Arimaa input modes", () => {
             expect(played(g, pinned.move).board.get("e4")).to.deep.equal(pusher);
         });
 
-        it("shows one of the moves an entry fits and lets the player complete it", () => {
-            const g = position("Ed4,Rd5,Ra1", "ra8,ee8");
+        it("shows one of the moves an entry fits when none is better, and lets the player complete it", () => {
+            // three steps are too few to walk round the rabbit, so it has to make way, to either side
+            const g = withDie(position("Ed4,Rd5,Ra1", "ra8,ee8"), 3);
             const entered = click(g, enter(g, "advanced", ["d4"]), "d6", "advanced");
-            expect(entered.move).to.equal("Ed4d6");
+            expect(said(entered.move)).to.deep.equal(["Ed4d6"]);
             expect(entered.complete).to.equal(0);
-            expect(entered.message).to.contain(i18next.t("apgames:validation.arimaa.AMBIGUOUS", {count: 2}));
+            expect(entered.message).to.contain(ambiguous(2));
+            expect(entered.message).to.contain(i18next.t("apgames:validation.arimaa.INFERRED", {pieces: ""}).split(":")[0]);
             const preview = g.clone().move(entered.move, {partial: true});
             expect(preview.board.get("d6")).to.deep.equal(["E", 1]);
+            expect(preview.board.has("d5")).to.equal(false);
             // submitted as it is, it plays what was shown and is stored unambiguously
             const submitted = g.clone().move(entered.move);
             expect(submitted.signature()).to.equal(preview.signature());
-            expect(resolve(g.board, 1, 4, parseMove(submitted.lastmove!).tokens, false).status).to.equal("resolved");
+            expect(resolve(g.board, 1, 3, parseMove(submitted.lastmove!).tokens, false).status).to.equal("resolved");
             // and so does completing it with a click on an empty square
             const done = click(g, entered.move, "h8", "advanced");
             expect(done.complete).to.equal(1);
-            expect(resolve(g.board, 1, 4, parseMove(done.move).tokens, false).status).to.equal("resolved");
+            expect(resolve(g.board, 1, 3, parseMove(done.move).tokens, false).status).to.equal("resolved");
             expect(g.clone().move(done.move).signature()).to.equal(preview.signature());
         });
 
@@ -479,20 +500,322 @@ describe("Arimaa input modes", () => {
             }
         });
 
-        it("enters a piece stepping out to free another and coming back (archive 10441479, ply 29)", () => {
+        it("frees a frozen piece with one that steps out and comes back (archive 10441479, ply 29)", () => {
             const g = position("Ra2,Ra5,Rb1,Cb2,Mb4,Rc2,Hd3,Ed5,De2,De4,Rf1,Rf2,Cg1,Hg3,Rh1,Rh2",
                 "ra6,rb7,ec4,hc6,cc7,rc8,dd4,rd7,re7,cf7,rf8,hg6,rg8,dh6,rh8");
             const recorded = g.clone().move("Ra5b5, Mb4b3, Mb3a3, Rb5a5");
-            // Sending the camel alone takes three steps and leaves whichever
-            // piece freed it out of place. Holding both pieces that could
-            // free it asks for the four-step turn in which one comes back.
-            const alone = g.clone().move(enter(g, "advanced", ["b4", "a3"]));
-            expect(alone.signature()).not.to.equal(recorded.signature());
+            // Sending the camel is all it takes. Whichever piece frees it
+            // comes back, because that leaves every other piece where it was,
+            // and it is the same move whichever piece that is.
+            expect(played(g, enter(g, "advanced", ["b4", "a3"])).signature()).to.equal(recorded.signature());
+            // a piece that is kept where it is may still step out and back
             const held = enter(g, "advanced", ["b2", "b2", "a5", "a5", "b4", "a3"]);
             expect(played(g, held).signature()).to.equal(recorded.signature());
             // Basic simply plays the steps
             expect(played(g, enter(g, "basic", ["a5", "b5", "b4", "a3", "b5", "a5"])).signature()).to.equal(recorded.signature());
         });
+    });
+
+    describe("Advanced preferences", () => {
+        const moves = (g: ArimaaGame): number => g.results.filter(r => r.type === "move").length;
+
+        it("moves no piece it was not told to, even at the cost of steps", () => {
+            const g = position("Ed4,Rd5,Ra1", "ra8,ee8");
+            const round = played(g, enter(g, "advanced", ["d4", "d6"]));
+            expect(round.board.get("d6")).to.deep.equal(["E", 1]);
+            expect(round.board.get("d5")).to.deep.equal(["R", 1]);
+            expect(moves(round)).to.equal(4);
+            // with too few steps to walk round, the rabbit in the way makes room
+            const short = withDie(position("Ed4,Rd5,Ra1", "ra8,ee8"), 3);
+            const through = played(short, enter(short, "advanced", ["d4", "d6"]));
+            expect(through.board.get("d6")).to.deep.equal(["E", 1]);
+            expect(through.board.has("d5")).to.equal(false);
+        });
+
+        it("brings a pusher back unless it is sent somewhere too", () => {
+            const g = position("Cd4,Ra1", "re4,ra8,ee8");
+            const back = played(g, enter(g, "advanced", ["e4", "e5"]));
+            expect(back.board.get("e5")).to.deep.equal(["R", 2]);
+            expect(back.board.get("d4")).to.deep.equal(["C", 1]);
+            expect(back.board.has("e4")).to.equal(false);
+            expect(moves(back)).to.equal(3);
+            // sent after the rabbit, or selected before it as a chain, the cat stays on the rabbit's square
+            for (const clicks of [["e4", "e5", "d4", "e4"], ["d4", "e4", "e5"]]) {
+                const move = enter(g, "advanced", clicks);
+                expect(move, clicks.join(" ")).to.equal("re4e5 Cd4e4");
+                const after = played(g, move);
+                expect(after.board.get("e4"), clicks.join(" ")).to.deep.equal(["C", 1]);
+                expect(moves(after), clicks.join(" ")).to.equal(2);
+            }
+        });
+
+        it("pushes with the piece exactly one rank stronger, counting only the ranks on the board", () => {
+            // two steps, so whichever piece pushes cannot come back
+            const cat = withDie(position("Cd4,Df4,Ra1", "re4,ra8,ee8"), 2);
+            const byCat = click(cat, "e4", "e5", "advanced");
+            expect(played(cat, byCat.move).board.get("e4")).to.deep.equal(["C", 1]);
+            expect(byCat.message).not.to.contain(ambiguous(2));
+            // with no cat on the board, a dog is one rank above a rabbit
+            const dog = withDie(position("Hd4,Df4,Ra1", "re4,ra8,ee8"), 2);
+            const byDog = click(dog, "e4", "e5", "advanced");
+            expect(played(dog, byDog.move).board.get("e4")).to.deep.equal(["D", 1]);
+            expect(byDog.message).not.to.contain(ambiguous(2));
+            // a cat anywhere, of either colour, and neither the dog nor the horse is one rank above it
+            const gap = withDie(position("Hd4,Df4,Ra1", "re4,ra8,ee8,cb8"), 2);
+            const either = click(gap, "e4", "e5", "advanced");
+            expect(either.complete).to.equal(0);
+            expect(either.message).to.contain(ambiguous(2));
+        });
+
+        it("lists the steps of the move shown where the notation alone reads otherwise", () => {
+            const g = position("Ed4,Rd5,Ra1", "ra8,ee8");
+            const move = enter(g, "advanced", ["d4", "d6"]);
+            // by themselves the tokens mean the shorter move, in which the rabbit makes way
+            expect(g.clone().move("Ed4d6", {partial: true}).board.has("d5")).to.equal(false);
+            expect(said(move)).to.deep.equal(["Ed4d6"]);
+            expect(listed(move).length).to.be.greaterThan(0);
+            expect(move.split(" ").slice(1)).to.deep.equal(listed(move));
+            // with the steps, it is notation that reads one way only
+            expect(resolve(g.board, 1, 4, parseMove(move).tokens, false).status).to.equal("resolved");
+            expect(g.validateMove(move).message).not.to.contain(ambiguous(2));
+            // what is stored is the usual notation, and it reads back the same
+            const after = played(g, move);
+            expect(after.lastmove).to.equal("Ed6 Rd5");
+            expect(resolve(g.board, 1, 4, parseMove(after.lastmove!).tokens, false).status).to.equal("resolved");
+            expect(g.clone().move(after.lastmove!).signature()).to.equal(after.signature());
+            // so is a completion by click
+            const done = click(g, move, "h8", "advanced");
+            expect(done.complete).to.equal(1);
+            expect(done.move).to.equal("Ed6 Rd5");
+            // an entry the notation reads the same way lists nothing
+            expect(enter(g, "advanced", ["a1", "a2"])).to.equal("Ra1a2");
+        });
+
+        it("goes by what was said, not by the steps it listed", () => {
+            const g = position("Ed4,Rd5,Ra1", "ra8,ee8");
+            const round = enter(g, "advanced", ["d4", "d6"]);
+            // a fifth step is too many: now the rabbit in the way makes room
+            const both = click(g, enter(g, "advanced", ["a1"], round), "a2", "advanced");
+            expect(said(both.move)).to.deep.equal(["Ed4d6", "Ra1a2"]);
+            expect(both.message).to.contain("Rd5");
+            const after = played(g, both.move);
+            expect(after.board.get("d6")).to.deep.equal(["E", 1]);
+            expect(after.board.get("a2")).to.deep.equal(["R", 1]);
+            expect(after.board.has("d5")).to.equal(false);
+            // undo takes back what was said last, and the elephant walks round again
+            expect(click(g, both.move, "a8", "advanced").move).to.equal(round);
+            expect(click(g, round, "a8", "advanced").move).to.equal("");
+            // keeping a piece where it is leaves what is shown as it was
+            const held = enter(g, "advanced", ["d5", "d5"], round);
+            expect(held).to.equal("Ed4d6 Rd5d5");
+            expect(g.clone().move(held, {partial: true}).signature()).to.equal(g.clone().move(round, {partial: true}).signature());
+        });
+
+        it("keeps what is shown when a piece elsewhere is kept where it is", () => {
+            // typed, this is read as the notation reads it: the rabbit in the way makes room
+            const g = position("Ed4,Rd5,Ra1", "ra8,ee8");
+            const typed = g.clone().move("Ed4d6", {partial: true});
+            expect(typed.board.has("d5")).to.equal(false);
+            // keeping the other rabbit where it is says nothing about that
+            const held = enter(g, "advanced", ["a1", "a1"], "Ed4d6");
+            expect(said(held)).to.deep.equal(["Ed4d6", "Ra1a1"]);
+            expect(g.clone().move(held, {partial: true}).signature()).to.equal(typed.signature());
+        });
+
+        it("takes steps that were typed or entered in Basic as saying where the pieces end up", () => {
+            const g = position("Ed4,Rd5,Ra1", "ra8,ee8");
+            const basic = enter(g, "basic", ["d5", "e5", "d4", "d6"]);
+            expect(basic).to.equal("Rd5e Ed4nn");
+            // neither piece is walked back to where it started
+            const move = enter(g, "advanced", ["a1", "a2"], basic);
+            expect(said(move)).to.have.members(["Rd5e5", "Ed4d6", "Ra1a2"]);
+            const after = played(g, move);
+            expect(after.board.get("d6")).to.deep.equal(["E", 1]);
+            expect(after.board.get("e5")).to.deep.equal(["R", 1]);
+            expect(after.board.get("a2")).to.deep.equal(["R", 1]);
+        });
+
+        it("leaves typed notation and Basic entry reading as they did", () => {
+            const g = position("Ed4,Rd5,Ra1", "ra8,ee8");
+            // typed, the same token means what the notation says: the fewest steps come first
+            const typed = g.validateMove("Ed4d6");
+            expect(typed.complete).to.equal(0);
+            expect(typed.message).to.contain(ambiguous(2));
+            const read = g.clone().move("Ed4d6");
+            expect(read.board.has("d5")).to.equal(false);
+            expect(moves(read)).to.equal(3);
+            // Basic never moved the rabbit, and still writes the steps it plays
+            expect(enter(g, "basic", ["d4", "d6"])).to.match(/^Ed4[nsew]+$/);
+        });
+    });
+
+    describe("Advanced target clicks", () => {
+        it("take a rabbit to goal before pushing an enemy piece there", () => {
+            const g = position("Re7,Dd7,Ra1", "cd8,ra8,ee5");
+            const goal = click(g, "", "e8", "advanced");
+            expect(goal.move).to.equal("Re7e8");
+            expect(played(g, goal.move).winner).to.deep.equal([1]);
+            // one rank short of goal, the enemy piece is preferred as before
+            const lower = position("Re6,Dd6,Ra1", "cd7,ra8,ee4");
+            const pushed = click(lower, "", "e7", "advanced");
+            expect(said(pushed.move)).to.deep.equal(["cd7e7"]);
+            const after = played(lower, pushed.move);
+            expect(after.board.get("e7")).to.deep.equal(["C", 2]);
+            expect(after.board.get("e6")).to.deep.equal(["R", 1]);
+            // and the dog that pushed is back where it started
+            expect(after.board.get("d6")).to.deep.equal(["D", 1]);
+        });
+
+        it("prefer to leave enemy pieces, and not their own, beside a piece one rank stronger", () => {
+            // one step: the cat or the dog can step between them, and nothing else separates the two moves
+            const rabbit = withDie(position("Cd4,Df4,Ra1", "re5,ra8,ee8"), 1);
+            expect(click(rabbit, "", "e4", "advanced").move).to.equal("Cd4e4");
+            const cat = withDie(position("Cd4,Df4,Ra1", "ce5,ra8,ee8"), 1);
+            expect(click(cat, "", "e4", "advanced").move).to.equal("Df4e4");
+            // the cat would stand beside a dog; the rabbit is two ranks below it
+            const dog = withDie(position("Cd4,Rf4,Ra1", "de5,ra8,ee8"), 1);
+            expect(click(dog, "", "e4", "advanced").move).to.equal("Rf4e4");
+            // where nothing separates them, the click chooses neither
+            const same = withDie(position("Cd4,Cf4,Ra1", "re5,ra8,ee8"), 1);
+            const none = click(same, "", "e4", "advanced");
+            expect(none.move).to.equal("");
+            expect(none.complete).to.equal(-1);
+        });
+    });
+
+    describe("Advanced follows its two priority lists", () => {
+        // What each list measures, worked out from every way of playing every
+        // legal turn rather than by the engine's search.
+        const displaced = (p: Play): number => [...p.paths].filter(([from, path]) => path.final !== from).length;
+        const captured = (p: Play, owner: Owner): number => [...p.paths.values()].filter(path => path.captured && path.owner === owner).length;
+        const wrong = (b: Board, side: Owner): number => [...b].filter(([cell, [pc, owner]]) => owner === side &&
+            neighbours(cell).some(n => {
+                const o = b.get(n);
+                return o !== undefined && o[1] !== side && oneRankAbove(b, o[0], pc);
+            })).length;
+        const other = (player: Owner): Owner => player === 1 ? 2 : 1;
+        // "prefer": keep the candidates with the best value
+        const prefer = (plays: Play[], cost: (p: Play) => number): Play[] => {
+            const best = Math.min(...plays.map(cost));
+            return plays.filter(p => cost(p) === best);
+        };
+        const normalMove = (plays: Play[], player: Owner): Play[] => [
+            displaced,
+            (p: Play) => p.steps,
+            (p: Play) => captured(p, player),
+            (p: Play) => -captured(p, other(player)),
+            (p: Play) => -p.rightSized,
+        ].reduce(prefer, plays);
+        const targetSelection = (plays: Play[], player: Owner, target: string): Play[] => {
+            const brings = (p: Play, which: (path: Path) => boolean): boolean =>
+                [...p.paths.values()].some(path => path.final === target && which(path));
+            let left = plays.filter(p => brings(p, () => true));
+            if (left.length === 0) {
+                return left;
+            }
+            if (target[1] === (player === 1 ? "8" : "1")) {
+                const goal = left.filter(p => brings(p, path => path.type === "R" && path.owner === player));
+                left = goal.length > 0 ? goal : left;
+            }
+            const enemy = left.filter(p => brings(p, path => path.owner !== player));
+            left = enemy.length > 0 ? enemy : left;
+            return [
+                displaced,
+                (p: Play) => p.steps,
+                (p: Play) => captured(p, player),
+                (p: Play) => -captured(p, other(player)),
+                (p: Play) => wrong(p.board, player) - wrong(p.board, other(player)),
+                (p: Play) => -p.rightSized,
+            ].reduce(prefer, left);
+        };
+        const positions = (plays: Play[]): Set<string> => new Set(plays.map(p => signature(p.board)));
+        // whether a click's message says the move shown is one of several, whatever number it gives
+        const hinted = (message: string): boolean => new RegExp(ambiguous(0).replace("0", "\\d+")).test(message);
+        const squares = "abcdefgh".split("").flatMap(f => "12345678".split("").map(r => `${f}${r}`));
+        // triangles clicked over all the positions together
+        let offers = 0;
+        after(() => expect(offers).to.be.greaterThan(3));
+        const shown = (g: ArimaaGame, move: string): string => signature(g.clone().move(move, {partial: true}).board as Board);
+
+        for (const [name, spec, player, steps] of [
+            ["pushers of three ranks around a rabbit", "Cd4 Df4 He3 Ra1 re4 rd5 ee8", 1, 4],
+            ["a rabbit and an enemy cat one step from goal", "Re7 Dd7 Cf7 cd8 rg8 de6", 1, 3],
+            ["pieces beside two traps", "Rb3 Cc2 Ed3 Hf2 rc4 db4 ce3 rf4", 1, 3],
+            ["no cats or dogs on the board", "Hd5 Me4 Rd3 rd4 re5 hc5 ef5", 1, 4],
+            ["Silver to move, beside a trap", "Rc5 Cb6 Dd6 rc7 hb5 ed5 rc6", 2, 3],
+            ["Silver's rabbit near goal", "Ee3 Rd1 Cf2 rd2 re2 hc2 df1", 2, 3],
+        ] as Array<[string, string, Owner, number]>) {
+            it(name, function () {
+                this.timeout(120000);
+                const board = boardOf(spec);
+                const plays = allPlays(board, player, steps);
+                const g = ready(board, player);
+                if (steps < 4) {
+                    withDie(g, steps);
+                }
+                let sends = 0;
+                let aimed = 0;
+                // a piece is selected and sent to an empty square: the Normal Move list
+                for (const [origin, [pc, owner]] of board) {
+                    const selected = click(g, "", origin, "advanced").move;
+                    expect(selected === origin, `selecting ${origin}`).to.equal(plays.some(p => (p.paths.get(origin)?.visited.length ?? 1) > 1));
+                    for (const dest of selected === origin ? squares : []) {
+                        const fit = plays.filter(p => p.paths.get(origin)?.final === dest);
+                        if (board.has(dest) || fit.length === 0) {
+                            continue;
+                        }
+                        const label = `${origin} to ${dest}`;
+                        const r = click(g, selected, dest, "advanced");
+                        expect(said(r.move), label).to.deep.equal([`${owner === 1 ? pc : pc.toLowerCase()}${origin}${dest}`]);
+                        const wanted = positions(normalMove(fit, player));
+                        expect([...wanted], `${label}: ${r.move}`).to.include(shown(g, r.move));
+                        // the player is told when the list leaves more than one move and the one shown is only the first of them
+                        expect(hinted(r.message), label).to.equal(wanted.size > 1);
+                        // what is shown is what is played, and what is stored reads back as it
+                        const after = g.clone().move(r.move);
+                        expect(signature(after.board as Board), label).to.equal(shown(g, r.move));
+                        expect(signature(g.clone().move(after.lastmove!).board as Board), `${label}: ${after.lastmove}`).to.equal(shown(g, r.move));
+                        sends++;
+                    }
+                }
+                // a trap's triangle is offered where the selected piece can end there both ways, and plays the other one
+                let triangles = 0;
+                for (const [origin, [pc, owner]] of board) {
+                    if (click(g, "", origin, "advanced").move !== origin) {
+                        continue;
+                    }
+                    const offered = captureAlternatives(g.board, player, steps, origin);
+                    for (const trap of ["c3", "f3", "c6", "f6"].filter(sq => !board.has(sq))) {
+                        const ends = plays.filter(p => p.paths.get(origin)?.final === trap);
+                        const dies = ends.filter(p => p.paths.get(origin)!.captured);
+                        const lives = ends.filter(p => !p.paths.get(origin)!.captured);
+                        const label = `${origin} to ${trap}`;
+                        expect(offered.includes(trap), label).to.equal(dies.length > 0 && lives.length > 0);
+                        if (offered.includes(trap)) {
+                            const r = click(g, origin, trap, "advanced", ARIMAA_CAPTURE_CHOICE);
+                            expect(said(r.move), label).to.deep.equal([`${owner === 1 ? pc : pc.toLowerCase()}${origin}${trap}`, `${owner === 1 ? pc : pc.toLowerCase()}${origin}${owner === player ? "x" : "o"}`]);
+                            expect([...positions(normalMove(owner === player ? dies : lives, player))], `${label}: ${r.move}`).to.include(shown(g, r.move));
+                            triangles++;
+                        }
+                    }
+                }
+                // an empty square is clicked with nothing selected: the Target Selection list
+                for (const target of squares.filter(sq => !board.has(sq))) {
+                    const wanted = positions(targetSelection(plays, player, target));
+                    const r = click(g, "", target, "advanced");
+                    if (wanted.size === 1) {
+                        expect(r.move, target).not.to.equal("");
+                        expect([...wanted], `${target}: ${r.move}`).to.include(shown(g, r.move));
+                        aimed++;
+                    } else {
+                        expect(r.move, target).to.equal("");
+                    }
+                }
+                expect(sends).to.be.greaterThan(10);
+                expect(aimed).to.be.greaterThan(5);
+                offers += triangles;
+            });
+        }
     });
 
     describe("Advanced trap capture control", () => {
@@ -553,22 +876,38 @@ describe("Arimaa input modes", () => {
             // piece, exactly as for stock sheet pieces.
             const special = click(g, "g2", "f3", "advanced", ARIMAA_CAPTURE_CHOICE);
             expect(special.valid).to.equal(true);
-            expect(special.move).to.equal("Cg2f3 Cg2x");
-            // The rabbit beside the trap has to leave for the cat to die.
-            // Where it goes is open, so one way is shown and can be played.
+            expect(said(special.move)).to.deep.equal(["Cg2f3", "Cg2x"]);
+            // The rabbit beside the trap has to leave for the cat to die,
+            // and then comes back: nothing was said of it.
             expect(special.complete).to.equal(0);
             const captured = played(g, special.move);
             expect(captured.board.has("f3")).to.equal(false);
-            expect(captured.board.has("f2")).to.equal(false);
+            expect(captured.board.get("f2")).to.deep.equal(["R", 1]);
             expect(captured.results.some(r => r.type === "destroy" && r.where === "f3" && r.what === "C")).to.equal(true);
             expect(captured.lastmove).not.to.contain("o");
-            // directing the rabbit settles which
-            const withRabbit = `Rf2e2 ${special.move}`;
-            expect(played(g, withRabbit).board.get("e2")).to.deep.equal(["R", 1]);
+            // sent somewhere, it stays there
+            const withRabbit = enter(g, "advanced", ["f2", "e2"], special.move);
+            expect(said(withRabbit)).to.deep.equal(["Cg2f3", "Cg2x", "Rf2e2"]);
+            const away = played(g, withRabbit);
+            expect(away.board.get("e2")).to.deep.equal(["R", 1]);
+            expect(away.board.has("f3")).to.equal(false);
 
             // Forged or out-of-mode custom-piece clicks must do nothing.
             expect(click(g, "g2", "f3", "basic", ARIMAA_CAPTURE_CHOICE).move).to.equal("g2");
             expect(click(g, "g2", "c3", "advanced", ARIMAA_CAPTURE_CHOICE).move).to.equal("g2");
+        });
+
+        it("is not offered because some other piece of the same kind could meet it", () => {
+            // The rabbit on d3 dies on f3 whatever else happens. The other
+            // rabbit could cross d3 after it and live, which is another matter.
+            const g = ready(boardOf("Hb5 Re5 dc3 ed6 me7 rd3 rd5"), 2);
+            expect(click(g, "", "d3", "advanced").move).to.equal("d3");
+            expect(captureAlternatives(g.board, 2, 4, "d3")).to.deep.equal([]);
+            const sent = click(g, "d3", "f3", "advanced");
+            expect(said(sent.move)).to.deep.equal(["rd3f3"]);
+            expect(played(g, sent.move).board.has("f3")).to.equal(false);
+            // a forged click on the triangle does nothing
+            expect(click(g, "d3", "f3", "advanced", ARIMAA_CAPTURE_CHOICE).move).to.equal("d3");
         });
 
         it("keeps an enemy piece alive on the trap, where the square itself captures it", () => {
@@ -647,16 +986,6 @@ describe("Arimaa input modes", () => {
 
     describe("every legal turn can be entered", () => {
         const TRAPS = ["c3", "f3", "c6", "f6"];
-        // a position to click on, with no hands and the given player to move
-        const ready = (spec: string, player: Owner): ArimaaGame => {
-            const board = boardOf(spec.replace(/,/g, " ")) as ArimaaGame["board"];
-            const g = new ArimaaGame(undefined, ["free"]);
-            g.stack[0].board = new Map(board);
-            g.stack.push({...g.stack[0], _results: [], _timestamp: new Date(), currplayer: player, board: new Map(board), hands: undefined, lastmove: "x"});
-            g.load();
-            g.hands = undefined;
-            return g;
-        };
         const legacy = (g: ArimaaGame, steps: Array<[string, string]>): string => {
             const board = new Map(g.board);
             return steps.map(([from, to]) => {
@@ -721,7 +1050,7 @@ describe("Arimaa input modes", () => {
                     expect(reachable.size).to.be.greaterThan(20);
                     const missed: string[] = [];
                     for (const stepLists of reachable.values()) {
-                        const g = ready(spec, player);
+                        const g = ready(boardOf(spec.replace(/,/g, " ")), player);
                         const target = g.clone().move(legacy(g, stepLists[0]), {trusted: true, partial: true}).signature();
                         const entered = stepLists.some(steps => sequences(clicksFor(g, steps), mode).some(seq => {
                             let move = "";
