@@ -368,37 +368,44 @@ describe("Arimaa input modes", () => {
     });
 
     describe("Advanced", () => {
-        it("keeps a piece where it is when it is selected and clicked again", () => {
+        it("deselects a piece that is clicked again, leaving the entry as it was", () => {
             const g = position("Ed4,Rd5,Ra1", "ra8,ee8");
-            const held = click(g, enter(g, "advanced", ["d5"]), "d5", "advanced");
-            expect(held.move).to.equal("Rd5d5");
-            // nothing moves yet, so there is nothing to submit
-            expect(held.valid).to.equal(true);
-            expect(held.complete).to.equal(-1);
-            expect(held.message).to.equal(i18next.t("apgames:validation.arimaa.IDLE"));
-            expect(() => g.clone().move(held.move)).to.throw();
-            expect(g.clone().move(held.move, {partial: true}).signature()).to.equal(g.signature());
-            // with the rabbit held, the elephant has to walk round it
-            const move = enter(g, "advanced", ["d4", "d6"], held.move);
-            expect(move).to.equal("Rd5d5 Ed4d6");
-            const after = played(g, move);
-            expect(after.board.get("d5")).to.deep.equal(["R", 1]);
-            expect(after.board.get("d6")).to.deep.equal(["E", 1]);
-            expect(after.lastmove).not.to.contain("o");
+            for (const mode of MODES) {
+                const none = click(g, enter(g, mode, ["d5"]), "d5", mode);
+                expect(none.move, mode).to.equal("");
+                expect(none.complete, mode).to.equal(-1);
+                const entry = enter(g, mode, ["a1", "a2"]);
+                expect(enter(g, mode, ["d4", "d4"], entry), mode).to.equal(entry);
+            }
         });
 
-        it("keeps a piece the engine moved where it was put when it is clicked again", () => {
+        it("chooses the piece that pushes by sending it, with no need to keep it anywhere", () => {
             const g = position("Ed4,Hf4,Ra1", "re4,ra8,ee8");
-            // either piece could push; the one shown doing it is selected from its starting square
-            const preview = g.clone().move("re4e5", {partial: true});
-            const pusher = preview.board.get("e4")!;
-            const origin = pusher[0] === "E" ? "d4" : "f4";
-            const selected = click(g, "re4e5", origin, "advanced");
-            expect(selected.move).to.equal("re4e5 e4");
-            const pinned = click(g, selected.move, "e4", "advanced");
-            expect(pinned.move).to.equal(`re4e5 ${pusher[0]}e4e4`);
-            expect(pinned.message).not.to.contain(i18next.t("apgames:validation.arimaa.AMBIGUOUS", {count: 2}));
-            expect(played(g, pinned.move).board.get("e4")).to.deep.equal(pusher);
+            // the horse pushes, being one rank above a rabbit here, and steps back
+            const pushed = enter(g, "advanced", ["e4", "e5"]);
+            const shown = g.clone().move(pushed, {partial: true});
+            expect(shown.board.has("e4")).to.equal(false);
+            expect(shown.board.get("f4")).to.deep.equal(["H", 1]);
+            // sending either piece onto the rabbit's square has it push and stay
+            for (const [from, piece] of [["d4", "E"], ["f4", "H"]]) {
+                const move = enter(g, "advanced", [from, "e4"], pushed);
+                expect(move, from).to.equal(`re4e5 ${piece}${from}e4`);
+                expect(played(g, move).board.get("e4"), from).to.deep.equal([piece, 1]);
+            }
+        });
+
+        it("takes a typed same-square token as saying where the piece ends, and draws nothing for it", () => {
+            const g = position("Ed4,Rd5,Ra1", "ra8,ee8");
+            // with the rabbit kept on d5, the elephant has to walk round it
+            const after = played(g, "Rd5d5 Ed4d6");
+            expect(after.board.get("d5")).to.deep.equal(["R", 1]);
+            expect(after.board.get("d6")).to.deep.equal(["E", 1]);
+            const marks = (move: string): string[] =>
+                ((g.clone().move(move, {partial: true}).render().annotations ?? []) as Array<{type: string; targets: Array<{row: number; col: number}>}>)
+                    .map(a => `${a.type}:${a.targets.map(t => ArimaaGame.coords2algebraic(t.col, t.row)).join(">")}`);
+            // the enter glyph is for a piece that moved and came back, not for one said to stay
+            expect(marks("Rd5d5")).to.deep.equal([]);
+            expect(marks("Rd5d5 Ed4d6")).to.deep.equal(["move:d4>d6"]);
         });
 
         it("shows one of the moves an entry fits when none is better, and lets the player complete it", () => {
@@ -508,9 +515,6 @@ describe("Arimaa input modes", () => {
             // comes back, because that leaves every other piece where it was,
             // and it is the same move whichever piece that is.
             expect(played(g, enter(g, "advanced", ["b4", "a3"])).signature()).to.equal(recorded.signature());
-            // a piece that is kept where it is may still step out and back
-            const held = enter(g, "advanced", ["b2", "b2", "a5", "a5", "b4", "a3"]);
-            expect(played(g, held).signature()).to.equal(recorded.signature());
             // Basic simply plays the steps
             expect(played(g, enter(g, "basic", ["a5", "b5", "b4", "a3", "b5", "a5"])).signature()).to.equal(recorded.signature());
         });
@@ -605,21 +609,6 @@ describe("Arimaa input modes", () => {
             // undo takes back what was said last, and the elephant walks round again
             expect(click(g, both.move, "a8", "advanced").move).to.equal(round);
             expect(click(g, round, "a8", "advanced").move).to.equal("");
-            // keeping a piece where it is leaves what is shown as it was
-            const held = enter(g, "advanced", ["d5", "d5"], round);
-            expect(held).to.equal("Ed4d6 Rd5d5");
-            expect(g.clone().move(held, {partial: true}).signature()).to.equal(g.clone().move(round, {partial: true}).signature());
-        });
-
-        it("keeps what is shown when a piece elsewhere is kept where it is", () => {
-            // typed, this is read as the notation reads it: the rabbit in the way makes room
-            const g = position("Ed4,Rd5,Ra1", "ra8,ee8");
-            const typed = g.clone().move("Ed4d6", {partial: true});
-            expect(typed.board.has("d5")).to.equal(false);
-            // keeping the other rabbit where it is says nothing about that
-            const held = enter(g, "advanced", ["a1", "a1"], "Ed4d6");
-            expect(said(held)).to.deep.equal(["Ed4d6", "Ra1a1"]);
-            expect(g.clone().move(held, {partial: true}).signature()).to.equal(typed.signature());
         });
 
         it("takes steps that were typed or entered in Basic as saying where the pieces end up", () => {

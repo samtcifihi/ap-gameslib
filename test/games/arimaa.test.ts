@@ -752,7 +752,7 @@ describe("Arimaa arrow entry", () => {
         expect(r.valid).to.be.false;
         expect(r.message).to.equal(i18next.t("apgames:validation.arimaa.TOO_LONG", {num: 4}));
     });
-    it("keeps a hold visible once the move resolves", () => {
+    it("draws no enter glyph for a hold, which says only where the piece ends", () => {
         const g = position("Ed4,Cc4,Ra1", "ee8,ra8");
         let r = click(g, "", "d4");
         r = click(g, r.move, "e4");
@@ -761,8 +761,7 @@ describe("Arimaa arrow entry", () => {
         expect(r.move).to.equal("Ed4e4 Cc4c4");
         expect(r.valid).to.be.true;
         g.move(r.move, {partial: true});
-        expect(annotations(g)).to.include("move:d4>e4");
-        expect(annotations(g)).to.include("enter:c4");
+        expect(annotations(g)).to.deep.equal(["move:d4>e4"]);
     });
     it("holds a piece that steps out and back with a second click on it", () => {
         // the elephant pushes the dog into the trap and returns; without the hold

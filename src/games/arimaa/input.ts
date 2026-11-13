@@ -20,7 +20,7 @@
  * ends with the steps of the turn meant, and those it can read no other way.
  */
 import {
-    arrowToken, captureToken, holdToken, joinSelections, parseMove, pieceChar, surviveToken,
+    arrowToken, captureToken, joinSelections, parseMove, pieceChar, surviveToken,
     type Dir, type ParsedMove, type Piece, type Token, type playerid,
 } from "./notation.js";
 import {
@@ -595,21 +595,13 @@ function advancedClick(board: Board, player: playerid, limit: number, v: View, s
         return advancedChain(board, player, limit, v, chain, captured) ?? cameFrom(square) ?? aimed() ?? stay;
     }
     if (square === selections[0]) {
-        if (selections.length > 1) {
-            const looped = advancedChain(board, player, limit, v, chain);
-            if (looped !== undefined) {
-                return looped;
-            }
-        } else {
-            // the piece stays where it is drawn, which may have been said already
-            const f = fate(v.turn, clicked.origin);
-            const here = sqIndex(square);
-            if (v.said.some(t => t.prop.kind === "dest" && sqIndex(t.prop.square) === here && describes(t, clicked, f))) {
-                return stay;
-            }
-            // that is true of the turn shown, which therefore stays as it is
-            const held = [...v.said, holdToken(clicked.piece, clicked.owner, square)];
-            return {move: v.turn === undefined ? text(held) : entry(board, player, limit, held, v.turn)};
+        if (selections.length === 1) {
+            // a second click on the selected piece deselects it
+            return stay;
+        }
+        const looped = advancedChain(board, player, limit, v, chain);
+        if (looped !== undefined) {
+            return looped;
         }
     }
     if (!selections.includes(square) && advancedChainable(board, player, limit, v, selections, square)) {

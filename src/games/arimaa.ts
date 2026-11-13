@@ -157,7 +157,7 @@ export class ArimaaGame extends GameBase {
         version: "20251223",
         dateAdded: "2026-01-23",
         description: "The pieces are animals of various strengths jockeying for position, trying to get one of their rabbits to the far row. But watch out for traps!",
-        notes: "Made available under section 3 of the [Arimaa public license](https://arimaa.com/arimaa/license/).\n\nDuring standard setup, you only need to place your eight non-rabbits. Once they are down, Complete Move fills the rest of your setup area with rabbits. You can still place any or all of the rabbits yourself first if you want them somewhere in particular.\n\nArimaa has Basic and Advanced input modes. Basic (the default) moves only explicitly selected pieces, including those in pushes, pulls and chains, and plays your steps in the order you enter them. Advanced can infer additional movements and also supports target clicks and trap-capture choices. Click a piece and its destination, or select several pieces to chain a movement. In Basic mode select every piece that needs to move; in Advanced mode you can rely on the engine to infer supporting movements. It disturbs as few pieces as it can, even at the cost of steps: a piece you have not sent anywhere ends the turn where it started whenever that is possible. So a piece walks round another rather than have it make way, and a piece that pushes steps back afterwards, unless you send that other piece somewhere too. When what you have entered still fits more than one move it shows the one it will play, and where the notation alone would be read as some other move the move box also lists the steps of the move shown. In Advanced mode, click a selected piece again to keep it where it is. When Advanced offers an upper-right triangle on a trap, click it instead of the square to have your own piece captured there, or an enemy piece survive there. Click an empty square to finish a legal move. The wiki page explains rarer movements and captures.\n\nMoves are recorded in Lightvector notation, which names each piece and where it ends up rather than listing every step. You can type it into the move box, and the older step-by-step notation is still accepted. The wiki page explains the notation in full.\n\nHarlog is an accepted method for determining material advantage. Positive scores favour Gold, negative Silver. The hard range is ±112, but in practice ±20 is a very strong advantage.\n\nIn Dicey Moves, a player whose die allows a single step has no move, and loses, when only pushes and pulls remain.\n\nBecause we can't generate comprehensive lists of moves, the system cannot detect the rare cases where your only available moves are illegal due to position repetition. The system won't let you make those illegal repetitions, and you'll have to resign manually.",
+        notes: "Made available under section 3 of the [Arimaa public license](https://arimaa.com/arimaa/license/).\n\nDuring standard setup, you only need to place your eight non-rabbits. Once they are down, Complete Move fills the rest of your setup area with rabbits. You can still place any or all of the rabbits yourself first if you want them somewhere in particular.\n\nArimaa has Basic and Advanced input modes. Basic (the default) moves only explicitly selected pieces, including those in pushes, pulls and chains, and plays your steps in the order you enter them. Advanced can infer additional movements and also supports target clicks and trap-capture choices. Click a piece and its destination, or select several pieces to chain a movement. In Basic mode select every piece that needs to move; in Advanced mode you can rely on the engine to infer supporting movements. It disturbs as few pieces as it can, even at the cost of steps: a piece you have not sent anywhere ends the turn where it started whenever that is possible. So a piece walks round another rather than have it make way, and a piece that pushes steps back afterwards, unless you send that other piece somewhere too. When what you have entered still fits more than one move it shows the one it will play, and where the notation alone would be read as some other move the move box also lists the steps of the move shown. In either mode, click a selected piece again to deselect it. When Advanced offers an upper-right triangle on a trap, click it instead of the square to have your own piece captured there, or an enemy piece survive there. Click an empty square to finish a legal move. The wiki page explains rarer movements and captures.\n\nMoves are recorded in Lightvector notation, which names each piece and where it ends up rather than listing every step. You can type it into the move box, and the older step-by-step notation is still accepted. The wiki page explains the notation in full.\n\nHarlog is an accepted method for determining material advantage. Positive scores favour Gold, negative Silver. The hard range is ±112, but in practice ±20 is a very strong advantage.\n\nIn Dicey Moves, a player whose die allows a single step has no move, and loses, when only pushes and pulls remain.\n\nBecause we can't generate comprehensive lists of moves, the system cannot detect the rare cases where your only available moves are illegal due to position repetition. The system won't let you make those illegal repetitions, and you'll have to resign manually.",
         urls: [
             "https://arimaa.com/arimaa/",
             "https://arimaa.com/arimaa/learn/rulesIntro.html",
@@ -371,8 +371,7 @@ export class ArimaaGame extends GameBase {
     private _entryMove: string|undefined;
     // the player's arrows, kept for drawing when they do not yet resolve to a move
     private _arrows: Array<[string, string]>|undefined;
-    // the squares of the player's holds and capture marks, drawn whether or not the move resolves
-    private _holds: string[]|undefined;
+    // the squares of the player's capture marks, drawn whether or not the move resolves
     private _marks: string[]|undefined;
 
     constructor(state?: IArimaaState | string, variants?: string[]) {
@@ -452,7 +451,6 @@ export class ArimaaGame extends GameBase {
         this._selections = undefined;
         this._entryMove = undefined;
         this._arrows = undefined;
-        this._holds = undefined;
         this._marks = undefined;
         return this;
     }
@@ -1497,7 +1495,6 @@ export class ArimaaGame extends GameBase {
         this._selections = undefined;
         this._entryMove = undefined;
         this._arrows = undefined;
-        this._holds = undefined;
         this._marks = undefined;
         if (m.length > 0) {
             if (setup) {
@@ -1681,17 +1678,10 @@ export class ArimaaGame extends GameBase {
             }
             // the move does not yet denote a turn, so draw what was entered
             this._arrows = parsed.tokens.filter(isArrow).map(t => [t.spec.square!, (t.prop as {square: string}).square]);
-            this._holds = parsed.tokens.filter(isHold).map(t => t.spec.square!);
             this._marks = parsed.tokens.filter(isMark).map(t => t.spec.square!);
             return undefined;
         }
         this.applyTurn(d.turn);
-        if (partial) {
-            // the turn's own results draw its arrows and captures, but a held
-            // piece leaves no trace in them, and the player needs to see that
-            // the hold is there
-            this._holds = parsed.tokens.filter(isHold).map(t => t.spec.square!);
-        }
         return d.turn;
     }
 
@@ -2005,7 +1995,6 @@ export class ArimaaGame extends GameBase {
             const [x, y] = ArimaaGame.algebraic2coords(cell);
             return {row: y, col: x};
         };
-        const entered = new Set<string>();
         const exited = new Set<string>();
         for (const tr of ArimaaGame.trajectoriesFromResults(this.results)) {
             if (tr.start !== tr.final) {
@@ -2016,7 +2005,6 @@ export class ArimaaGame extends GameBase {
                 exited.add(tr.final);
             } else if (tr.start === tr.final) {
                 rep.annotations.push({type: "enter", targets: [point(tr.start)]});
-                entered.add(tr.start);
             }
         }
         for (const r of this.results) {
@@ -2030,15 +2018,7 @@ export class ArimaaGame extends GameBase {
                 rep.annotations.push({type: "move", targets: [point(from), point(to)]});
             }
         }
-        // holds are drawn as the piece entering its own square, capture marks as it leaving
-        if (this._holds !== undefined) {
-            for (const sq of this._holds) {
-                if (!entered.has(sq) && !exited.has(sq)) {
-                    rep.annotations.push({type: "enter", targets: [point(sq)]});
-                    entered.add(sq);
-                }
-            }
-        }
+        // capture marks are drawn as the piece leaving
         if (this._marks !== undefined) {
             for (const sq of this._marks) {
                 if (!exited.has(sq)) {
