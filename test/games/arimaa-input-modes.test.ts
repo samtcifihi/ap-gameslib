@@ -918,6 +918,58 @@ describe("Arimaa input modes", () => {
         });
     });
 
+    describe("Advanced trap control for a piece already on a trap", () => {
+        // the dog can walk round the rabbit, or push it aside and pull it
+        // back, which leaves the elephant on c3 alone long enough to die
+        const elephant = (): ArimaaGame => ready(boardOf("Ha3 Rd3 Ec3 dd2 Rh1 rh8"), 2);
+        const walkRound = (g: ArimaaGame): string => g.clone().move("dd2e2, de2e3, de3e4, de4d4", {trusted: true}).signature();
+
+        it("selects an enemy piece the move shown captures, and its triangle keeps it alive", () => {
+            const g = elephant();
+            const sent = enter(g, "advanced", ["d2", "d4"]);
+            expect(g.clone().move(sent, {partial: true}).board.has("c3")).to.equal(false);
+            // the elephant is not drawn, but its square selects it
+            const selected = click(g, sent, "c3", "advanced");
+            expect(selected.move).to.equal(`${sent} c3`);
+            expect(captureAlternatives(g.board, 2, 4, selected.move)).to.deep.equal(["c3"]);
+            const spared = click(g, selected.move, "c3", "advanced", ARIMAA_CAPTURE_CHOICE);
+            expect(said(spared.move)).to.deep.equal(["dd2d4", "Ec3o"]);
+            const after = played(g, spared.move);
+            expect(after.signature()).to.equal(walkRound(g));
+            expect(after.lastmove).not.to.match(/o( |$)/);
+            // a click on the square itself just deselects it
+            expect(click(g, selected.move, "c3", "advanced").move).to.equal(sent);
+        });
+
+        it("keeps an enemy piece alive before anything is sent, moving nothing yet", () => {
+            const g = elephant();
+            const selected = click(g, "", "c3", "advanced");
+            expect(selected.move).to.equal("c3");
+            const spared = click(g, selected.move, "c3", "advanced", ARIMAA_CAPTURE_CHOICE);
+            expect(spared.move).to.equal("Ec3o");
+            expect(spared.complete).to.equal(-1);
+            expect(played(g, enter(g, "advanced", ["d2", "d4"], spared.move)).signature()).to.equal(walkRound(g));
+        });
+
+        it("has an own piece captured where it stands", () => {
+            const g = position("Cf3,Rf2,Ra1", "ra8,ee8");
+            const move = enter(g, "advanced", ["a1", "a2", "f3", "^f3"]);
+            expect(said(move)).to.deep.equal(["Ra1a2", "Cf3x"]);
+            const after = played(g, move);
+            expect(after.board.has("f3")).to.equal(false);
+            expect(after.board.get("a2")).to.deep.equal(["R", 1]);
+            // its friend steps away and back: nothing was said of it
+            expect(after.board.get("f2")).to.deep.equal(["R", 1]);
+        });
+
+        it("offers nothing for a piece on a trap whose fate is settled", () => {
+            // no gold piece can reach the silver dog's only friend
+            const g = position("Ra1,Rh1", "dc6,rc7,ee8");
+            expect(click(g, "", "c6", "advanced").move).to.equal("");
+            expect(captureAlternatives(g.board, 1, 4, "c6")).to.deep.equal([]);
+        });
+    });
+
     describe("notation", () => {
         it("keeps the cat alive when the rabbit reaches e3 before the cat reaches f3", () => {
             const g = position("Rf2,Cg2,Ra1", "ra8,ee8");

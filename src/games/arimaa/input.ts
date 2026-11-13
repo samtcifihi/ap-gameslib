@@ -507,9 +507,58 @@ function targetSelection(board: Board, player: playerid, limit: number, said: To
 }
 
 /**
+ * The piece sitting on a trap: the one drawn there, or the one the turn shown
+ * captures there without its having moved.
+ */
+function onTrap(v: View, square: string): Shown | undefined {
+    if (!TRAPS.includes(square)) {
+        return undefined;
+    }
+    const drawn = v.shown.get(square);
+    if (drawn !== undefined) {
+        return drawn;
+    }
+    const at = sqIndex(square);
+    const tr = v.turn?.trajectories.find(t => t.captured && t.start === at && t.final === at);
+    return tr === undefined ? undefined : {piece: tr.type, owner: tr.owner, origin: square};
+}
+
+/** What was said, less whatever it said of whether `p` is captured. */
+function unfated(v: View, p: Shown): Token[] {
+    return v.said.filter(t => !((t.prop.kind === "capture" || t.prop.kind === "survive") && t.spec.square === p.origin &&
+        t.spec.piece === p.piece && t.spec.owner === p.owner));
+}
+
+// Whether what was said leaves it open if `p` is captured: some turn that
+// fits it captures the piece, and some other leaves it alive. The turn shown
+// answers one of the two; a capture token lets the search for a capture
+// skip what cannot lead to one.
+function fateOpen(board: Board, player: playerid, limit: number, v: View, p: Shown): boolean {
+    const said = unfated(v, p);
+    const can = (captured: boolean): boolean => display(board, player, limit,
+        captured ? [...said, captureToken(p.piece, p.owner, p.origin)] : said,
+        turn => fate(turn, p.origin).captured === captured).status === "turn";
+    const shown = v.turn === undefined ? undefined : fate(v.turn, p.origin).captured;
+    return (shown === true || can(true)) && (shown === false || can(false));
+}
+
+// The entry once it says that `p` is captured, or that it is not.
+function fated(board: Board, player: playerid, limit: number, v: View, p: Shown, captured: boolean): InputClick | undefined {
+    const said = [...unfated(v, p), (captured ? captureToken : surviveToken)(p.piece, p.owner, p.origin)];
+    if (standing(board, said)) {
+        return {move: text(said)};
+    }
+    const c = choose(board, player, limit, said, turn => fate(turn, p.origin).captured === captured);
+    if (c.status !== "turn") {
+        return undefined;
+    }
+    return {move: entry(board, player, limit, said, c.turn), oneOf: c.by === "choice" ? c.positions : undefined};
+}
+
+/**
  * Trap squares where the newest selection has both a surviving and a captured
- * legal ending. The renderer can draw the advanced-mode alternative control
- * only on these squares.
+ * legal ending: traps it can be sent to, and the trap it sits on. The renderer
+ * can draw the advanced-mode alternative control only on these squares.
  */
 export function captureAlternatives(board: Board, player: playerid, limit: number, move: string): string[] {
     let parsed: ParsedMove;
@@ -524,6 +573,10 @@ export function captureAlternatives(board: Board, player: playerid, limit: numbe
         return [];
     }
     const out: string[] = [];
+    const sitting = squares.length === 1 ? onTrap(v, squares[0]) : undefined;
+    if (sitting !== undefined && fateOpen(board, player, limit, v, sitting)) {
+        out.push(squares[0]);
+    }
     for (const trap of TRAPS) {
         const chain = v.shown.has(trap) ? undefined : links(v, squares, trap);
         if (chain === undefined) {
@@ -562,14 +615,21 @@ function advancedClick(board: Board, player: playerid, limit: number, v: View, s
         }
         return v.turn !== undefined && canMoveWithin(board, player, limit, p.origin, v.said.filter(t => !describes(t, p, f)));
     };
-    // an emptied square stands for the piece that started the turn on it
+    // A piece on a trap can also be selected if whether it is captured is
+    // still open, so that its triangle can settle that.
+    const open = (cell: string): boolean => {
+        const p = onTrap(v, cell);
+        return p !== undefined && fateOpen(board, player, limit, v, p);
+    };
+    // an emptied square stands for the piece that started the turn on it,
+    // which on a trap may be a piece captured there
     const cameFrom = (cell: string): InputClick | undefined => {
         for (const [at, p] of v.shown) {
             if (p.origin === cell) {
                 return movable(at) ? select([at]) : undefined;
             }
         }
-        return undefined;
+        return open(cell) ? select([cell]) : undefined;
     };
     const aimed = (): InputClick | undefined => targetSelection(board, player, limit, v.said, square);
 
@@ -578,11 +638,25 @@ function advancedClick(board: Board, player: playerid, limit: number, v: View, s
             return cameFrom(square) ?? aimed() ??
                 (v.turn === undefined ? stay : {move: committed(board, player, limit, v), complete: true});
         }
-        if (movable(square)) {
+        if (movable(square) || open(square)) {
             return select([square]);
         }
         // undo: one thing less is said
         return clicked.owner === player ? stay : restated(board, player, limit, v.said.slice(0, -1));
+    }
+
+    // A piece on a trap: its triangle says whether it is captured (an own
+    // piece is, an enemy piece is not), and a click on its square deselects it.
+    // A piece captured there is not drawn, so it cannot be sent anywhere.
+    const sitting = selections.length === 1 ? onTrap(v, selections[0]) : undefined;
+    if (sitting !== undefined && square === selections[0]) {
+        return (triangle ? fated(board, player, limit, v, sitting, sitting.owner === player) : undefined) ?? stay;
+    }
+    if (sitting !== undefined && !v.shown.has(selections[0])) {
+        if (clicked !== undefined) {
+            return movable(square) || open(square) ? select([square]) : stay;
+        }
+        return cameFrom(square) ?? aimed() ?? stay;
     }
 
     const chain = links(v, selections, square);
@@ -607,7 +681,7 @@ function advancedClick(board: Board, player: playerid, limit: number, v: View, s
     if (!selections.includes(square) && advancedChainable(board, player, limit, v, selections, square)) {
         return select([...selections, square]);
     }
-    return movable(square) ? select([square]) : stay;
+    return movable(square) || open(square) ? select([square]) : stay;
 }
 
 export function inputClick(
