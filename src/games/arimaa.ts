@@ -7,7 +7,7 @@ import i18next from "i18next";
 import { arrowToken, captureToken, isArrow, isLegacy, isMark, isHold, joinMove, normalize, parseMove, pieceChar, holdToken, tokenText, NotationError, type ParsedMove, type Token } from "./arimaa/notation.js";
 import { display, hasAnyMove, inferred, resolve, serializeTurn, sqName, turnFromSteps, type Turn } from "./arimaa/turns.js";
 import { castDie, type IDie } from "./arimaa/dice.js";
-import { ARIMAA_CAPTURE_CHOICE, captureAlternatives, declared, inputClick, type InputClick } from "./arimaa/input.js";
+import { ARIMAA_CAPTURE_CHOICE, ARIMAA_SPARE_CHOICE, captureAlternatives, captureChoices, declared, inputClick, type InputClick } from "./arimaa/input.js";
 export const gameApgamesEn = {
     inputModes: {
         basic: {
@@ -157,7 +157,7 @@ export class ArimaaGame extends GameBase {
         version: "20251223",
         dateAdded: "2026-01-23",
         description: "The pieces are animals of various strengths jockeying for position, trying to get one of their rabbits to the far row. But watch out for traps!",
-        notes: "Made available under section 3 of the [Arimaa public license](https://arimaa.com/arimaa/license/).\n\nDuring standard setup, you only need to place your eight non-rabbits. Once they are down, Complete Move fills the rest of your setup area with rabbits. You can still place any or all of the rabbits yourself first if you want them somewhere in particular.\n\nArimaa has Basic and Advanced input modes. Basic (the default) moves only explicitly selected pieces, including those in pushes, pulls and chains, and plays your steps in the order you enter them. Advanced can infer additional movements and also supports target clicks and trap-capture choices. Click a piece and its destination, or select several pieces to chain a movement. In Basic mode select every piece that needs to move; in Advanced mode you can rely on the engine to infer supporting movements. It disturbs as few pieces as it can, even at the cost of steps: a piece you have not sent anywhere ends the turn where it started whenever that is possible. So a piece walks round another rather than have it make way, and a piece that pushes steps back afterwards, unless you send that other piece somewhere too. When what you have entered still fits more than one move it shows the one it will play, and where the notation alone would be read as some other move the move box also lists the steps of the move shown. In either mode, click a selected piece again to deselect it. When Advanced offers an upper-right triangle on a trap, click it instead of the square to have your own piece captured there, or an enemy piece survive there. A piece already standing on a trap can be selected for this too, even when the move shown captures it: click the trap, then its triangle. Click an empty square to finish a legal move. The wiki page explains rarer movements and captures.\n\nMoves are recorded in Lightvector notation, which names each piece and where it ends up rather than listing every step. You can type it into the move box, and the older step-by-step notation is still accepted. The wiki page explains the notation in full.\n\nHarlog is an accepted method for determining material advantage. Positive scores favour Gold, negative Silver. The hard range is ±112, but in practice ±20 is a very strong advantage.\n\nIn Dicey Moves, a player whose die allows a single step has no move, and loses, when only pushes and pulls remain.\n\nBecause we can't generate comprehensive lists of moves, the system cannot detect the rare cases where your only available moves are illegal due to position repetition. The system won't let you make those illegal repetitions, and you'll have to resign manually.",
+        notes: "Made available under section 3 of the [Arimaa public license](https://arimaa.com/arimaa/license/).\n\nDuring standard setup, you only need to place your eight non-rabbits. Once they are down, Complete Move fills the rest of your setup area with rabbits. You can still place any or all of the rabbits yourself first if you want them somewhere in particular.\n\nArimaa has Basic and Advanced input modes. Basic (the default) moves only explicitly selected pieces, including those in pushes, pulls and chains, and plays your steps in the order you enter them. Advanced can infer additional movements and also supports target clicks and trap-capture choices. Click a piece and its destination, or select several pieces to chain a movement. In Basic mode select every piece that needs to move; in Advanced mode you can rely on the engine to infer supporting movements. It disturbs as few pieces as it can, even at the cost of steps: a piece you have not sent anywhere ends the turn where it started whenever that is possible. So a piece walks round another rather than have it make way, and a piece that pushes steps back afterwards, unless you send that other piece somewhere too. When what you have entered still fits more than one move it shows the one it will play, and where the notation alone would be read as some other move the move box also lists the steps of the move shown. In either mode, click a selected piece again to deselect it. When Advanced offers an upper-right triangle on a trap, clicking it instead of the square does the opposite of what clicking the square would: the piece survives where it would otherwise be captured (an outlined triangle), or is captured where it would otherwise survive (a filled one). A piece already standing on a trap can be selected for this too, even when the move shown captures it: click the trap, then its triangle. Click an empty square to finish a legal move. The wiki page explains rarer movements and captures.\n\nMoves are recorded in Lightvector notation, which names each piece and where it ends up rather than listing every step. You can type it into the move box, and the older step-by-step notation is still accepted. The wiki page explains the notation in full.\n\nHarlog is an accepted method for determining material advantage. Positive scores favour Gold, negative Silver. The hard range is ±112, but in practice ±20 is a very strong advantage.\n\nIn Dicey Moves, a player whose die allows a single step has no move, and loses, when only pushes and pulls remain.\n\nBecause we can't generate comprehensive lists of moves, the system cannot detect the rare cases where your only available moves are illegal due to position repetition. The system won't let you make those illegal repetitions, and you'll have to resign manually.",
         urls: [
             "https://arimaa.com/arimaa/",
             "https://arimaa.com/arimaa/learn/rulesIntro.html",
@@ -633,11 +633,12 @@ export class ArimaaGame extends GameBase {
                 (this.standardSetup() && this.stack.length <= 2);
             const advanced = this.resolveActiveInputMode(ui?.inputMode) === "advanced";
             // The custom SVG triangle is an ordinary clickable renderer
-            // piece. Its reserved key distinguishes its click from a click on
-            // the trap square itself, without affecting actual board pieces.
+            // piece. Its reserved keys (one per way it is drawn) distinguish
+            // its click from a click on the trap square itself, without
+            // affecting actual board pieces.
             const square = row >= 0 && row < 8 && col >= 0 && col < 8 ?
                 ArimaaGame.coords2algebraic(col, row) : undefined;
-            const isCaptureChoice = piece === ARIMAA_CAPTURE_CHOICE;
+            const isCaptureChoice = piece === ARIMAA_CAPTURE_CHOICE || piece === ARIMAA_SPARE_CHOICE;
             const alternativeCapture = !placing && isCaptureChoice &&
                 advanced && square !== undefined &&
                 captureAlternatives(this.board, this.currplayer, this.maxSteps(), move).includes(square);
@@ -1949,39 +1950,39 @@ export class ArimaaGame extends GameBase {
 
         // Advanced trap capture control: one custom SVG triangle is both the
         // visible control and its hit shape. Unlike an ordinary shading
-        // marker, the renderer gives board pieces a click handler. The only
-        // painted region is the triangular polygon, not the glyph viewBox.
+        // marker, the renderer gives board pieces a click handler. The
+        // triangle is filled where clicking it has the piece captured, and
+        // a thick outline where it keeps the piece alive; the outline's
+        // interior is painted fully transparent so that it is still hit.
         if (opts.inputMode === "advanced" && this._entryMove !== undefined && this._selected !== undefined) {
             const original = this.stack[this.stack.length - 1].board;
-            const alternatives = captureAlternatives(original, this.currplayer, this.maxSteps(), this._entryMove);
-            if (alternatives.length > 0) {
-                rep.glyphDefs = {
-                    "arimaa-trap-choice": {
+            const choices = captureChoices(original, this.currplayer, this.maxSteps(), this._entryMove);
+            if (choices.size > 0) {
+                rep.glyphDefs = {};
+                // Board pieces normally have a 0.85 placement inset. Cancel it
+                // to align the polygon exactly to the grid: x=[0.5,1], y=[0,0.5]
+                // of the trap cell.
+                const paint = {func: "flatten", fg: "_context_fill", bg: "_context_board", opacity: 0.5} as const;
+                if ([...choices.values()].includes(true)) {
+                    rep.glyphDefs["arimaa-trap-choice"] = {
                         viewBox: [0, 0, 100, 100],
                         markup: '<polygon points="50,0 100,0 100,50" fill="#ffffff" data-slot-fill="fill"/>',
-                    },
-                };
-                legend[ARIMAA_CAPTURE_CHOICE] = {
-                    def: "arimaa-trap-choice",
-                    // Board pieces normally have a 0.85 placement inset.
-                    // Cancel it to align the polygon exactly to the grid:
-                    // x=[0.5,1], y=[0,0.5] of the trap cell.
-                    scale: 1 / 0.85,
-                    paint: {
-                        fill: {
-                            func: "flatten",
-                            fg: "_context_fill",
-                            bg: "_context_board",
-                            opacity: 0.5,
-                        },
-                    },
-                };
+                    };
+                    legend[ARIMAA_CAPTURE_CHOICE] = {def: "arimaa-trap-choice", scale: 1 / 0.85, paint: {fill: paint}};
+                }
+                if ([...choices.values()].includes(false)) {
+                    rep.glyphDefs["arimaa-trap-spare"] = {
+                        viewBox: [0, 0, 100, 100],
+                        markup: '<polygon points="62,5 95,5 95,38" fill="#ffffff" fill-opacity="0" stroke="#ffffff" stroke-width="10" stroke-linejoin="round" data-slot-stroke="fill"/>',
+                    };
+                    legend[ARIMAA_SPARE_CHOICE] = {def: "arimaa-trap-spare", scale: 1 / 0.85, paint: {fill: paint}};
+                }
                 // This is a render-only extra layer. The actual game board,
                 // saved moves and the mode-independent pieces stay unchanged.
                 const layers = plst.map(line => line.split(",").map(key => key === "-" ? [] : [key]));
-                for (const trap of alternatives) {
+                for (const [trap, captured] of choices) {
                     const [x, y] = ArimaaGame.algebraic2coords(trap);
-                    layers[y][x].push(ARIMAA_CAPTURE_CHOICE);
+                    layers[y][x].push(captured ? ARIMAA_CAPTURE_CHOICE : ARIMAA_SPARE_CHOICE);
                 }
                 rep.pieces = [layers[0], ...layers.slice(1)];
             }

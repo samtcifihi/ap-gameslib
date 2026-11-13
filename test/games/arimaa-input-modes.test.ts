@@ -4,7 +4,7 @@ import i18next from "i18next";
 import { addResource } from "../../src";
 import { ArimaaGame } from "../../src/games/arimaa";
 import { parseMove, parseToken } from "../../src/games/arimaa/notation";
-import { ARIMAA_CAPTURE_CHOICE, captureAlternatives } from "../../src/games/arimaa/input";
+import { ARIMAA_CAPTURE_CHOICE, ARIMAA_SPARE_CHOICE, captureAlternatives, captureChoices } from "../../src/games/arimaa/input";
 import { resolve } from "../../src/games/arimaa/turns";
 import { allPlays, allTurns, boardOf, neighbours, oneRankAbove, signature, type Board, type Owner, type Path, type Play } from "../fixtures/arimaa/coverage";
 
@@ -767,23 +767,28 @@ describe("Arimaa input modes", () => {
                         sends++;
                     }
                 }
-                // a trap's triangle is offered where the selected piece can end there both ways, and plays the other one
+                // a trap's triangle is offered where the selected piece can end there both ways, and plays
+                // the way a click on the square does not
                 let triangles = 0;
                 for (const [origin, [pc, owner]] of board) {
                     if (click(g, "", origin, "advanced").move !== origin) {
                         continue;
                     }
-                    const offered = captureAlternatives(g.board, player, steps, origin);
+                    const offered = captureChoices(g.board, player, steps, origin);
                     for (const trap of ["c3", "f3", "c6", "f6"].filter(sq => !board.has(sq))) {
                         const ends = plays.filter(p => p.paths.get(origin)?.final === trap);
                         const dies = ends.filter(p => p.paths.get(origin)!.captured);
                         const lives = ends.filter(p => !p.paths.get(origin)!.captured);
                         const label = `${origin} to ${trap}`;
-                        expect(offered.includes(trap), label).to.equal(dies.length > 0 && lives.length > 0);
-                        if (offered.includes(trap)) {
-                            const r = click(g, origin, trap, "advanced", ARIMAA_CAPTURE_CHOICE);
-                            expect(said(r.move), label).to.deep.equal([`${owner === 1 ? pc : pc.toLowerCase()}${origin}${trap}`, `${owner === 1 ? pc : pc.toLowerCase()}${origin}${owner === player ? "x" : "o"}`]);
-                            expect([...positions(normalMove(owner === player ? dies : lives, player))], `${label}: ${r.move}`).to.include(shown(g, r.move));
+                        expect(offered.has(trap), label).to.equal(dies.length > 0 && lives.length > 0);
+                        if (offered.has(trap)) {
+                            const plain = click(g, origin, trap, "advanced");
+                            const dying = positions(dies).has(shown(g, plain.move));
+                            expect(offered.get(trap), label).to.equal(!dying);
+                            const r = click(g, origin, trap, "advanced", dying ? ARIMAA_SPARE_CHOICE : ARIMAA_CAPTURE_CHOICE);
+                            const letter = owner === 1 ? pc : pc.toLowerCase();
+                            expect(said(r.move), label).to.deep.equal([`${letter}${origin}${trap}`, `${letter}${origin}${dying ? "o" : "x"}`]);
+                            expect([...positions(normalMove(dying ? lives : dies, player))], `${label}: ${r.move}`).to.include(shown(g, r.move));
                             triangles++;
                         }
                     }
@@ -840,6 +845,19 @@ describe("Arimaa input modes", () => {
             const idle = g.render({inputMode: "advanced"});
             expect(idle.glyphDefs).to.equal(undefined);
             expect(typeof idle.pieces).to.equal("string");
+        });
+
+        it("is drawn as a thick outline where clicking it keeps the piece alive", () => {
+            const g = position("Cg2,Rf1,Ra1", "ra8,ee8");
+            const rep = g.clone().move("g2", {partial: true}).render({inputMode: "advanced"});
+            const glyph = rep.legend?.[ARIMAA_SPARE_CHOICE] as {def?: string};
+            expect(glyph.def).to.equal("arimaa-trap-spare");
+            const markup = rep.glyphDefs?.["arimaa-trap-spare"]?.markup ?? "";
+            expect(markup).to.match(/^<polygon [^>]*fill-opacity="0"[^>]*stroke-width="\d+"[^>]*data-slot-stroke="fill"[^>]*\/>$/);
+            expect(rep.legend?.[ARIMAA_CAPTURE_CHOICE]).to.equal(undefined);
+            expect((rep.pieces as string[][][])[5][5]).to.deep.equal([ARIMAA_SPARE_CHOICE]); // f3
+            // either key is the triangle's click
+            expect(click(g, "g2", "f3", "advanced", ARIMAA_SPARE_CHOICE).move).to.equal(click(g, "g2", "f3", "advanced", ARIMAA_CAPTURE_CHOICE).move);
         });
 
         it("reaches render() through the click result, on a game object that never saw the click", () => {
@@ -941,14 +959,38 @@ describe("Arimaa input modes", () => {
             expect(click(g, selected.move, "c3", "advanced").move).to.equal(sent);
         });
 
-        it("keeps an enemy piece alive before anything is sent, moving nothing yet", () => {
+        it("goes the other way from the move shown each time, moving nothing where that is how things stand", () => {
             const g = elephant();
-            const selected = click(g, "", "c3", "advanced");
-            expect(selected.move).to.equal("c3");
-            const spared = click(g, selected.move, "c3", "advanced", ARIMAA_CAPTURE_CHOICE);
-            expect(spared.move).to.equal("Ec3o");
-            expect(spared.complete).to.equal(-1);
-            expect(played(g, enter(g, "advanced", ["d2", "d4"], spared.move)).signature()).to.equal(walkRound(g));
+            // nothing entered: the elephant stands, so its triangle captures it
+            expect([...captureChoices(g.board, 2, 4, "c3")]).to.deep.equal([["c3", true]]);
+            const doomed = enter(g, "advanced", ["c3", "^c3"]);
+            expect(said(doomed)).to.deep.equal(["Ec3x"]);
+            expect(g.clone().move(doomed, {partial: true}).board.has("c3")).to.equal(false);
+            // now that it dies, the triangle keeps it alive, which is how things stood
+            expect([...captureChoices(g.board, 2, 4, `${doomed} c3`)]).to.deep.equal([["c3", false]]);
+            const spared = enter(g, "advanced", ["c3", "^c3"], doomed);
+            expect(spared).to.equal("Ec3o");
+            expect(g.validateMove(spared).complete).to.equal(-1);
+            expect(played(g, enter(g, "advanced", ["d2", "d4"], spared)).signature()).to.equal(walkRound(g));
+        });
+
+        it("keeps an own piece alive where it would die, and has an enemy piece die where it would live", () => {
+            // the cat sent alone onto f3 dies there; its triangle brings the rabbit up beside it
+            const cat = position("Cg2,Rf1,Ra1", "ra8,ee8");
+            expect(played(cat, enter(cat, "advanced", ["g2", "f3"])).board.has("f3")).to.equal(false);
+            expect([...captureChoices(cat.board, 1, 4, "g2")]).to.deep.equal([["f3", false]]);
+            const kept = enter(cat, "advanced", ["g2", "^f3"]);
+            expect(said(kept)).to.deep.equal(["Cg2f3", "Cg2o"]);
+            const alive = played(cat, kept);
+            expect(alive.board.get("f3")).to.deep.equal(["C", 1]);
+            expect(alive.lastmove).not.to.match(/o( |$)/);
+            // the dog pushed onto f3 lives beside its rabbit; the triangle has the horse pull the rabbit away
+            const dog = position("Ef5,Hh3,Ra1", "df4,rg3,ra8,ee8");
+            expect(played(dog, enter(dog, "advanced", ["f5", "f4", "f3"])).board.get("f3")).to.deep.equal(["D", 2]);
+            expect([...captureChoices(dog.board, 1, 4, "f5 f4")]).to.deep.equal([["f3", true]]);
+            const killed = played(dog, enter(dog, "advanced", ["f5", "f4", "^f3"]));
+            expect(killed.board.has("f3")).to.equal(false);
+            expect(killed.board.get("f4")).to.deep.equal(["E", 1]);
         });
 
         it("has an own piece captured where it stands", () => {
@@ -1067,13 +1109,17 @@ describe("Arimaa input modes", () => {
             }
             return out;
         };
-        // plain clicks, and in Advanced each variant that clicks one trap destination's triangle instead
+        // plain clicks, and in Advanced each variant that clicks one trap
+        // destination's triangle instead, or that ends by selecting the piece
+        // on that trap and clicking its triangle there
         const sequences = (clicks: string[][], mode: Mode): string[][] => {
             const seqs = [clicks.flat()];
             if (mode === "advanced") {
                 clicks.forEach((group, i) => {
-                    if (TRAPS.includes(group[group.length - 1])) {
-                        seqs.push(clicks.map((c, j) => j === i ? [...c.slice(0, -1), `^${c[c.length - 1]}`] : c).flat());
+                    const trap = group[group.length - 1];
+                    if (TRAPS.includes(trap)) {
+                        seqs.push(clicks.map((c, j) => j === i ? [...c.slice(0, -1), `^${trap}`] : c).flat());
+                        seqs.push([...clicks.flat(), trap, `^${trap}`]);
                     }
                 });
             }

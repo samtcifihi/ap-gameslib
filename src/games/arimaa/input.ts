@@ -46,6 +46,9 @@ export interface InputClick {
  */
 export const ARIMAA_CAPTURE_CHOICE = "ARIMAA_CAPTURE_CHOICE";
 
+/** The same control drawn as an outline, where clicking it keeps the piece alive. */
+export const ARIMAA_SPARE_CHOICE = "ARIMAA_SPARE_CHOICE";
+
 const TRAPS = ["c3", "f3", "c6", "f6"];
 
 type Board = Map<string, CellContents>;
@@ -529,6 +532,32 @@ function unfated(v: View, p: Shown): Token[] {
         t.spec.piece === p.piece && t.spec.owner === p.owner));
 }
 
+// A trap's triangle does the opposite of what a plain click would show: it
+// has the piece captured where it would survive, and survive where it would
+// be captured. These say which, or nothing where the opposite cannot happen.
+
+// For the chain sent to the trap it ends on.
+function sendChoice(board: Board, player: playerid, limit: number, v: View, chain: Link[]): boolean | undefined {
+    const last = chain[chain.length - 1].piece;
+    const tokens = sent(v, chain);
+    const follows = obeys(v, chain);
+    const shown = choose(board, player, limit, tokens, follows);
+    if (shown.status !== "turn") {
+        return undefined;
+    }
+    const captured = !fate(shown.turn, last.origin).captured;
+    return display(board, player, limit, tokens, turn =>
+        follows(turn) && fate(turn, last.origin).captured === captured).status === "turn" ? captured : undefined;
+}
+
+// For a piece sitting on its trap.
+function sitChoice(board: Board, player: playerid, limit: number, v: View, p: Shown): boolean | undefined {
+    if (!fateOpen(board, player, limit, v, p)) {
+        return undefined;
+    }
+    return !(v.turn !== undefined && fate(v.turn, p.origin).captured);
+}
+
 // Whether what was said leaves it open if `p` is captured: some turn that
 // fits it captures the piece, and some other leaves it alive. The turn shown
 // answers one of the two; a capture token lets the search for a capture
@@ -556,42 +585,43 @@ function fated(board: Board, player: playerid, limit: number, v: View, p: Shown,
 }
 
 /**
- * Trap squares where the newest selection has both a surviving and a captured
- * legal ending: traps it can be sent to, and the trap it sits on. The renderer
- * can draw the advanced-mode alternative control only on these squares.
+ * The trap squares that get the advanced-mode triangle while pieces are
+ * selected, and for each whether clicking it has the newest selection
+ * captured (true) or keeps it alive (false): the opposite of what a click on
+ * the square would show. The traps are those the newest selection can be sent
+ * to, and the trap it sits on, where it can end up either way.
  */
-export function captureAlternatives(board: Board, player: playerid, limit: number, move: string): string[] {
+export function captureChoices(board: Board, player: playerid, limit: number, move: string): Map<string, boolean> {
+    const out = new Map<string, boolean>();
     let parsed: ParsedMove;
     try {
         parsed = parseMove(move, true);
     } catch {
-        return [];
+        return out;
     }
     const squares = parsed.selections ?? [];
     const v = look(board, player, limit, parsed.tokens);
     if (squares.length === 0 || !v.fits) {
-        return [];
+        return out;
     }
-    const out: string[] = [];
     const sitting = squares.length === 1 ? onTrap(v, squares[0]) : undefined;
-    if (sitting !== undefined && fateOpen(board, player, limit, v, sitting)) {
-        out.push(squares[0]);
+    const own = sitting === undefined ? undefined : sitChoice(board, player, limit, v, sitting);
+    if (own !== undefined) {
+        out.set(squares[0], own);
     }
     for (const trap of TRAPS) {
         const chain = v.shown.has(trap) ? undefined : links(v, squares, trap);
-        if (chain === undefined) {
-            continue;
-        }
-        const last = chain[chain.length - 1].piece;
-        const tokens = sent(v, chain);
-        const follows = obeys(v, chain);
-        const can = (captured: boolean): boolean => display(board, player, limit, tokens, turn =>
-            follows(turn) && fate(turn, last.origin).captured === captured).status === "turn";
-        if (can(true) && can(false)) {
-            out.push(trap);
+        const captured = chain === undefined ? undefined : sendChoice(board, player, limit, v, chain);
+        if (captured !== undefined) {
+            out.set(trap, captured);
         }
     }
     return out;
+}
+
+/** The trap squares of `captureChoices`. */
+export function captureAlternatives(board: Board, player: playerid, limit: number, move: string): string[] {
+    return [...captureChoices(board, player, limit, move).keys()];
 }
 
 function advancedClick(board: Board, player: playerid, limit: number, v: View, selections: string[], square: string, triangle: boolean): InputClick {
@@ -645,12 +675,13 @@ function advancedClick(board: Board, player: playerid, limit: number, v: View, s
         return clicked.owner === player ? stay : restated(board, player, limit, v.said.slice(0, -1));
     }
 
-    // A piece on a trap: its triangle says whether it is captured (an own
-    // piece is, an enemy piece is not), and a click on its square deselects it.
+    // A piece on a trap: its triangle settles whether it is captured, the
+    // other way from the turn shown, and a click on its square deselects it.
     // A piece captured there is not drawn, so it cannot be sent anywhere.
     const sitting = selections.length === 1 ? onTrap(v, selections[0]) : undefined;
     if (sitting !== undefined && square === selections[0]) {
-        return (triangle ? fated(board, player, limit, v, sitting, sitting.owner === player) : undefined) ?? stay;
+        const captured = triangle ? sitChoice(board, player, limit, v, sitting) : undefined;
+        return (captured === undefined ? undefined : fated(board, player, limit, v, sitting, captured)) ?? stay;
     }
     if (sitting !== undefined && !v.shown.has(selections[0])) {
         if (clicked !== undefined) {
@@ -664,8 +695,8 @@ function advancedClick(board: Board, player: playerid, limit: number, v: View, s
         return stay;
     }
     if (clicked === undefined) {
-        // a trap's triangle: an own piece is captured there, an enemy piece is not
-        const captured = triangle && TRAPS.includes(square) ? chain[chain.length - 1].piece.owner === player : undefined;
+        // a trap's triangle: the opposite of what a click on the square shows
+        const captured = triangle && TRAPS.includes(square) ? sendChoice(board, player, limit, v, chain) : undefined;
         return advancedChain(board, player, limit, v, chain, captured) ?? cameFrom(square) ?? aimed() ?? stay;
     }
     if (square === selections[0]) {
