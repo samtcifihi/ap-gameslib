@@ -560,12 +560,7 @@ function advancedClick(board: Board, player: playerid, limit: number, v: View, s
         if (f.visited.length > 1) {
             return true;
         }
-        if (v.turn === undefined || !canMoveWithin(board, player, limit, p.origin)) {
-            return false;
-        }
-        const start = sqIndex(p.origin);
-        return display(board, player, limit, v.said.filter(t => !describes(t, p, f)), turn =>
-            turn.trajectories.some(tr => tr.start === start && tr.visited.length > 1)).status === "turn";
+        return v.turn !== undefined && canMoveWithin(board, player, limit, p.origin, v.said.filter(t => !describes(t, p, f)));
     };
     // an emptied square stands for the piece that started the turn on it
     const cameFrom = (cell: string): InputClick | undefined => {

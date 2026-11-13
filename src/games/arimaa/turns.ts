@@ -433,14 +433,30 @@ export interface Found {
     rightSized: number;
 }
 
+/** What `firstBucket` looks for. `prune` and `accept` are described at `resolve`. */
+interface Wanted {
+    prune: boolean;
+    accept?: (turn: Turn) => boolean;
+    /** order buckets by displaced pieces and then by steps */
+    displacedFirst?: boolean;
+    /** the square of a piece that has to take a step, or be pushed or pulled, during the turn */
+    mover?: number;
+    /** stop at the first turn found */
+    any?: boolean;
+}
+
 // Every position that a turn fitting the tokens reaches, with a turn for each,
 // from the first bucket holding any. The notation orders buckets by steps and
 // then by displaced pieces. With `displacedFirst` they are ordered by
 // displaced pieces and then by steps, as click entry in Advanced mode asks,
-// which can put a longer turn before a shorter one. `prune` and `accept` are
-// described at `resolve`.
-function firstBucket(board: Map<string, CellContents>, player: playerid, maxSteps: number, tokens: Token[], prune: boolean, accept: ((turn: Turn) => boolean) | undefined, displacedFirst: boolean): Found[] {
+// which can put a longer turn before a shorter one.
+function firstBucket(board: Map<string, CellContents>, player: playerid, maxSteps: number, tokens: Token[], wanted: Wanted): Found[] {
+    const { prune, accept, displacedFirst = false, mover, any = false } = wanted;
     const s = new Search(board, player);
+    const moving = mover === undefined ? undefined : s.pieces[s.ids[mover]];
+    if (mover !== undefined && moving === undefined) {
+        return [];
+    }
     const toks = prepare(tokens);
     const destGroups = new Map<number, PTok[]>();
     const captureToks: PTok[] = [];
@@ -583,16 +599,43 @@ function firstBucket(board: Map<string, CellContents>, player: playerid, maxStep
     // priced: enough to skip a witness that cannot beat the best so far.
     const atLeast = (p: PieceState, d: number): number => p.owner === s.player ? d : 2 * d;
 
+    // Steps still needed before `moving` has moved: none once it has. An
+    // enemy piece needs its own step and its pusher's or puller's, once a
+    // stronger piece of the mover's is next to it. A piece of the mover's
+    // needs its own step, and before it a step by another piece if it is
+    // frozen and another if every square it could step to is taken. One step
+    // cannot do both: what frees it is a friend arriving next to it, which
+    // empties no square there since no friend stood there to leave, or a push
+    // or pull, which is two steps.
+    const movingPrice = (): number => {
+        const p = moving!;
+        if (p.visited.length > 1) {
+            return 0;
+        }
+        if (p.cur < 0) {
+            return Infinity;
+        }
+        if (p.owner !== s.player) {
+            return enemyPrice(p, 1);
+        }
+        const open = NEIGHBOURS[p.cur].some(n => s.cells[n] === 0 && !(ownRabbit(p) && behind(p.cur, n)));
+        return 1 + (s.frozen(p.cur) ? 1 : 0) + (open ? 0 : 1);
+    };
+
     // An admissible lower bound on the steps still needed, or any value above
     // `limit` as soon as the bound is known to exceed it. Two bounds are
     // combined by max: (1) one step per square for every witness, summed over
     // distinct destinations, which need distinct witnesses; (2) per token, the
     // full price of its cheapest witness, including an enemy's partner and
-    // approach steps, a frozen piece's release, and clearing the destination.
+    // approach steps, a frozen piece's release, and clearing the destination,
+    // and likewise what it takes for the piece that has to move to move.
     const heuristic = (limit: number): number => {
         stamp++;
         let sum = 0;
-        let max = 0;
+        let max = moving === undefined ? 0 : movingPrice();
+        if (max > limit) {
+            return max;
+        }
         for (const [dest, group] of destGroups) {
             let groupCost = 0;
             let groupFull = 0;
@@ -847,6 +890,8 @@ function firstBucket(board: Map<string, CellContents>, player: playerid, maxStep
     // displaced pieces a turn has to stay under to be worth its extra steps
     let under = Infinity;
     let rightSized = 0;
+    // set once a turn is found when any will do
+    let done = false;
     for (let k = 1; k <= maxSteps; k++) {
         const found = new Map<string, Found>();
         // States already searched with at least as many steps left, and as
@@ -855,7 +900,13 @@ function firstBucket(board: Map<string, CellContents>, player: playerid, maxStep
         // iteration, which either came up empty or found it in fewer steps.
         const seen = new Map<string, number>();
         const dfs = (remaining: number): void => {
+            if (done) {
+                return;
+            }
             if (remaining === 0) {
+                if (moving !== undefined && moving.visited.length === 1) {
+                    return;
+                }
                 const sig = s.signature();
                 if (sig === s.startSig || !satisfies()) {
                     return;
@@ -873,6 +924,7 @@ function firstBucket(board: Map<string, CellContents>, player: playerid, maxStep
                     (displaced === existing.turn.displaced && rightSized > existing.rightSized)) {
                     found.set(sig, { turn: candidate, rightSized });
                 }
+                done = any;
                 return;
             }
             if (prune && heuristic(remaining) > remaining) {
@@ -904,6 +956,9 @@ function firstBucket(board: Map<string, CellContents>, player: playerid, maxStep
                 rightSized -= counts;
                 while (undos.length > 0) {
                     s.undo(undos.pop()!);
+                }
+                if (done) {
+                    return;
                 }
             }
         };
@@ -938,7 +993,7 @@ function firstBucket(board: Map<string, CellContents>, player: playerid, maxStep
  * a state.
  */
 export function resolve(board: Map<string, CellContents>, player: playerid, maxSteps: number, tokens: Token[], lenient: boolean, prune = true, accept?: (turn: Turn) => boolean): Resolution {
-    const candidates = firstBucket(board, player, maxSteps, tokens, prune, accept, false).map(f => f.turn);
+    const candidates = firstBucket(board, player, maxSteps, tokens, {prune, accept}).map(f => f.turn);
     if (candidates.length === 0) {
         return { status: "unsatisfiable" };
     }
@@ -973,7 +1028,7 @@ export function resolve(board: Map<string, CellContents>, player: playerid, maxS
  * said so far. It is not what the notation means: `resolve` is.
  */
 export function fewestDisplaced(board: Map<string, CellContents>, player: playerid, maxSteps: number, tokens: Token[], accept?: (turn: Turn) => boolean, prune = true): Found[] {
-    return firstBucket(board, player, maxSteps, tokens, prune, accept, true);
+    return firstBucket(board, player, maxSteps, tokens, {prune, accept, displacedFirst: true});
 }
 
 /**
@@ -1113,54 +1168,15 @@ export function boardSignature(board: Map<string, CellContents>): string {
     return new Search(board, 1).signature();
 }
 
-/** Whether a piece can participate after legal preparatory steps this turn. */
-export function canMoveWithin(board: Map<string, CellContents>, player: playerid, maxSteps: number, origin: string): boolean {
-    if (maxSteps <= 0) {
+/**
+ * Whether the piece on `origin` can take a step, or be pushed or pulled, in
+ * some turn of at most `maxSteps` steps that fits `tokens`.
+ */
+export function canMoveWithin(board: Map<string, CellContents>, player: playerid, maxSteps: number, origin: string, tokens: Token[] = []): boolean {
+    if (maxSteps <= 0 || !board.has(origin)) {
         return false;
     }
-    const search = new Search(board, player);
-    const id = search.ids[sqIndex(origin)];
-    if (id < 0) {
-        return false;
-    }
-    const target = search.pieces[id];
-    if (target.owner !== player && !search.pieces.some(p =>
-        p.owner === player && p.strength > target.strength && DIST[p.cur * 64 + target.cur] < maxSteps)) {
-        return false;
-    }
-    const seen = new Set<string>();
-    const reachable = (remaining: number): boolean => {
-        if (search.pieces[id].cur < 0) {
-            return false;
-        }
-        const atoms = search.atoms(remaining);
-        if (atoms.some(atom => atom.some(step => step.pid === id))) {
-            return true;
-        }
-        if (remaining <= 1) {
-            return false;
-        }
-        const key = `${remaining}:${search.signature()}:${search.pieces[id].cur}`;
-        if (seen.has(key)) {
-            return false;
-        }
-        seen.add(key);
-        for (const atom of atoms) {
-            if (atom.length >= remaining) {
-                continue;
-            }
-            const undos = atom.map(step => search.apply(step));
-            const found = reachable(remaining - atom.length);
-            while (undos.length > 0) {
-                search.undo(undos.pop()!);
-            }
-            if (found) {
-                return true;
-            }
-        }
-        return false;
-    };
-    return reachable(maxSteps);
+    return firstBucket(board, player, maxSteps, tokens, {prune: true, mover: sqIndex(origin), any: true}).length > 0;
 }
 
 /**

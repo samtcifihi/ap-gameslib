@@ -280,9 +280,9 @@ describe("Arimaa", () => {
 // Lightvector notation and arrow entry
 
 import { isLegacy, parseMove, parseToken, NotationError } from "../../src/games/arimaa/notation";
-import { fewestDisplaced, resolve, serializeTurn, sqIndex, sqName, turnFromSteps, type CellContents, type Found, type Turn } from "../../src/games/arimaa/turns";
+import { canMoveWithin, fewestDisplaced, resolve, serializeTurn, sqIndex, sqName, turnFromSteps, type CellContents, type Found, type Turn } from "../../src/games/arimaa/turns";
 import { arimaaRecords } from "../fixtures/arimaa/records";
-import { allTurns, boardOf as coverageBoard, unsupportedOnTrap, type Owner } from "../fixtures/arimaa/coverage";
+import { allPlays, allTurns, boardOf as coverageBoard, unsupportedOnTrap, type Owner } from "../fixtures/arimaa/coverage";
 
 const rc = (cell: string): [number, number] => {
     const [x, y] = ArimaaGame.algebraic2coords(cell);
@@ -456,6 +456,62 @@ describe("Arimaa resolution", () => {
             expect(found[0].turn.steps, `prune ${prune}`).to.have.length(4);
             expect(found[0].rightSized, `prune ${prune}`).to.equal(1);
         }
+    });
+    it("knows which pieces can move this turn, alone and alongside what an entry says", function () {
+        this.timeout(120000);
+        // crowded random positions, so that pieces block, freeze and push one another
+        let seed = 777;
+        const rnd = (n: number): number => {
+            seed = (seed + 0x6d2b79f5) | 0;
+            let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+            t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+            return ((t ^ (t >>> 14)) >>> 0) % n;
+        };
+        const types = ["E", "M", "H", "D", "C", "R", "R", "C", "D", "H"];
+        let blocked = 0;
+        let withTokens = 0;
+        for (let trial = 0; trial < 40; trial++) {
+            const b = new Map<string, CellContents>();
+            const [cx, cy] = [1 + rnd(6), 1 + rnd(6)];
+            for (let i = 0; i < 24 && b.size < 5 + rnd(5); i++) {
+                const cell = ArimaaGame.coords2algebraic(Math.min(7, Math.max(0, cx + rnd(5) - 2)), Math.min(7, Math.max(0, cy + rnd(5) - 2)));
+                if (!b.has(cell)) {
+                    b.set(cell, [types[rnd(types.length)] as CellContents[0], (1 + rnd(2)) as 1 | 2]);
+                }
+            }
+            let trap: string | undefined;
+            while ((trap = unsupportedOnTrap(b as unknown as Parameters<typeof unsupportedOnTrap>[0])) !== undefined) {
+                b.delete(trap);
+            }
+            const player = (1 + rnd(2)) as 1 | 2;
+            const label = `${[...b.entries()].map(([c, [pc, o]]) => (o === 1 ? pc : pc.toLowerCase()) + c).join(" ")} / player ${player}`;
+            // every way of playing every turn, enumerated independently of the engine
+            const plays = allPlays(b as unknown as Parameters<typeof allPlays>[0], player, 4);
+            for (const cell of b.keys()) {
+                for (let limit = 1; limit <= 4; limit++) {
+                    const can = plays.some(p => p.steps <= limit && (p.paths.get(cell)?.visited.length ?? 1) > 1);
+                    expect(canMoveWithin(b, player, limit, cell), `${label} / ${cell} in ${limit}`).to.equal(can);
+                    blocked += can ? 0 : 1;
+                }
+            }
+            // and with an entry, against a search that prunes nothing
+            const play = plays[rnd(plays.length)];
+            const moved = play === undefined ? undefined : [...play.paths].find(([from, path]) => path.final !== from);
+            if (moved !== undefined) {
+                const [from, path] = moved;
+                const letter = path.owner === 1 ? path.type : path.type.toLowerCase();
+                const tokens = parseMove(path.captured ? `${letter}${from}x` : `${letter}${from}${path.final}`).tokens;
+                for (const cell of b.keys()) {
+                    const start = sqIndex(cell);
+                    const full = resolve(b, player, 4, tokens, false, false, turn => turn.trajectories.some(tr => tr.start === start && tr.visited.length > 1));
+                    expect(canMoveWithin(b, player, 4, cell, tokens), `${label} / ${tokens.map(t => t.text).join(" ")} / ${cell}`)
+                        .to.equal(full.status !== "unsatisfiable");
+                    withTokens++;
+                }
+            }
+        }
+        expect(blocked).to.be.greaterThan(100);
+        expect(withTokens).to.be.greaterThan(100);
     });
     it("pruning never changes an answer", function () {
         this.timeout(120000);
