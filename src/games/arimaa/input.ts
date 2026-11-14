@@ -191,6 +191,19 @@ function literal(v: View): boolean {
 }
 
 const rankOf = (piece: Piece): number => "RCDHME".indexOf(piece);
+const neighbours = (sq: string): string[] => {
+    const i = sqIndex(sq);
+    return [i + 8, i - 8, i % 8 < 7 ? i + 1 : -1, i % 8 > 0 ? i - 1 : -1].filter(j => j >= 0 && j < 64).map(sqName);
+};
+/** The squares a piece on `start` passes through taking steps `dirs`, `start` first. */
+const routeOf = (start: string, dirs: Dir[]): string[] => {
+    const out = [start];
+    for (const d of dirs) {
+        const i = sqIndex(out[out.length - 1]);
+        out.push(sqName(i + (d === "n" ? 8 : d === "s" ? -8 : d === "e" ? 1 : -1)));
+    }
+    return out;
+};
 const beside = (a: string, b: string): boolean => manhattan(sqIndex(a), sqIndex(b)) === 1;
 
 /** A step token for one step of a piece. */
@@ -272,10 +285,26 @@ function basicClick(board: Board, player: playerid, limit: number, v: View, sele
     // An entry with steps added one by one, if they are played as entered:
     // each the next step of the turn, and nothing else moving.
     const steppedFrom = (w: View, steps: Array<[string, string]>): View | undefined => {
-        const added = steps.map(([from, to]) => {
-            const [piece, owner] = w.after.get(from) ?? w.after.get(to)!;
-            return stepToken(piece, owner, from, to);
-        });
+        const at = new Map(w.after);
+        const added: Token[] = [];
+        for (const [from, to] of steps) {
+            const here = at.get(from);
+            if (here === undefined) {
+                return undefined;
+            }
+            at.delete(from);
+            at.set(to, here);
+            // a run of steps by one piece is one token, as runs() writes it
+            const step = stepToken(here[0], here[1], from, to);
+            const prev = added[added.length - 1];
+            if (prev?.prop.kind === "steps" && prev.spec.piece === here[0] && prev.spec.owner === here[1] &&
+                routeOf(prev.spec.square!, prev.prop.dirs).pop() === from) {
+                const dirs = [...prev.prop.dirs, ...(step.prop as {dirs: Dir[]}).dirs];
+                added[added.length - 1] = {spec: prev.spec, prop: {kind: "steps", dirs}, text: `${pieceChar(here[0], here[1])}${prev.spec.square}${dirs.join("")}`};
+            } else {
+                added.push(step);
+            }
+        }
         const next = look(board, player, limit, [...sofar(w), ...added]);
         const played = next.turn?.steps.slice(-steps.length) ?? [];
         if (!literal(next) || played.length !== steps.length ||
@@ -288,22 +317,74 @@ function basicClick(board: Board, player: playerid, limit: number, v: View, sele
         const next = steppedFrom(v, steps);
         return next === undefined ? undefined : finish(next.tokens, next.turn!);
     };
+    // The entry as it was entered and, if its last arrow is a piece of the
+    // player's taking several steps, as it would be had that piece gone by
+    // another route as long between the same squares, ending in the same
+    // position. The player said only where the piece went, and a later step
+    // may need it to have come by one way rather than another.
+    let routes: View[] | undefined;
+    const reroutes = (): View[] => {
+        if (routes !== undefined) {
+            return routes;
+        }
+        routes = [v];
+        const all = sofar(v);
+        const last = all[all.length - 1];
+        if (v.turn === undefined || last === undefined || last.prop.kind !== "steps" || last.prop.dirs.length < 2 ||
+            last.spec.owner !== player || last.spec.square === undefined) {
+            return routes;
+        }
+        const start = last.spec.square;
+        let end = sqIndex(start);
+        for (const d of last.prop.dirs) {
+            end += d === "n" ? 8 : d === "s" ? -8 : d === "e" ? 1 : -1;
+        }
+        const before = look(board, player, limit, all.slice(0, -1));
+        const length = last.prop.dirs.length;
+        const entered = routeOf(start, last.prop.dirs).join();
+        const walk = (path: string[]): void => {
+            const at = path[path.length - 1];
+            if (path.length === length + 1) {
+                if (sqIndex(at) === end && path.join() !== entered) {
+                    const other = steppedFrom(before, path.slice(1).map((sq, i): [string, string] => [path[i], sq]));
+                    if (other !== undefined && other.turn!.signature === v.turn!.signature) {
+                        routes!.push(other);
+                    }
+                }
+                return;
+            }
+            for (const next of neighbours(at)) {
+                if (!path.includes(next) && manhattan(sqIndex(next), end) <= length - path.length) {
+                    walk([...path, next]);
+                }
+            }
+        };
+        walk([start]);
+        return routes;
+    };
     // The second half of a pull: the enemy piece on `cell` follows the
     // player's piece that has just stepped away from beside it, into the
-    // square that piece left. A piece that has just pushed cannot also pull.
-    const pullInto = (cell: string): string | undefined => {
-        const steps = v.turn?.steps ?? [];
-        const last = steps[steps.length - 1];
-        const prev = steps[steps.length - 2];
+    // square that piece left, by the route entered or another that ends the
+    // same way. A piece that has just pushed cannot also pull.
+    const pulls = (cell: string): Array<{into: string; base: View}> => {
         const enemy = v.shown.get(cell);
-        if (last === undefined || enemy === undefined || enemy.owner === player || v.left < 1 || last.owner !== player ||
-            rankOf(last.piece) <= rankOf(enemy.piece) || !beside(cell, sqName(last.from)) ||
-            (prev !== undefined && prev.owner !== player && prev.from === last.to)) {
-            return undefined;
+        if (enemy === undefined || enemy.owner === player || v.left < 1) {
+            return [];
         }
-        return sqName(last.from);
+        const out: Array<{into: string; base: View}> = [];
+        for (const base of reroutes()) {
+            const steps = base.turn?.steps ?? [];
+            const last = steps[steps.length - 1];
+            const prev = steps[steps.length - 2];
+            if (last !== undefined && last.owner === player && rankOf(last.piece) > rankOf(enemy.piece) &&
+                beside(cell, sqName(last.from)) && !(prev !== undefined && prev.owner !== player && prev.from === last.to) &&
+                !out.some(o => o.into === sqName(last.from))) {
+                out.push({into: sqName(last.from), base});
+            }
+        }
+        return out;
     };
-    const movable = (cell: string): boolean => canMoveWithin(v.after, player, v.left, cell) || pullInto(cell) !== undefined;
+    const movable = (cell: string): boolean => canMoveWithin(v.after, player, v.left, cell) || pulls(cell).length > 0;
     // The first half of a push entered on its own: whether some piece of
     // the player's can follow the enemy piece on `from` once it has stepped
     // to the empty square `to`.
@@ -368,13 +449,16 @@ function basicClick(board: Board, player: playerid, limit: number, v: View, sele
         // it, then perhaps on to the start of a push, which waits for its
         // pusher. It can take no more steps in a row than that.
         const [from] = selections;
-        const into = pullInto(from);
-        const pulled = into === undefined ? undefined : steppedFrom(v, [[from, into]]);
-        if (pulled !== undefined && into === square) {
-            return finish(pulled.tokens, pulled.turn!);
+        const pulled = pulls(from).map(({into, base}) => ({into, after: steppedFrom(base, [[from, into]])}));
+        for (const {into, after} of pulled) {
+            if (after !== undefined && into === square) {
+                return finish(after.tokens, after.turn!);
+            }
         }
-        if (pulled !== undefined && pushable(pulled, into!, square)) {
-            return {move: joinSelections(pulled.tokens, [into!, square])};
+        for (const {into, after} of pulled) {
+            if (after !== undefined && pushable(after, into, square)) {
+                return {move: joinSelections(after.tokens, [into, square])};
+            }
         }
         if (pushable(v, from, square)) {
             return select([from, square]);

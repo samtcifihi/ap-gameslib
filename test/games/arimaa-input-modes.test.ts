@@ -189,6 +189,21 @@ describe("Arimaa input modes", () => {
             expect(enter(three, "basic", ["h3", "e3"], enter(three, "basic", ["g3", "g4"]))).to.equal("Hg3n");
         });
 
+        it("takes the route that lets an enemy piece follow, of those as short to the same square", () => {
+            // the elephant can reach e5 by d5 or by e4: whichever rabbit is
+            // to follow it, it comes by the square beside that rabbit
+            const g = position("Ed4,Ra1", "rf4,rc5,ra8,ee8");
+            const walked = enter(g, "basic", ["d4", "e5"]);
+            for (const [rabbit, into] of [["f4", "e4"], ["c5", "d5"]]) {
+                const selected = click(g, walked, rabbit, "basic");
+                expect(selected.move, rabbit).to.equal(`${walked} ${rabbit}`);
+                const after = played(g, click(g, selected.move, into, "basic").move);
+                expect(after.board.get("e5"), rabbit).to.deep.equal(["E", 1]);
+                expect(after.board.get(into), rabbit).to.deep.equal(["R", 2]);
+                expect(after.board.has(rabbit), rabbit).to.equal(false);
+            }
+        });
+
         it("does not let a piece that has just pushed pull as well", () => {
             const g = position("Ed4,Ra1", "re4,rd5,ra8,ee8");
             const pushed = enter(g, "basic", ["d4", "e4", "e5"]);
@@ -1154,8 +1169,10 @@ describe("Arimaa input modes", () => {
         // "steps", its two steps in the order they happen: the pushed piece
         // and where it goes, then a click on the pusher; the puller and where
         // it goes, then the pulled piece and the square the puller left.
-        // "Merged" is "steps" with a pull and the push of the same piece that
-        // follows it clicked as one arrow for that piece, as in a flip.
+        // "Merged" is "steps" with arrows as long as they can be: a puller's
+        // walk up to the pull is one arrow, whose route Basic picks for itself,
+        // and a pull and the push of the same piece that follows it are one
+        // arrow for that piece, as in a flip.
         type Form = "chain" | "steps" | "merged";
         const clicksFor = (g: ArimaaGame, steps: Array<[string, string]>, form: Form = "chain"): string[][] => {
             const owner = new Map([...g.board].map(([cell, [, o]]): [string, number] => [cell, o]));
@@ -1165,6 +1182,8 @@ describe("Arimaa input modes", () => {
                 owner.delete(from);
             };
             const out: string[][] = [];
+            // the groups that are one piece's walk
+            const walks = new Set<string[]>();
             // where the piece pulled by the last group now stands
             let pulledTo: string | undefined;
             for (let i = 0; i < steps.length; i++) {
@@ -1175,6 +1194,11 @@ describe("Arimaa input modes", () => {
                     const last = out[out.length - 1];
                     if (form === "chain") {
                         out.push([next[0], from, to]);
+                    } else if (pull && form === "merged" && last !== undefined && walks.has(last) && last[1] === from) {
+                        // the puller's walk goes on to its last step
+                        last[1] = to;
+                        walks.delete(last);
+                        out.push([next[0], from]);
                     } else if (pull) {
                         out.push([from, to, next[0], from]);
                     } else if (form === "merged" && pulledTo === from && last !== undefined) {
@@ -1192,10 +1216,12 @@ describe("Arimaa input modes", () => {
                 }
                 pulledTo = undefined;
                 const last = out[out.length - 1];
-                if (last !== undefined && last.length === 2 && last[1] === from) {
+                if (last !== undefined && walks.has(last) && last[1] === from) {
                     last[1] = to;
                 } else {
-                    out.push([from, to]);
+                    const walk = [from, to];
+                    walks.add(walk);
+                    out.push(walk);
                 }
                 go(from, to);
             }
