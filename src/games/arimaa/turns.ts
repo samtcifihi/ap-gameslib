@@ -5,7 +5,7 @@
  * Squares are indexed `rank * 8 + file` with rank 0 being rank "1", so `n` is
  * +8, `s` is -8, `e` is +1 and `w` is -1.
  */
-import { arrowToken, captureToken, pieceChar, tokenText, type Dir, type Piece, type playerid, type Token } from "./notation.js";
+import { arrowToken, captureToken, pieceChar, stepsToken, tokenText, type Dir, type Piece, type playerid, type Token } from "./notation.js";
 
 export type CellContents = [Piece, playerid];
 
@@ -30,7 +30,7 @@ function stepTo(i: number, d: number): number {
     }
 }
 
-const NEIGHBOURS: number[][] = [];
+export const NEIGHBOURS: number[][] = [];
 for (let i = 0; i < 64; i++) {
     const ns: number[] = [];
     for (const [, d] of DIRS) {
@@ -56,12 +56,12 @@ for (let a = 0; a < 64; a++) {
     }
 }
 
-function dirBetween(from: number, to: number): Dir {
+export function dirBetween(from: number, to: number): Dir {
     const d = to - from;
     return d === 8 ? "n" : d === -8 ? "s" : d === 1 ? "e" : "w";
 }
 
-const STRENGTH: Record<Piece, number> = { R: 1, C: 2, D: 3, H: 4, M: 5, E: 6 };
+export const STRENGTH: Record<Piece, number> = { R: 1, C: 2, D: 3, H: 4, M: 5, E: 6 };
 
 // Whether strength `strong` is exactly one rank above `weak` among the pieces
 // on a board, `held[s]` being how many of either colour have strength `s`. A
@@ -1215,8 +1215,7 @@ export function inferred(turn: Turn, tokens: Token[]): Trajectory[] {
 // Serialization
 
 function stepToken(st: TurnStep): Token {
-    const from = sqName(st.from);
-    return { spec: { piece: st.piece, owner: st.owner, square: from }, prop: { kind: "steps", dirs: [st.dir] }, text: `${pieceChar(st.piece, st.owner)}${from}${st.dir}` };
+    return stepsToken(st.piece, st.owner, sqName(st.from), [st.dir]);
 }
 
 function bareToken(t: Token): Token {

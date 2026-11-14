@@ -198,6 +198,12 @@ export function arrowToken(piece: Piece, owner: playerid, from: string, to: stri
     return { spec: { piece, owner, square: from }, prop: { kind: "dest", square: to }, text };
 }
 
+/** Build a step token for `piece` on `from` taking the steps `dirs`. */
+export function stepsToken(piece: Piece, owner: playerid, from: string, dirs: Dir[]): Token {
+    const text = `${pieceChar(piece, owner)}${from}${dirs.join("")}`;
+    return { spec: { piece, owner, square: from }, prop: { kind: "steps", dirs }, text };
+}
+
 /** A hold: `piece` on `square` ends the turn where it stands (a zero-length arrow). */
 export function holdToken(piece: Piece, owner: playerid, square: string): Token {
     return arrowToken(piece, owner, square, square);

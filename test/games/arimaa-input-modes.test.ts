@@ -41,6 +41,10 @@ const played = (game: ArimaaGame, move: string): ArimaaGame => {
     expect(v.complete, `${move}: ${v.message}`).to.be.at.least(0);
     return game.clone().move(move);
 };
+/** What is drawn for an entry while it is being made, as `type:square>square`. */
+const marks = (game: ArimaaGame, move: string): string[] =>
+    ((game.clone().move(move, {partial: true}).render().annotations ?? []) as Array<{type: string; targets: Array<{row: number; col: number}>}>)
+        .map(a => `${a.type}:${a.targets.map(t => ArimaaGame.coords2algebraic(t.col, t.row)).join(">")}`);
 
 /** What an Advanced entry says, apart from the steps of the move shown that it may list after that. */
 const said = (move: string): string[] => parseMove(move, true).tokens.filter(t => t.prop.kind !== "steps").map(t => t.text);
@@ -153,8 +157,7 @@ describe("Arimaa input modes", () => {
             const v = g.validateMove(waiting);
             expect(v.complete).to.equal(-1);
             expect(v.message).to.equal(i18next.t("apgames:validation.arimaa.PARTIAL_PUSH"));
-            const preview = g.clone().move(waiting, {partial: true}).render().annotations as Array<{type: string; targets: Array<{row: number; col: number}>}>;
-            expect(preview.map(a => `${a.type}:${a.targets.map(t => ArimaaGame.coords2algebraic(t.col, t.row)).join(">")}`)).to.deep.equal(["move:e4>e5"]);
+            expect(marks(g, waiting)).to.deep.equal(["move:e4>e5"]);
             // a click on the pusher is enough: it can only follow into the square the pushed piece left
             expect(enter(g, "basic", ["d4"], waiting)).to.equal(push);
             // either piece strong enough can be the one that pushes
@@ -483,12 +486,9 @@ describe("Arimaa input modes", () => {
             const after = played(g, "Rd5d5 Ed4d6");
             expect(after.board.get("d5")).to.deep.equal(["R", 1]);
             expect(after.board.get("d6")).to.deep.equal(["E", 1]);
-            const marks = (move: string): string[] =>
-                ((g.clone().move(move, {partial: true}).render().annotations ?? []) as Array<{type: string; targets: Array<{row: number; col: number}>}>)
-                    .map(a => `${a.type}:${a.targets.map(t => ArimaaGame.coords2algebraic(t.col, t.row)).join(">")}`);
             // the enter glyph is for a piece that moved and came back, not for one said to stay
-            expect(marks("Rd5d5")).to.deep.equal([]);
-            expect(marks("Rd5d5 Ed4d6")).to.deep.equal(["move:d4>d6"]);
+            expect(marks(g, "Rd5d5")).to.deep.equal([]);
+            expect(marks(g, "Rd5d5 Ed4d6")).to.deep.equal(["move:d4>d6"]);
         });
 
         it("shows one of the moves an entry fits when none is better, and lets the player complete it", () => {

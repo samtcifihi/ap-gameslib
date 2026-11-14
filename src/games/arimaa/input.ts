@@ -20,13 +20,13 @@
  * ends with the steps of the turn meant, and those it can read no other way.
  */
 import {
-    arrowToken, captureToken, joinSelections, parseMove, pieceChar, surviveToken,
+    arrowToken, captureToken, joinSelections, parseMove, stepsToken, surviveToken,
     type Dir, type ParsedMove, type Piece, type Token, type playerid,
 } from "./notation.js";
 import {
-    boardSignature, canMoveWithin, choose, display, fewestDisplaced, manhattan, resolve, serializeTurn,
-    sqIndex, sqName, standing, wrongPieces,
-    type CellContents, type Found, type Turn, type TurnStep,
+    NEIGHBOURS, STRENGTH, boardSignature, canMoveWithin, choose, dirBetween, display, fewestDisplaced, manhattan,
+    resolve, serializeTurn, sqIndex, sqName, standing, wrongPieces,
+    type CellContents, type Displayed, type Found, type Turn, type TurnStep,
 } from "./turns.js";
 
 export type ArimaaInputMode = "basic" | "advanced";
@@ -62,6 +62,10 @@ interface Shown {
 
 /** What the player is looking at: the turn the tokens are shown as and the board after it. */
 interface View {
+    /** the position the turn starts from: the board, whose turn it is, and the steps it may take */
+    board: Board;
+    player: playerid;
+    limit: number;
     tokens: Token[];
     /** whether the tokens end with the list of the steps of the turn shown, as an Advanced entry may */
     listed: boolean;
@@ -101,13 +105,30 @@ function look(board: Board, player: playerid, limit: number, tokens: Token[]): V
     const after: Board = new Map([...shown].map(([cell, p]): [string, CellContents] => [cell, [p.piece, p.owner]]));
     const stated = declared(tokens, turn);
     return {
-        tokens, turn, shown, after,
+        board, player, limit, tokens, turn, shown, after,
         listed: stated.length < tokens.length,
         said: turn === undefined ? stated : endings(stated, turn),
         fits: d.status !== "unsatisfiable",
         settled: d.status === "turn" && d.by === "notation",
         left: limit - (turn?.steps.length ?? 0),
     };
+}
+
+/** The same position with other tokens entered. */
+const lookAgain = (v: View, tokens: Token[]): View => look(v.board, v.player, v.limit, tokens);
+
+/** One step token for each run of consecutive steps by one piece. */
+function runs(steps: TurnStep[]): Token[] {
+    const out: Token[] = [];
+    for (let i = 0; i < steps.length;) {
+        const first = steps[i];
+        const dirs: Dir[] = [];
+        for (; i < steps.length && steps[i].pid === first.pid; i++) {
+            dirs.push(steps[i].dir);
+        }
+        out.push(stepsToken(first.piece, first.owner, sqName(first.from), dirs));
+    }
+    return out;
 }
 
 /**
@@ -149,34 +170,15 @@ function endings(tokens: Token[], turn: Turn): Token[] {
 // What an explicit completion submits: the entry itself where it needs no
 // preference to be read and holds nothing that is only for input, otherwise
 // the turn shown, written so that it does.
-function committed(board: Board, player: playerid, limit: number, v: View): string {
+function committed(v: View): string {
     if (v.settled && !v.listed && !v.tokens.some(t => t.prop.kind === "survive")) {
         return text(v.tokens);
     }
-    return serializeTurn(board, player, limit, v.turn!) ?? text(v.tokens);
+    return serializeTurn(v.board, v.player, v.limit, v.turn!) ?? text(v.tokens);
 }
 
 // ---------------------------------------------------------------------------
 // Basic
-
-/** One step token for each run of consecutive steps by one piece. */
-function runs(steps: TurnStep[]): Token[] {
-    const out: Token[] = [];
-    for (let i = 0; i < steps.length;) {
-        const first = steps[i];
-        const dirs: Dir[] = [];
-        for (; i < steps.length && steps[i].pid === first.pid; i++) {
-            dirs.push(steps[i].dir);
-        }
-        const square = sqName(first.from);
-        out.push({
-            spec: {piece: first.piece, owner: first.owner, square},
-            prop: {kind: "steps", dirs},
-            text: `${pieceChar(first.piece, first.owner)}${square}${dirs.join("")}`,
-        });
-    }
-    return out;
-}
 
 /** Whether the entry is a step list that is played exactly as it is written. */
 function literal(v: View): boolean {
@@ -190,11 +192,18 @@ function literal(v: View): boolean {
     return v.turn !== undefined && v.turn.steps.length === steps;
 }
 
-const rankOf = (piece: Piece): number => "RCDHME".indexOf(piece);
-const neighbours = (sq: string): string[] => {
-    const i = sqIndex(sq);
-    return [i + 8, i - 8, i % 8 < 7 ? i + 1 : -1, i % 8 > 0 ? i - 1 : -1].filter(j => j >= 0 && j < 64).map(sqName);
-};
+/** The entry as the steps it is shown as. */
+function sofar(v: View): Token[] {
+    return literal(v) ? v.tokens : v.turn === undefined ? [] : runs(v.turn.steps);
+}
+
+// The click result for a step list `tokens` played as `turn`. Steps that only
+// bring back the position the turn started from are no entry.
+function entered(v: View, tokens: Token[], turn: Turn): InputClick {
+    return turn.signature === boardSignature(v.board) ? {move: ""} : {move: text(tokens)};
+}
+
+const neighbours = (sq: string): string[] => NEIGHBOURS[sqIndex(sq)].map(sqName);
 /** The squares a piece on `start` passes through taking steps `dirs`, `start` first. */
 const routeOf = (start: string, dirs: Dir[]): string[] => {
     const out = [start];
@@ -206,11 +215,119 @@ const routeOf = (start: string, dirs: Dir[]): string[] => {
 };
 const beside = (a: string, b: string): boolean => manhattan(sqIndex(a), sqIndex(b)) === 1;
 
-/** A step token for one step of a piece. */
-function stepToken(piece: Piece, owner: playerid, from: string, to: string): Token {
-    const d = sqIndex(to) - sqIndex(from);
-    const dir: Dir = d === 8 ? "n" : d === -8 ? "s" : d === 1 ? "e" : "w";
-    return {spec: {piece, owner, square: from}, prop: {kind: "steps", dirs: [dir]}, text: `${pieceChar(piece, owner)}${from}${dir}`};
+/** One step on the board as drawn, from a square to the one beside it. */
+type Hop = [from: string, to: string];
+
+// Step tokens for `hops` taken one after another on `board`, a run of steps
+// by one piece being one token, as runs() writes it. Nothing if a hop starts
+// from an empty square.
+function hopTokens(board: Board, hops: Hop[]): Token[] | undefined {
+    const at = new Map(board);
+    const out: Array<{piece: Piece; owner: playerid; from: string; dirs: Dir[]}> = [];
+    let end: string | undefined;
+    for (const [from, to] of hops) {
+        const here = at.get(from);
+        if (here === undefined) {
+            return undefined;
+        }
+        at.delete(from);
+        at.set(to, here);
+        const dir = dirBetween(sqIndex(from), sqIndex(to));
+        if (from === end) {
+            out[out.length - 1].dirs.push(dir);
+        } else {
+            out.push({piece: here[0], owner: here[1], from, dirs: [dir]});
+        }
+        end = to;
+    }
+    return out.map(r => stepsToken(r.piece, r.owner, r.from, r.dirs));
+}
+
+// The entry with `hops` added one by one, if they are played as entered:
+// each the next step of the turn, and nothing else moving.
+function stepped(v: View, hops: Hop[]): View | undefined {
+    const added = hopTokens(v.after, hops);
+    if (added === undefined) {
+        return undefined;
+    }
+    const next = lookAgain(v, [...sofar(v), ...added]);
+    const played = next.turn?.steps.slice(-hops.length) ?? [];
+    if (!literal(next) || played.length !== hops.length ||
+        played.some((st, i) => sqName(st.from) !== hops[i][0] || sqName(st.to) !== hops[i][1])) {
+        return undefined;
+    }
+    return next;
+}
+
+// The entry as it was entered and, if its last arrow is a piece of the
+// player's taking several steps, as it would be had that piece gone by
+// another route as long between the same squares, ending in the same
+// position. The player said only where the piece went, and a later step
+// may need it to have come by one way rather than another.
+function routes(v: View): View[] {
+    const out = [v];
+    const all = sofar(v);
+    const last = all[all.length - 1];
+    if (v.turn === undefined || last === undefined || last.prop.kind !== "steps" || last.prop.dirs.length < 2 ||
+        last.spec.owner !== v.player || last.spec.square === undefined) {
+        return out;
+    }
+    const taken = routeOf(last.spec.square, last.prop.dirs);
+    const length = last.prop.dirs.length;
+    const end = sqIndex(taken[length]);
+    const before = lookAgain(v, all.slice(0, -1));
+    const walk = (path: string[]): void => {
+        const at = path[path.length - 1];
+        if (path.length === length + 1) {
+            if (sqIndex(at) === end && path.join() !== taken.join()) {
+                const other = stepped(before, path.slice(1).map((sq, i): Hop => [path[i], sq]));
+                if (other !== undefined && other.turn!.signature === v.turn!.signature) {
+                    out.push(other);
+                }
+            }
+            return;
+        }
+        for (const next of neighbours(at)) {
+            if (!path.includes(next) && manhattan(sqIndex(next), end) <= length - path.length) {
+                walk([...path, next]);
+            }
+        }
+    };
+    walk([taken[0]]);
+    return out;
+}
+
+// The second half of a pull: the enemy piece on `cell` follows the player's
+// piece that has just stepped away from beside it, into the square that
+// piece left, by the route entered or another that ends the same way. A
+// piece that has just pushed cannot also pull.
+function pulls(v: View, cell: string): Array<{into: string; base: View}> {
+    const enemy = v.shown.get(cell);
+    if (enemy === undefined || enemy.owner === v.player || v.left < 1) {
+        return [];
+    }
+    const out: Array<{into: string; base: View}> = [];
+    for (const base of routes(v)) {
+        const steps = base.turn?.steps ?? [];
+        const last = steps[steps.length - 1];
+        const prev = steps[steps.length - 2];
+        if (last !== undefined && last.owner === v.player && STRENGTH[last.piece] > STRENGTH[enemy.piece] &&
+            beside(cell, sqName(last.from)) && !(prev !== undefined && prev.owner !== v.player && prev.from === last.to) &&
+            !out.some(o => o.into === sqName(last.from))) {
+            out.push({into: sqName(last.from), base});
+        }
+    }
+    return out;
+}
+
+// The first half of a push entered on its own: whether some piece of the
+// player's can follow the enemy piece on `from` once it has stepped to the
+// empty square `to`.
+function pushable(v: View, from: string, to: string): boolean {
+    const enemy = v.shown.get(from);
+    return enemy !== undefined && enemy.owner !== v.player && v.left >= 2 && !v.after.has(to) && beside(from, to) &&
+        [...v.shown].some(([at, p]) => p.owner === v.player && beside(at, from) && STRENGTH[p.piece] > STRENGTH[enemy.piece] &&
+            stepped(v, [[from, to], [at, from]]) !== undefined);
 }
 
 /**
@@ -234,14 +351,14 @@ export function pendingPush(after: Board, player: playerid, selections: string[]
 // The steps that take each selected piece to the square the next one stands
 // on, and the last to `target`, moving nothing else: the fewest there are,
 // provided every way of taking that few ends in one position.
-function basicChain(v: View, player: playerid, squares: string[], target: string): Turn | undefined {
+function basicChain(v: View, squares: string[], target: string): Turn | undefined {
     const starts = squares.map(sqIndex);
     const ends = squares.map((_, i) => sqIndex(i === squares.length - 1 ? target : squares[i + 1]));
     const tokens = squares.map((s, i) => {
         const p = v.shown.get(s)!;
         return arrowToken(p.piece, p.owner, s, sqName(ends[i]));
     });
-    const r = resolve(v.after, player, v.left, tokens, false, true, turn => {
+    const r = resolve(v.after, v.player, v.left, tokens, false, true, turn => {
         const moved = turn.trajectories.filter(tr => tr.visited.length > 1);
         return moved.every(tr => starts.includes(tr.start)) &&
             starts.every((s, i) => moved.some(tr => tr.start === s && tr.final === ends[i]));
@@ -253,7 +370,7 @@ function basicChain(v: View, player: playerid, squares: string[], target: string
 // part of the chain: the pieces selected so far follow one another, the
 // clicked piece makes way, and whatever else moves does so because a link of
 // the chain takes its place (it can be selected next).
-function basicChainable(v: View, player: playerid, squares: string[], clicked: string): boolean {
+function basicChainable(v: View, squares: string[], clicked: string): boolean {
     const starts = squares.map(sqIndex);
     const there = sqIndex(clicked);
     const ends = [...starts.slice(1), there];
@@ -261,7 +378,7 @@ function basicChainable(v: View, player: playerid, squares: string[], clicked: s
         const p = v.shown.get(s)!;
         return arrowToken(p.piece, p.owner, s, sqName(ends[i]));
     });
-    const r = resolve(v.after, player, v.left, tokens, false, true, turn => {
+    const r = resolve(v.after, v.player, v.left, tokens, false, true, turn => {
         const moved = turn.trajectories.filter(tr => tr.visited.length > 1);
         const taken = new Set(moved.map(tr => tr.final));
         return moved.some(tr => tr.start === there) &&
@@ -271,133 +388,16 @@ function basicChainable(v: View, player: playerid, squares: string[], clicked: s
     return r.status !== "unsatisfiable";
 }
 
-function basicClick(board: Board, player: playerid, limit: number, v: View, selections: string[], square: string): InputClick {
+function basicClick(v: View, selections: string[], square: string): InputClick {
+    const player = v.player;
     const clicked = v.shown.get(square);
     const stay: InputClick = {move: text(v.tokens)};
     const select = (squares: string[]): InputClick => ({move: joinSelections(v.tokens, squares)});
-    // the entry as the steps it is shown as
-    const sofar = (w: View): Token[] => literal(w) ? w.tokens : w.turn === undefined ? [] : runs(w.turn.steps);
-    // Steps that only bring back the position the turn started from are no entry.
-    const finish = (tokens: Token[], turn: Turn): InputClick =>
-        turn.signature === boardSignature(board) ? {move: ""} : {move: text(tokens)};
-    // the entry as the steps it is shown as, followed by the new ones
-    const extend = (turn: Turn): InputClick => finish([...sofar(v), ...runs(turn.steps)], turn);
-    // An entry with steps added one by one, if they are played as entered:
-    // each the next step of the turn, and nothing else moving.
-    const steppedFrom = (w: View, steps: Array<[string, string]>): View | undefined => {
-        const at = new Map(w.after);
-        const added: Token[] = [];
-        for (const [from, to] of steps) {
-            const here = at.get(from);
-            if (here === undefined) {
-                return undefined;
-            }
-            at.delete(from);
-            at.set(to, here);
-            // a run of steps by one piece is one token, as runs() writes it
-            const step = stepToken(here[0], here[1], from, to);
-            const prev = added[added.length - 1];
-            if (prev?.prop.kind === "steps" && prev.spec.piece === here[0] && prev.spec.owner === here[1] &&
-                routeOf(prev.spec.square!, prev.prop.dirs).pop() === from) {
-                const dirs = [...prev.prop.dirs, ...(step.prop as {dirs: Dir[]}).dirs];
-                added[added.length - 1] = {spec: prev.spec, prop: {kind: "steps", dirs}, text: `${pieceChar(here[0], here[1])}${prev.spec.square}${dirs.join("")}`};
-            } else {
-                added.push(step);
-            }
-        }
-        const next = look(board, player, limit, [...sofar(w), ...added]);
-        const played = next.turn?.steps.slice(-steps.length) ?? [];
-        if (!literal(next) || played.length !== steps.length ||
-            played.some((st, i) => sqName(st.from) !== steps[i][0] || sqName(st.to) !== steps[i][1])) {
-            return undefined;
-        }
-        return next;
-    };
-    const stepped = (steps: Array<[string, string]>): InputClick | undefined => {
-        const next = steppedFrom(v, steps);
-        return next === undefined ? undefined : finish(next.tokens, next.turn!);
-    };
-    // The entry as it was entered and, if its last arrow is a piece of the
-    // player's taking several steps, as it would be had that piece gone by
-    // another route as long between the same squares, ending in the same
-    // position. The player said only where the piece went, and a later step
-    // may need it to have come by one way rather than another.
-    let routes: View[] | undefined;
-    const reroutes = (): View[] => {
-        if (routes !== undefined) {
-            return routes;
-        }
-        routes = [v];
-        const all = sofar(v);
-        const last = all[all.length - 1];
-        if (v.turn === undefined || last === undefined || last.prop.kind !== "steps" || last.prop.dirs.length < 2 ||
-            last.spec.owner !== player || last.spec.square === undefined) {
-            return routes;
-        }
-        const start = last.spec.square;
-        let end = sqIndex(start);
-        for (const d of last.prop.dirs) {
-            end += d === "n" ? 8 : d === "s" ? -8 : d === "e" ? 1 : -1;
-        }
-        const before = look(board, player, limit, all.slice(0, -1));
-        const length = last.prop.dirs.length;
-        const entered = routeOf(start, last.prop.dirs).join();
-        const walk = (path: string[]): void => {
-            const at = path[path.length - 1];
-            if (path.length === length + 1) {
-                if (sqIndex(at) === end && path.join() !== entered) {
-                    const other = steppedFrom(before, path.slice(1).map((sq, i): [string, string] => [path[i], sq]));
-                    if (other !== undefined && other.turn!.signature === v.turn!.signature) {
-                        routes!.push(other);
-                    }
-                }
-                return;
-            }
-            for (const next of neighbours(at)) {
-                if (!path.includes(next) && manhattan(sqIndex(next), end) <= length - path.length) {
-                    walk([...path, next]);
-                }
-            }
-        };
-        walk([start]);
-        return routes;
-    };
-    // The second half of a pull: the enemy piece on `cell` follows the
-    // player's piece that has just stepped away from beside it, into the
-    // square that piece left, by the route entered or another that ends the
-    // same way. A piece that has just pushed cannot also pull.
-    const pulls = (cell: string): Array<{into: string; base: View}> => {
-        const enemy = v.shown.get(cell);
-        if (enemy === undefined || enemy.owner === player || v.left < 1) {
-            return [];
-        }
-        const out: Array<{into: string; base: View}> = [];
-        for (const base of reroutes()) {
-            const steps = base.turn?.steps ?? [];
-            const last = steps[steps.length - 1];
-            const prev = steps[steps.length - 2];
-            if (last !== undefined && last.owner === player && rankOf(last.piece) > rankOf(enemy.piece) &&
-                beside(cell, sqName(last.from)) && !(prev !== undefined && prev.owner !== player && prev.from === last.to) &&
-                !out.some(o => o.into === sqName(last.from))) {
-                out.push({into: sqName(last.from), base});
-            }
-        }
-        return out;
-    };
-    const movable = (cell: string): boolean => canMoveWithin(v.after, player, v.left, cell) || pulls(cell).length > 0;
-    // The first half of a push entered on its own: whether some piece of
-    // the player's can follow the enemy piece on `from` once it has stepped
-    // to the empty square `to`.
-    const pushable = (w: View, from: string, to: string): boolean => {
-        const enemy = w.shown.get(from);
-        return enemy !== undefined && enemy.owner !== player && w.left >= 2 && !w.after.has(to) && beside(from, to) &&
-            [...w.shown].some(([at, p]) => p.owner === player && beside(at, from) && rankOf(p.piece) > rankOf(enemy.piece) &&
-                steppedFrom(w, [[from, to], [at, from]]) !== undefined);
-    };
+    const movable = (cell: string): boolean => canMoveWithin(v.after, player, v.left, cell) || pulls(v, cell).length > 0;
 
     if (selections.length === 0) {
         if (clicked === undefined) {
-            return v.turn === undefined ? stay : {move: committed(board, player, limit, v), complete: true};
+            return v.turn === undefined ? stay : {move: committed(v), complete: true};
         }
         if (movable(square)) {
             return select([square]);
@@ -408,7 +408,7 @@ function basicClick(board: Board, player: playerid, limit: number, v: View, sele
         // undo one token, and with it whatever of a push or pull it leaves unplayable
         let rest = v.tokens.slice(0, -1);
         if (literal(v)) {
-            while (rest.length > 0 && !literal(look(board, player, limit, rest))) {
+            while (rest.length > 0 && !literal(lookAgain(v, rest))) {
                 rest = rest.slice(0, -1);
             }
         }
@@ -420,9 +420,9 @@ function basicClick(board: Board, player: playerid, limit: number, v: View, sele
     const push = pendingPush(v.after, player, selections);
     if (push !== undefined) {
         if (clicked !== undefined && clicked.owner === player) {
-            const pushed = stepped([[push.from, push.to], [square, push.from]]);
+            const pushed = stepped(v, [[push.from, push.to], [square, push.from]]);
             if (pushed !== undefined) {
-                return pushed;
+                return entered(v, pushed.tokens, pushed.turn!);
             }
         }
         if (clicked === undefined || selections.includes(square)) {
@@ -438,9 +438,10 @@ function basicClick(board: Board, player: playerid, limit: number, v: View, sele
     // Two pieces trading places is left to Advanced; in Basic that click
     // deselects them, as a click on any selected piece does.
     if (clicked === undefined || (square === selections[0] && selections.length > 2)) {
-        const turn = basicChain(v, player, selections, square);
+        const turn = basicChain(v, selections, square);
         if (turn !== undefined) {
-            return extend(turn);
+            // the entry as the steps it is shown as, followed by the new ones
+            return entered(v, [...sofar(v), ...runs(turn.steps)], turn);
         }
     }
     if (clicked === undefined && selections.length === 1) {
@@ -449,10 +450,10 @@ function basicClick(board: Board, player: playerid, limit: number, v: View, sele
         // it, then perhaps on to the start of a push, which waits for its
         // pusher. It can take no more steps in a row than that.
         const [from] = selections;
-        const pulled = pulls(from).map(({into, base}) => ({into, after: steppedFrom(base, [[from, into]])}));
+        const pulled = pulls(v, from).map(({into, base}) => ({into, after: stepped(base, [[from, into]])}));
         for (const {into, after} of pulled) {
             if (after !== undefined && into === square) {
-                return finish(after.tokens, after.turn!);
+                return entered(v, after.tokens, after.turn!);
             }
         }
         for (const {into, after} of pulled) {
@@ -467,7 +468,7 @@ function basicClick(board: Board, player: playerid, limit: number, v: View, sele
     if (clicked === undefined || selections.includes(square)) {
         return stay;
     }
-    if (basicChainable(v, player, selections, square)) {
+    if (basicChainable(v, selections, square)) {
         return select([...selections, square]);
     }
     return movable(square) ? select([square]) : stay;
@@ -563,21 +564,24 @@ function obeys(v: View, chain: Link[]): (turn: Turn) => boolean {
 // The entry for `said` when it is to be shown, and played, as `turn`, which
 // fits it: the tokens alone if the notation reads them as that turn, and
 // otherwise the steps of the turn after them.
-function entry(board: Board, player: playerid, limit: number, said: Token[], turn: Turn): string {
-    const r = resolve(board, player, limit, said, false);
+function entry(v: View, said: Token[], turn: Turn): string {
+    const r = resolve(v.board, v.player, v.limit, said, false);
     if (r.status === "resolved" && r.turn.signature === turn.signature) {
         return text(said);
     }
     return text([...said, ...runs(turn.steps)]);
 }
 
+// The click result for `said` shown as the turn chosen for it, which is one
+// of several where nothing but the order positions sort in chose it.
+function chosen(v: View, said: Token[], c: Extract<Displayed, {status: "turn"}>): InputClick {
+    return {move: entry(v, said, c.turn), oneOf: c.by === "choice" ? c.positions : undefined};
+}
+
 // The entry for what is now said, shown as the turn Advanced takes it to mean.
-function restated(board: Board, player: playerid, limit: number, said: Token[]): InputClick {
-    const c = choose(board, player, limit, said);
-    if (c.status !== "turn") {
-        return {move: text(said)};
-    }
-    return {move: entry(board, player, limit, said, c.turn), oneOf: c.by === "choice" ? c.positions : undefined};
+function restated(v: View, said: Token[]): InputClick {
+    const c = choose(v.board, v.player, v.limit, said);
+    return c.status === "turn" ? chosen(v, said, c) : {move: text(said)};
 }
 
 // The entry after a chain is sent on its way: what is now said, shown as the
@@ -585,7 +589,8 @@ function restated(board: Board, player: playerid, limit: number, said: Token[]):
 // what a trap's triangle asks of the newest selection, which is then said
 // too. It is asked of that very piece: the token alone would be met by
 // another piece of its kind that crossed the square it started on.
-function advancedChain(board: Board, player: playerid, limit: number, v: View, chain: Link[], captured?: boolean): InputClick | undefined {
+function advancedChain(v: View, chain: Link[], captured?: boolean): InputClick | undefined {
+    const {board, player, limit} = v;
     const last = chain[chain.length - 1].piece;
     const tokens = sent(v, chain);
     if (captured !== undefined) {
@@ -611,12 +616,12 @@ function advancedChain(board: Board, player: playerid, limit: number, v: View, c
             said = [...tokens, ...through];
         }
     }
-    return {move: entry(board, player, limit, said, want.turn), oneOf: want.by === "choice" ? want.positions : undefined};
+    return chosen(v, said, want);
 }
 
 // Whether the chain could go on through the clicked piece: the newest
 // selection ends on its square and it ends somewhere else.
-function advancedChainable(board: Board, player: playerid, limit: number, v: View, squares: string[], clicked: string): boolean {
+function advancedChainable(v: View, squares: string[], clicked: string): boolean {
     const chain = links(v, squares, clicked);
     const x = v.shown.get(clicked);
     if (chain === undefined || x === undefined) {
@@ -626,7 +631,7 @@ function advancedChainable(board: Board, player: playerid, limit: number, v: Vie
     const tokens = sent(v, chain, v.said.filter(t => !describes(t, x, f)));
     const follows = obeys(v, chain);
     const there = sqIndex(clicked);
-    return display(board, player, limit, tokens, turn => fate(turn, x.origin).final !== there && follows(turn)).status === "turn";
+    return display(v.board, v.player, v.limit, tokens, turn => fate(turn, x.origin).final !== there && follows(turn)).status === "turn";
 }
 
 /** A turn that brings a piece to the square a target click names, and the arrow that says so. */
@@ -646,7 +651,8 @@ interface Aim {
 // piece exactly one rank stronger, and the most pushes and pulls of a piece
 // exactly one rank weaker. Nothing if that still leaves more than one
 // position.
-function targetSelection(board: Board, player: playerid, limit: number, said: Token[], target: string): InputClick | undefined {
+function targetSelection(v: View, target: string): InputClick | undefined {
+    const {board, player, limit, said} = v;
     const there = sqIndex(target);
     const enemy: playerid = player === 1 ? 2 : 1;
     const goal = target[1] === (player === 1 ? "8" : "1");
@@ -694,7 +700,7 @@ function targetSelection(board: Board, player: playerid, limit: number, said: To
         if (aims.some(a => order(a, first) === 0 && a.found.turn.signature !== first.found.turn.signature)) {
             return undefined;
         }
-        return {move: entry(board, player, limit, [...said, first.arrow], first.found.turn)};
+        return {move: entry(v, [...said, first.arrow], first.found.turn)};
     }
     return undefined;
 }
@@ -727,7 +733,8 @@ function unfated(v: View, p: Shown): Token[] {
 // be captured. These say which, or nothing where the opposite cannot happen.
 
 // For the chain sent to the trap it ends on.
-function sendChoice(board: Board, player: playerid, limit: number, v: View, chain: Link[]): boolean | undefined {
+function sendChoice(v: View, chain: Link[]): boolean | undefined {
+    const {board, player, limit} = v;
     const last = chain[chain.length - 1].piece;
     const tokens = sent(v, chain);
     const follows = obeys(v, chain);
@@ -741,8 +748,8 @@ function sendChoice(board: Board, player: playerid, limit: number, v: View, chai
 }
 
 // For a piece sitting on its trap.
-function sitChoice(board: Board, player: playerid, limit: number, v: View, p: Shown): boolean | undefined {
-    if (!fateOpen(board, player, limit, v, p)) {
+function sitChoice(v: View, p: Shown): boolean | undefined {
+    if (!fateOpen(v, p)) {
         return undefined;
     }
     return !(v.turn !== undefined && fate(v.turn, p.origin).captured);
@@ -752,9 +759,9 @@ function sitChoice(board: Board, player: playerid, limit: number, v: View, p: Sh
 // fits it captures the piece, and some other leaves it alive. The turn shown
 // answers one of the two; a capture token lets the search for a capture
 // skip what cannot lead to one.
-function fateOpen(board: Board, player: playerid, limit: number, v: View, p: Shown): boolean {
+function fateOpen(v: View, p: Shown): boolean {
     const said = unfated(v, p);
-    const can = (captured: boolean): boolean => display(board, player, limit,
+    const can = (captured: boolean): boolean => display(v.board, v.player, v.limit,
         captured ? [...said, captureToken(p.piece, p.owner, p.origin)] : said,
         turn => fate(turn, p.origin).captured === captured).status === "turn";
     const shown = v.turn === undefined ? undefined : fate(v.turn, p.origin).captured;
@@ -762,16 +769,13 @@ function fateOpen(board: Board, player: playerid, limit: number, v: View, p: Sho
 }
 
 // The entry once it says that `p` is captured, or that it is not.
-function fated(board: Board, player: playerid, limit: number, v: View, p: Shown, captured: boolean): InputClick | undefined {
+function fated(v: View, p: Shown, captured: boolean): InputClick | undefined {
     const said = [...unfated(v, p), (captured ? captureToken : surviveToken)(p.piece, p.owner, p.origin)];
-    if (standing(board, said)) {
+    if (standing(v.board, said)) {
         return {move: text(said)};
     }
-    const c = choose(board, player, limit, said, turn => fate(turn, p.origin).captured === captured);
-    if (c.status !== "turn") {
-        return undefined;
-    }
-    return {move: entry(board, player, limit, said, c.turn), oneOf: c.by === "choice" ? c.positions : undefined};
+    const c = choose(v.board, v.player, v.limit, said, turn => fate(turn, p.origin).captured === captured);
+    return c.status === "turn" ? chosen(v, said, c) : undefined;
 }
 
 /**
@@ -795,13 +799,13 @@ export function captureChoices(board: Board, player: playerid, limit: number, mo
         return out;
     }
     const sitting = squares.length === 1 ? onTrap(v, squares[0]) : undefined;
-    const own = sitting === undefined ? undefined : sitChoice(board, player, limit, v, sitting);
+    const own = sitting === undefined ? undefined : sitChoice(v, sitting);
     if (own !== undefined) {
         out.set(squares[0], own);
     }
     for (const trap of TRAPS) {
         const chain = v.shown.has(trap) ? undefined : links(v, squares, trap);
-        const captured = chain === undefined ? undefined : sendChoice(board, player, limit, v, chain);
+        const captured = chain === undefined ? undefined : sendChoice(v, chain);
         if (captured !== undefined) {
             out.set(trap, captured);
         }
@@ -814,7 +818,8 @@ export function captureAlternatives(board: Board, player: playerid, limit: numbe
     return [...captureChoices(board, player, limit, move).keys()];
 }
 
-function advancedClick(board: Board, player: playerid, limit: number, v: View, selections: string[], square: string, triangle: boolean): InputClick {
+function advancedClick(v: View, selections: string[], square: string, triangle: boolean): InputClick {
+    const {board, player, limit} = v;
     const clicked = v.shown.get(square);
     const stay: InputClick = {move: text(v.tokens)};
     const select = (squares: string[]): InputClick => ({move: joinSelections(v.tokens, squares)});
@@ -839,7 +844,7 @@ function advancedClick(board: Board, player: playerid, limit: number, v: View, s
     // still open, so that its triangle can settle that.
     const open = (cell: string): boolean => {
         const p = onTrap(v, cell);
-        return p !== undefined && fateOpen(board, player, limit, v, p);
+        return p !== undefined && fateOpen(v, p);
     };
     // an emptied square stands for the piece that started the turn on it,
     // which on a trap may be a piece captured there
@@ -851,18 +856,18 @@ function advancedClick(board: Board, player: playerid, limit: number, v: View, s
         }
         return open(cell) ? select([cell]) : undefined;
     };
-    const aimed = (): InputClick | undefined => targetSelection(board, player, limit, v.said, square);
+    const aimed = (): InputClick | undefined => targetSelection(v, square);
 
     if (selections.length === 0) {
         if (clicked === undefined) {
             return cameFrom(square) ?? aimed() ??
-                (v.turn === undefined ? stay : {move: committed(board, player, limit, v), complete: true});
+                (v.turn === undefined ? stay : {move: committed(v), complete: true});
         }
         if (movable(square) || open(square)) {
             return select([square]);
         }
         // undo: one thing less is said
-        return clicked.owner === player ? stay : restated(board, player, limit, v.said.slice(0, -1));
+        return clicked.owner === player ? stay : restated(v, v.said.slice(0, -1));
     }
 
     // A piece on a trap: its triangle settles whether it is captured, the
@@ -870,8 +875,8 @@ function advancedClick(board: Board, player: playerid, limit: number, v: View, s
     // A piece captured there is not drawn, so it cannot be sent anywhere.
     const sitting = selections.length === 1 ? onTrap(v, selections[0]) : undefined;
     if (sitting !== undefined && square === selections[0]) {
-        const captured = triangle ? sitChoice(board, player, limit, v, sitting) : undefined;
-        return (captured === undefined ? undefined : fated(board, player, limit, v, sitting, captured)) ?? stay;
+        const captured = triangle ? sitChoice(v, sitting) : undefined;
+        return (captured === undefined ? undefined : fated(v, sitting, captured)) ?? stay;
     }
     if (sitting !== undefined && !v.shown.has(selections[0])) {
         if (clicked !== undefined) {
@@ -886,20 +891,20 @@ function advancedClick(board: Board, player: playerid, limit: number, v: View, s
     }
     if (clicked === undefined) {
         // a trap's triangle: the opposite of what a click on the square shows
-        const captured = triangle && TRAPS.includes(square) ? sendChoice(board, player, limit, v, chain) : undefined;
-        return advancedChain(board, player, limit, v, chain, captured) ?? cameFrom(square) ?? aimed() ?? stay;
+        const captured = triangle && TRAPS.includes(square) ? sendChoice(v, chain) : undefined;
+        return advancedChain(v, chain, captured) ?? cameFrom(square) ?? aimed() ?? stay;
     }
     if (square === selections[0]) {
         if (selections.length === 1) {
             // a second click on the selected piece deselects it
             return stay;
         }
-        const looped = advancedChain(board, player, limit, v, chain);
+        const looped = advancedChain(v, chain);
         if (looped !== undefined) {
             return looped;
         }
     }
-    if (!selections.includes(square) && advancedChainable(board, player, limit, v, selections, square)) {
+    if (!selections.includes(square) && advancedChainable(v, selections, square)) {
         return select([...selections, square]);
     }
     return movable(square) || open(square) ? select([square]) : stay;
@@ -922,7 +927,5 @@ export function inputClick(
         const clicked = v.shown.get(square);
         return {move: text(clicked !== undefined && clicked.owner !== player ? v.tokens.slice(0, -1) : v.tokens)};
     }
-    return mode === "advanced" ?
-        advancedClick(board, player, limit, v, selections, square, alternativeCapture) :
-        basicClick(board, player, limit, v, selections, square);
+    return mode === "advanced" ? advancedClick(v, selections, square, alternativeCapture) : basicClick(v, selections, square);
 }
