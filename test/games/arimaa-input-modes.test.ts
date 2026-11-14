@@ -155,9 +155,10 @@ describe("Arimaa input modes", () => {
             expect(v.message).to.equal(i18next.t("apgames:validation.arimaa.PARTIAL_PUSH"));
             const preview = g.clone().move(waiting, {partial: true}).render().annotations as Array<{type: string; targets: Array<{row: number; col: number}>}>;
             expect(preview.map(a => `${a.type}:${a.targets.map(t => ArimaaGame.coords2algebraic(t.col, t.row)).join(">")}`)).to.deep.equal(["move:e4>e5"]);
-            expect(enter(g, "basic", ["d4", "e4"], waiting)).to.equal(push);
+            // a click on the pusher is enough: it can only follow into the square the pushed piece left
+            expect(enter(g, "basic", ["d4"], waiting)).to.equal(push);
             // either piece strong enough can be the one that pushes
-            const byHorse = played(g, enter(g, "basic", ["f4", "e4"], waiting));
+            const byHorse = played(g, enter(g, "basic", ["f4"], waiting));
             expect(byHorse.board.get("e4")).to.deep.equal(["H", 1]);
             expect(byHorse.board.get("e5")).to.deep.equal(["R", 2]);
             // the puller first, then the pulled piece into the square it left
@@ -166,6 +167,26 @@ describe("Arimaa input modes", () => {
             // with a two-step die, the pull's second step is the last
             const dicey = withDie(position("Ed4,Hf4,Ra1,Cc1", "re4,ra8,ee8"), 2);
             expect(played(dicey, enter(dicey, "basic", ["d4", "c4", "e4", "d4"])).board.get("d4")).to.deep.equal(["R", 2]);
+        });
+
+        it("sends an enemy piece two squares in one arrow, pulled then pushed, as in a flip", () => {
+            // the horse steps away, the dog follows it and is pushed on onto the
+            // trap, and the horse steps back: the dog dies and nothing else changes
+            const g = position("Hg3,Cf2,Ra2,Ee1", "dh3,ra7,ee8");
+            const away = enter(g, "basic", ["g3", "g4"]);
+            const arrow = enter(g, "basic", ["h3", "f3"], away);
+            expect(arrow).to.equal("Hg3n dh3w g3 f3");
+            expect(g.validateMove(arrow).message).to.contain(i18next.t("apgames:validation.arimaa.PARTIAL_PUSH"));
+            const flipped = enter(g, "basic", ["g4"], arrow);
+            expect(flipped).to.equal("Hg3n dh3w dg3w Hg4s");
+            const after = played(g, flipped);
+            expect(after.lastmove).to.equal("dx");
+            expect(after.board.get("g3")).to.deep.equal(["H", 1]);
+            // the dog's steps one at a time come to the same thing
+            expect(enter(g, "basic", ["h3", "g3", "g3", "f3", "g4"], away)).to.equal(flipped);
+            // an enemy piece cannot take a third step in a row
+            const three = position("Hg3,Ra2,Ee1", "dh3,ra7,ee8");
+            expect(enter(three, "basic", ["h3", "e3"], enter(three, "basic", ["g3", "g4"]))).to.equal("Hg3n");
         });
 
         it("does not let a piece that has just pushed pull as well", () => {
@@ -1128,11 +1149,15 @@ describe("Arimaa input modes", () => {
         // The clicks for a step list: a piece and where its run of steps
         // ends; pusher, pushed piece and where that goes; pulled piece,
         // puller and where that goes.
-        // With `twoStep`, a push or pull is clicked as its two steps in the
-        // order they happen instead: the pushed piece and where it goes, then
-        // the pusher and the square it left; the puller and where it goes,
-        // then the pulled piece and the square the puller left.
-        const clicksFor = (g: ArimaaGame, steps: Array<[string, string]>, twoStep = false): string[][] => {
+        // How a push or pull is clicked. As a "chain": pusher, pushed piece
+        // and where that goes; pulled piece, puller and where that goes. As
+        // "steps", its two steps in the order they happen: the pushed piece
+        // and where it goes, then a click on the pusher; the puller and where
+        // it goes, then the pulled piece and the square the puller left.
+        // "Merged" is "steps" with a pull and the push of the same piece that
+        // follows it clicked as one arrow for that piece, as in a flip.
+        type Form = "chain" | "steps" | "merged";
+        const clicksFor = (g: ArimaaGame, steps: Array<[string, string]>, form: Form = "chain"): string[][] => {
             const owner = new Map([...g.board].map(([cell, [, o]]): [string, number] => [cell, o]));
             const mine = (sq: string): boolean => owner.get(sq) === g.currplayer;
             const go = (from: string, to: string): void => {
@@ -1140,16 +1165,32 @@ describe("Arimaa input modes", () => {
                 owner.delete(from);
             };
             const out: string[][] = [];
+            // where the piece pulled by the last group now stands
+            let pulledTo: string | undefined;
             for (let i = 0; i < steps.length; i++) {
                 const [from, to] = steps[i];
                 const next = steps[i + 1];
                 if (next !== undefined && next[1] === from && owner.has(next[0]) && mine(next[0]) !== mine(from)) {
-                    out.push(twoStep ? [from, to, next[0], from] : [next[0], from, to]);
+                    const pull = mine(from);
+                    const last = out[out.length - 1];
+                    if (form === "chain") {
+                        out.push([next[0], from, to]);
+                    } else if (pull) {
+                        out.push([from, to, next[0], from]);
+                    } else if (form === "merged" && pulledTo === from && last !== undefined) {
+                        // the pulled piece's arrow goes on to where it is pushed
+                        last[last.length - 1] = to;
+                        last.push(next[0]);
+                    } else {
+                        out.push([from, to, next[0]]);
+                    }
+                    pulledTo = pull ? from : undefined;
                     go(from, to);
                     go(next[0], next[1]);
                     i++;
                     continue;
                 }
+                pulledTo = undefined;
                 const last = out[out.length - 1];
                 if (last !== undefined && last.length === 2 && last[1] === from) {
                     last[1] = to;
@@ -1189,12 +1230,12 @@ describe("Arimaa input modes", () => {
                     const reachable = allTurns(boardOf(spec.replace(/,/g, " ")), player, 4);
                     expect(reachable.size).to.be.greaterThan(20);
                     const missed: string[] = [];
-                    // Basic also takes every push and pull as its two steps in turn
-                    for (const twoStep of mode === "basic" ? [false, true] : [false]) {
+                    // Basic also takes every push and pull as its steps in turn
+                    for (const form of mode === "basic" ? ["chain", "steps", "merged"] as const : ["chain"] as const) {
                         for (const stepLists of reachable.values()) {
                             const g = ready(boardOf(spec.replace(/,/g, " ")), player);
                             const target = g.clone().move(legacy(g, stepLists[0]), {trusted: true, partial: true}).signature();
-                            const entered = stepLists.some(steps => sequences(clicksFor(g, steps, twoStep), mode).some(seq => {
+                            const entered = stepLists.some(steps => sequences(clicksFor(g, steps, form), mode).some(seq => {
                                 let move = "";
                                 for (const sq of seq) {
                                     const r = click(g, move, sq.replace("^", ""), mode, sq.startsWith("^") ? ARIMAA_CAPTURE_CHOICE : undefined);
@@ -1207,7 +1248,7 @@ describe("Arimaa input modes", () => {
                                     g.clone().move(move).signature() === target;
                             }));
                             if (!entered) {
-                                missed.push(`${twoStep ? "two-step: " : ""}${legacy(g, stepLists[0])}`);
+                                missed.push(`${form}: ${legacy(g, stepLists[0])}`);
                             }
                         }
                     }

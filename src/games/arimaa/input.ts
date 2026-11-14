@@ -203,25 +203,19 @@ function stepToken(piece: Piece, owner: playerid, from: string, to: string): Tok
 /**
  * A push being entered one step at a time in Basic: the enemy piece on
  * `from` has been sent to the empty square `to`, which it can only reach by
- * being pushed, and `pusher`, once selected, is the piece that will follow it
- * into `from`. The selections hold it until the pusher's step is entered.
+ * being pushed. The selections hold it until a click on the piece that
+ * pushes it enters both steps.
  */
-export function pendingPush(after: Board, player: playerid, selections: string[]): {from: string; to: string; pusher?: string} | undefined {
-    if (selections.length < 2 || selections.length > 3) {
+export function pendingPush(after: Board, player: playerid, selections: string[]): {from: string; to: string} | undefined {
+    if (selections.length !== 2) {
         return undefined;
     }
-    const [from, to, pusher] = selections;
+    const [from, to] = selections;
     const enemy = after.get(from);
     if (enemy === undefined || enemy[1] === player || after.has(to) || !beside(from, to)) {
         return undefined;
     }
-    if (pusher !== undefined) {
-        const own = after.get(pusher);
-        if (own === undefined || own[1] !== player || !beside(pusher, from)) {
-            return undefined;
-        }
-    }
-    return {from, to, pusher};
+    return {from, to};
 }
 
 // The steps that take each selected piece to the square the next one stands
@@ -268,28 +262,31 @@ function basicClick(board: Board, player: playerid, limit: number, v: View, sele
     const clicked = v.shown.get(square);
     const stay: InputClick = {move: text(v.tokens)};
     const select = (squares: string[]): InputClick => ({move: joinSelections(v.tokens, squares)});
-    const sofar = (): Token[] => literal(v) ? v.tokens : v.turn === undefined ? [] : runs(v.turn.steps);
+    // the entry as the steps it is shown as
+    const sofar = (w: View): Token[] => literal(w) ? w.tokens : w.turn === undefined ? [] : runs(w.turn.steps);
     // Steps that only bring back the position the turn started from are no entry.
     const finish = (tokens: Token[], turn: Turn): InputClick =>
         turn.signature === boardSignature(board) ? {move: ""} : {move: text(tokens)};
     // the entry as the steps it is shown as, followed by the new ones
-    const extend = (turn: Turn): InputClick => finish([...sofar(), ...runs(turn.steps)], turn);
-    // The entry with steps added one by one, if they are played as entered:
+    const extend = (turn: Turn): InputClick => finish([...sofar(v), ...runs(turn.steps)], turn);
+    // An entry with steps added one by one, if they are played as entered:
     // each the next step of the turn, and nothing else moving.
-    const stepped = (steps: Array<[string, string]>): InputClick | undefined => {
-        const before = sofar();
+    const steppedFrom = (w: View, steps: Array<[string, string]>): View | undefined => {
         const added = steps.map(([from, to]) => {
-            const [piece, owner] = v.after.get(from) ?? v.after.get(to)!;
+            const [piece, owner] = w.after.get(from) ?? w.after.get(to)!;
             return stepToken(piece, owner, from, to);
         });
-        const tokens = [...before, ...added];
-        const next = look(board, player, limit, tokens);
+        const next = look(board, player, limit, [...sofar(w), ...added]);
         const played = next.turn?.steps.slice(-steps.length) ?? [];
         if (!literal(next) || played.length !== steps.length ||
             played.some((st, i) => sqName(st.from) !== steps[i][0] || sqName(st.to) !== steps[i][1])) {
             return undefined;
         }
-        return finish(tokens, next.turn!);
+        return next;
+    };
+    const stepped = (steps: Array<[string, string]>): InputClick | undefined => {
+        const next = steppedFrom(v, steps);
+        return next === undefined ? undefined : finish(next.tokens, next.turn!);
     };
     // The second half of a pull: the enemy piece on `cell` follows the
     // player's piece that has just stepped away from beside it, into the
@@ -307,13 +304,14 @@ function basicClick(board: Board, player: playerid, limit: number, v: View, sele
         return sqName(last.from);
     };
     const movable = (cell: string): boolean => canMoveWithin(v.after, player, v.left, cell) || pullInto(cell) !== undefined;
-    // The first half of a push entered on its own: the enemy piece on `from`
-    // to the empty square `to`, if some piece of the player's can follow it.
-    const pushable = (from: string, to: string): boolean => {
-        const enemy = v.shown.get(from);
-        return enemy !== undefined && enemy.owner !== player && v.left >= 2 && !v.after.has(to) && beside(from, to) &&
-            [...v.shown].some(([at, p]) => p.owner === player && beside(at, from) && rankOf(p.piece) > rankOf(enemy.piece) &&
-                stepped([[from, to], [at, from]]) !== undefined);
+    // The first half of a push entered on its own: whether some piece of
+    // the player's can follow the enemy piece on `from` once it has stepped
+    // to the empty square `to`.
+    const pushable = (w: View, from: string, to: string): boolean => {
+        const enemy = w.shown.get(from);
+        return enemy !== undefined && enemy.owner !== player && w.left >= 2 && !w.after.has(to) && beside(from, to) &&
+            [...w.shown].some(([at, p]) => p.owner === player && beside(at, from) && rankOf(p.piece) > rankOf(enemy.piece) &&
+                steppedFrom(w, [[from, to], [at, from]]) !== undefined);
     };
 
     if (selections.length === 0) {
@@ -336,15 +334,15 @@ function basicClick(board: Board, player: playerid, limit: number, v: View, sele
         return {move: text(rest)};
     }
 
-    // A push entered as two steps: the enemy piece's, then the pusher's.
+    // A push entered as two steps: the enemy piece's, then a click on the
+    // piece that pushes it, which can only follow it into the square it left.
     const push = pendingPush(v.after, player, selections);
     if (push !== undefined) {
-        if (square === push.from && push.pusher !== undefined) {
-            return stepped([[push.from, push.to], [push.pusher, push.from]]) ?? stay;
-        }
-        if (clicked !== undefined && clicked.owner === player && square !== push.pusher &&
-            stepped([[push.from, push.to], [square, push.from]]) !== undefined) {
-            return select([push.from, push.to, square]);
+        if (clicked !== undefined && clicked.owner === player) {
+            const pushed = stepped([[push.from, push.to], [square, push.from]]);
+            if (pushed !== undefined) {
+                return pushed;
+            }
         }
         if (clicked === undefined || selections.includes(square)) {
             return stay;
@@ -365,16 +363,21 @@ function basicClick(board: Board, player: playerid, limit: number, v: View, sele
         }
     }
     if (clicked === undefined && selections.length === 1) {
-        // A pull entered as two steps, the puller's then the enemy piece's,
-        // or the start of a push entered that way.
-        if (pullInto(selections[0]) === square) {
-            const pulled = stepped([[selections[0], square]]);
-            if (pulled !== undefined) {
-                return pulled;
-            }
+        // An enemy piece's steps, entered after the puller's or before the
+        // pusher's: following the piece that has just stepped away from beside
+        // it, then perhaps on to the start of a push, which waits for its
+        // pusher. It can take no more steps in a row than that.
+        const [from] = selections;
+        const into = pullInto(from);
+        const pulled = into === undefined ? undefined : steppedFrom(v, [[from, into]]);
+        if (pulled !== undefined && into === square) {
+            return finish(pulled.tokens, pulled.turn!);
         }
-        if (pushable(selections[0], square)) {
-            return select([selections[0], square]);
+        if (pulled !== undefined && pushable(pulled, into!, square)) {
+            return {move: joinSelections(pulled.tokens, [into!, square])};
+        }
+        if (pushable(v, from, square)) {
+            return select([from, square]);
         }
     }
     if (clicked === undefined || selections.includes(square)) {
