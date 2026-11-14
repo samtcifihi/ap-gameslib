@@ -355,7 +355,10 @@ function basicClick(board: Board, player: playerid, limit: number, v: View, sele
     if (selections.some(s => !v.shown.has(s))) {
         return stay;
     }
-    if (clicked === undefined || (square === selections[0] && selections.length > 1)) {
+    // A click on the first selection closes a loop: three pieces rotating.
+    // Two pieces trading places is left to Advanced; in Basic that click
+    // deselects them, as a click on any selected piece does.
+    if (clicked === undefined || (square === selections[0] && selections.length > 2)) {
         const turn = basicChain(v, player, selections, square);
         if (turn !== undefined) {
             return extend(turn);

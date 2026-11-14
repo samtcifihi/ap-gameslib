@@ -284,14 +284,24 @@ describe("Arimaa input modes", () => {
             expect(click(oneStep, "", "c4").move).to.equal("");
         });
 
-        it("does not treat an unfinishable occupied-square loop as a move", () => {
-            const game = position("Ed4,He4,Ra1", "ra8,ee8");
-            game.die = {steps: 3, square: "c4"};
-            let selected = click(game, "", "d4");
-            selected = click(game, selected.move, "e4");
-            const rejected = click(game, selected.move, "d4");
-            expect(rejected.move).to.equal("");
-            expect(rejected.complete).to.equal(-1);
+        it("rotates three pieces in a loop, but leaves two trading places to single steps", () => {
+            // the dog steps aside, the horse and elephant move up, and the dog comes round to d4
+            const g = position("Ed4,He4,De5,Ra1", "ra8,ee8");
+            const rotated = played(g, enter(g, "basic", ["d4", "e4", "e5", "d4"]));
+            expect(rotated.board.get("e4")).to.deep.equal(["E", 1]);
+            expect(rotated.board.get("e5")).to.deep.equal(["H", 1]);
+            expect(rotated.board.get("d4")).to.deep.equal(["D", 1]);
+            // a click on the first of two selected pieces deselects them, as on any selected piece
+            const two = position("Ed4,He4,Ra1", "ra8,ee8");
+            for (const sequence of [["d4", "e4", "d4"], ["e4", "d4", "e4"]]) {
+                const r = click(two, enter(two, "basic", sequence.slice(0, 2)), sequence[2], "basic");
+                expect(r.move, sequence.join(" ")).to.equal("");
+                expect(r.complete, sequence.join(" ")).to.equal(-1);
+            }
+            // the same exchange entered step by step
+            const swapped = played(two, enter(two, "basic", ["d4", "d5", "e4", "d4", "d5", "e4"]));
+            expect(swapped.board.get("e4")).to.deep.equal(["E", 1]);
+            expect(swapped.board.get("d4")).to.deep.equal(["H", 1]);
         });
 
         it("ignores a click on an empty square while nothing is selected or entered", () => {
@@ -350,20 +360,23 @@ describe("Arimaa input modes", () => {
             }
         });
 
-        it("closes a two-piece loop, in either selection direction", () => {
+        it("closes a loop of two or three pieces, in either selection direction", () => {
+            // Advanced only: Basic rotates three pieces but does not swap two.
             // The square to close onto is occupied at the outset. The elephant
             // must take a detour so the horse can take its original square.
             const game = position("Ed4,He4,Ra1", "ra8,ee8");
-            for (const mode of MODES) {
-                for (const sequence of [["d4", "e4", "d4"], ["e4", "d4", "e4"]]) {
-                    const label = `${mode}: ${sequence.join(" ")}`;
-                    expect(enter(game, mode, sequence.slice(0, 2)), label).to.equal(sequence.slice(0, 2).join(" "));
-                    const after = played(game, enter(game, mode, sequence));
-                    expect(after.board.get("e4"), label).to.deep.equal(["E", 1]);
-                    expect(after.board.get("d4"), label).to.deep.equal(["H", 1]);
-                    expect(after.board.get("a1"), label).to.deep.equal(["R", 1]);
-                }
+            for (const sequence of [["d4", "e4", "d4"], ["e4", "d4", "e4"]]) {
+                const label = sequence.join(" ");
+                expect(enter(game, "advanced", sequence.slice(0, 2)), label).to.equal(sequence.slice(0, 2).join(" "));
+                const after = played(game, enter(game, "advanced", sequence));
+                expect(after.board.get("e4"), label).to.deep.equal(["E", 1]);
+                expect(after.board.get("d4"), label).to.deep.equal(["H", 1]);
+                expect(after.board.get("a1"), label).to.deep.equal(["R", 1]);
             }
+            const three = position("Ed4,He4,De5,Ra1", "ra8,ee8");
+            const rotated = played(three, enter(three, "advanced", ["d4", "e4", "e5", "d4"]));
+            expect(rotated.board.get("d4")).to.deep.equal(["D", 1]);
+            expect(rotated.board.get("e5")).to.deep.equal(["H", 1]);
         });
 
         it("accepts either mode with a one-step Dicey Moves limit", () => {
