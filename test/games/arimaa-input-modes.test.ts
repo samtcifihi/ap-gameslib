@@ -144,6 +144,40 @@ describe("Arimaa input modes", () => {
             expect(played(g, pull.move).lastmove).to.equal("Ec4 rd4");
         });
 
+        it("takes a push or pull as its two steps, one after the other, as well as all at once", () => {
+            const g = position("Ed4,Hf4,Ra1,Cc1", "re4,ra8,ee8");
+            const push = enter(g, "basic", ["d4", "e4", "e5"]);
+            // the pushed piece first: it waits, drawn as an arrow, for the piece that pushes it
+            const waiting = enter(g, "basic", ["e4", "e5"]);
+            expect(waiting).to.equal("e4 e5");
+            const v = g.validateMove(waiting);
+            expect(v.complete).to.equal(-1);
+            expect(v.message).to.equal(i18next.t("apgames:validation.arimaa.PARTIAL_PUSH"));
+            const preview = g.clone().move(waiting, {partial: true}).render().annotations as Array<{type: string; targets: Array<{row: number; col: number}>}>;
+            expect(preview.map(a => `${a.type}:${a.targets.map(t => ArimaaGame.coords2algebraic(t.col, t.row)).join(">")}`)).to.deep.equal(["move:e4>e5"]);
+            expect(enter(g, "basic", ["d4", "e4"], waiting)).to.equal(push);
+            // either piece strong enough can be the one that pushes
+            const byHorse = played(g, enter(g, "basic", ["f4", "e4"], waiting));
+            expect(byHorse.board.get("e4")).to.deep.equal(["H", 1]);
+            expect(byHorse.board.get("e5")).to.deep.equal(["R", 2]);
+            // the puller first, then the pulled piece into the square it left
+            const pull = enter(g, "basic", ["e4", "d4", "c4"]);
+            expect(enter(g, "basic", ["d4", "c4", "e4", "d4"])).to.equal(pull);
+            // with a two-step die, the pull's second step is the last
+            const dicey = withDie(position("Ed4,Hf4,Ra1,Cc1", "re4,ra8,ee8"), 2);
+            expect(played(dicey, enter(dicey, "basic", ["d4", "c4", "e4", "d4"])).board.get("d4")).to.deep.equal(["R", 2]);
+        });
+
+        it("does not let a piece that has just pushed pull as well", () => {
+            const g = position("Ed4,Ra1", "re4,rd5,ra8,ee8");
+            const pushed = enter(g, "basic", ["d4", "e4", "e5"]);
+            expect(pushed).to.equal("re4n Ed4e");
+            // the rabbit beside the square the elephant left cannot follow it
+            const after = click(g, `${pushed} d5`, "d4", "basic");
+            expect(after.move).not.to.contain("rd5s");
+            expect(click(g, pushed, "d5", "basic").move).not.to.equal(`${pushed} d5`);
+        });
+
         it("plays steps in the order they were entered", () => {
             // the cat is safe on the trap only if the rabbit is beside it first
             const g = position("Re2,Cf2", "rb7,mc7");
@@ -1081,7 +1115,11 @@ describe("Arimaa input modes", () => {
         // The clicks for a step list: a piece and where its run of steps
         // ends; pusher, pushed piece and where that goes; pulled piece,
         // puller and where that goes.
-        const clicksFor = (g: ArimaaGame, steps: Array<[string, string]>): string[][] => {
+        // With `twoStep`, a push or pull is clicked as its two steps in the
+        // order they happen instead: the pushed piece and where it goes, then
+        // the pusher and the square it left; the puller and where it goes,
+        // then the pulled piece and the square the puller left.
+        const clicksFor = (g: ArimaaGame, steps: Array<[string, string]>, twoStep = false): string[][] => {
             const owner = new Map([...g.board].map(([cell, [, o]]): [string, number] => [cell, o]));
             const mine = (sq: string): boolean => owner.get(sq) === g.currplayer;
             const go = (from: string, to: string): void => {
@@ -1093,7 +1131,7 @@ describe("Arimaa input modes", () => {
                 const [from, to] = steps[i];
                 const next = steps[i + 1];
                 if (next !== undefined && next[1] === from && owner.has(next[0]) && mine(next[0]) !== mine(from)) {
-                    out.push([next[0], from, to]);
+                    out.push(twoStep ? [from, to, next[0], from] : [next[0], from, to]);
                     go(from, to);
                     go(next[0], next[1]);
                     i++;
@@ -1129,6 +1167,8 @@ describe("Arimaa input modes", () => {
             ["a frozen-piece tangle", "Ed5,Mf5,Rd3,Ra1,me5,rd4,rf4,ee8,ra8", 2],
             ["a rabbit near goal", "Eb2,Hc4,Rh1,Ra1,rb1,rc2,ed8,ra8", 2],
             ["pieces dying on a trap", "Rb4,Ec2,rc4,ee8,Ra1", 1],
+            ["pushes and pulls in the open", "Dd4,Ra1,re4,cd5,ra8,ee8", 1],
+            ["Silver pushing and pulling beside a trap", "ed5,ra8,Re5,Cd4,Ra1,Ee1", 2],
         ] as Array<[string, string, Owner]>) {
             for (const mode of MODES) {
                 it(`${mode}: ${name}`, function () {
@@ -1136,23 +1176,26 @@ describe("Arimaa input modes", () => {
                     const reachable = allTurns(boardOf(spec.replace(/,/g, " ")), player, 4);
                     expect(reachable.size).to.be.greaterThan(20);
                     const missed: string[] = [];
-                    for (const stepLists of reachable.values()) {
-                        const g = ready(boardOf(spec.replace(/,/g, " ")), player);
-                        const target = g.clone().move(legacy(g, stepLists[0]), {trusted: true, partial: true}).signature();
-                        const entered = stepLists.some(steps => sequences(clicksFor(g, steps), mode).some(seq => {
-                            let move = "";
-                            for (const sq of seq) {
-                                const r = click(g, move, sq.replace("^", ""), mode, sq.startsWith("^") ? ARIMAA_CAPTURE_CHOICE : undefined);
-                                if (r.valid) {
-                                    move = r.move;
+                    // Basic also takes every push and pull as its two steps in turn
+                    for (const twoStep of mode === "basic" ? [false, true] : [false]) {
+                        for (const stepLists of reachable.values()) {
+                            const g = ready(boardOf(spec.replace(/,/g, " ")), player);
+                            const target = g.clone().move(legacy(g, stepLists[0]), {trusted: true, partial: true}).signature();
+                            const entered = stepLists.some(steps => sequences(clicksFor(g, steps, twoStep), mode).some(seq => {
+                                let move = "";
+                                for (const sq of seq) {
+                                    const r = click(g, move, sq.replace("^", ""), mode, sq.startsWith("^") ? ARIMAA_CAPTURE_CHOICE : undefined);
+                                    if (r.valid) {
+                                        move = r.move;
+                                    }
                                 }
+                                const v = g.validateMove(move);
+                                return v.valid && (v.complete ?? -1) >= 0 &&
+                                    g.clone().move(move).signature() === target;
+                            }));
+                            if (!entered) {
+                                missed.push(`${twoStep ? "two-step: " : ""}${legacy(g, stepLists[0])}`);
                             }
-                            const v = g.validateMove(move);
-                            return v.valid && (v.complete ?? -1) >= 0 &&
-                                g.clone().move(move).signature() === target;
-                        }));
-                        if (!entered) {
-                            missed.push(legacy(g, stepLists[0]));
                         }
                     }
                     expect(missed, missed.slice(0, 5).join("; ")).to.deep.equal([]);
