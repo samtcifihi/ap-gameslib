@@ -46,8 +46,6 @@ export interface ParsedMove {
     tokens: Token[];
     /** A trailing bare square: the selected piece awaiting a destination. Input only. */
     pending?: string;
-    /** The selection before `pending`, kept while a second click on `pending` could complete an arrow from it. Input only. */
-    previous?: string;
     /** All trailing square selections, oldest first. */
     selections?: string[];
 }
@@ -164,7 +162,7 @@ export function parseMove(m: string, allowPending = false): ParsedMove {
         }
     }
     const tokens = parts.slice(0, end).map(parseToken);
-    return { tokens, pending: selections[selections.length - 1], previous: selections[selections.length - 2], selections };
+    return { tokens, pending: selections[selections.length - 1], selections };
 }
 
 export function pieceChar(piece: Piece, owner: playerid): string {
@@ -173,18 +171,6 @@ export function pieceChar(piece: Piece, owner: playerid): string {
 
 export function tokenText(t: Token): string {
     return t.text;
-}
-
-/** Rebuild a move string from tokens, keeping the selections last (the pending square at the very end). */
-export function joinMove(tokens: Token[], pending?: string, previous?: string): string {
-    const parts = tokens.map(tokenText);
-    if (pending !== undefined) {
-        if (previous !== undefined) {
-            parts.push(previous);
-        }
-        parts.push(pending);
-    }
-    return parts.join(" ");
 }
 
 /** Keep any number of pending selections at the end of the move. */
@@ -204,19 +190,9 @@ export function stepsToken(piece: Piece, owner: playerid, from: string, dirs: Di
     return { spec: { piece, owner, square: from }, prop: { kind: "steps", dirs }, text };
 }
 
-/** A hold: `piece` on `square` ends the turn where it stands (a zero-length arrow). */
-export function holdToken(piece: Piece, owner: playerid, square: string): Token {
-    return arrowToken(piece, owner, square, square);
-}
-
 /** A destination token drawn from a piece's square to another square. */
 export function isArrow(t: Token): boolean {
     return t.prop.kind === "dest" && t.spec.square !== undefined && t.spec.square !== t.prop.square;
-}
-
-/** A destination token that keeps a piece on its own square. */
-export function isHold(t: Token): boolean {
-    return t.prop.kind === "dest" && t.spec.square !== undefined && t.spec.square === t.prop.square;
 }
 
 /** A capture token for the piece on `square`: it is captured during the turn. */

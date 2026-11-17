@@ -8,7 +8,7 @@
  *     --ply-stride=N      take every Nth eligible ply (default 1)
  *     --shard=I/N         of the games taken, this run handles those at I, I+N, ... (default 0/1)
  *     --max-expansions=N  click-search effort per ply and mode (default 150)
- *     --modes=a,b         of status-quo, basic, advanced (default all three)
+ *     --modes=a,b         of basic, advanced (default both)
  *
  * Every game is replayed in full, trusted, so old games holding moves the
  * rules no longer allow still have to load; those plies are counted and left
@@ -36,7 +36,7 @@ type ArchiveGame = {
     header: {game: {variants: string[]}; startingPosition?: string; site?: {gameid?: string}};
     moves: Array<Array<Ply | null>>;
 };
-type Mode = "status-quo" | "basic" | "advanced";
+type Mode = "basic" | "advanced";
 type Found = {clicks: number; move: string};
 type Step = [string, string];
 
@@ -57,7 +57,7 @@ const gameStride = count("game-stride", 1);
 const plyStride = count("ply-stride", 1);
 const maxExpansions = count("max-expansions", 150);
 const [shard, shards] = (option("shard") ?? "0/1").split("/").map(Number);
-const modes = (option("modes") ?? "status-quo,basic,advanced").split(",") as Mode[];
+const modes = (option("modes") ?? "basic,advanced").split(",") as Mode[];
 const MAX_CLICKS = 16;
 
 const cell = (square: string): [number, number] => {
@@ -132,12 +132,9 @@ const stepClicks = (game: ArimaaGame, steps: Step[], merge: boolean): string[] =
     }
     return out.flat();
 };
-// What a player would do first: the recorded steps in order, or in the old
-// arrow entry one arrow for each piece that ends up somewhere else.
-const straightforward = (game: ArimaaGame, steps: Step[], wanted: string[], expected: string, mode: Mode): Found | undefined => {
-    const attempts = mode === "status-quo" ?
-        [wanted.filter(w => !w.endsWith("x")).flatMap(w => w.split(">"))] :
-        [stepClicks(game, steps, true), stepClicks(game, steps, false)];
+// What a player would do first: the recorded steps in order.
+const straightforward = (game: ArimaaGame, steps: Step[], expected: string, mode: Mode): Found | undefined => {
+    const attempts = [stepClicks(game, steps, true), stepClicks(game, steps, false)];
     let best: Found | undefined;
     for (const squares of attempts) {
         let move = "";
@@ -249,7 +246,7 @@ for (const record of records) {
                 const best: Partial<Record<Mode, Found>> = {};
                 for (const mode of modes) {
                     const started = Date.now();
-                    const direct = straightforward(before, steps, wanted, expected, mode);
+                    const direct = straightforward(before, steps, expected, mode);
                     const found = search(before, steps, wanted, expected, mode, direct?.clicks ?? Infinity) ?? direct;
                     tally[mode].seconds += (Date.now() - started) / 1000;
                     if (found === undefined) {
@@ -260,9 +257,6 @@ for (const record of records) {
                     best[mode] = found;
                     tally[mode].found++;
                     tally[mode].clicks += found.clicks;
-                    if (mode === "status-quo") {
-                        continue;
-                    }
                     const fail = (kind: string): number => problems.push({kind, mode, game: id, ply: number, entered: found.move, recorded: ply.move});
                     try {
                         const after = before.clone().move(found.move);

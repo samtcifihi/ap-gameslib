@@ -4,7 +4,7 @@ import { APRenderRep, AreaPieces, BoardBasic, Colourfuncs, Glyph, PaintEntry } f
 import type { APMoveResult } from "../schemas/moveresults.js";
 import { randomInt, RectGrid, reviver, shuffle, SquareOrthGraph, UserFacingError, cloneState } from "../common/index.js";
 import i18next from "i18next";
-import { arrowToken, captureToken, isArrow, isLegacy, isMark, isHold, joinMove, normalize, parseMove, pieceChar, holdToken, tokenText, NotationError, type ParsedMove, type Token } from "./arimaa/notation.js";
+import { isArrow, isLegacy, isMark, normalize, parseMove, pieceChar, tokenText, NotationError, type ParsedMove, type Token } from "./arimaa/notation.js";
 import { display, hasAnyMove, inferred, resolve, serializeTurn, sqName, turnFromSteps, type Turn } from "./arimaa/turns.js";
 import { castDie, type IDie } from "./arimaa/dice.js";
 import { ARIMAA_CAPTURE_CHOICE, ARIMAA_SPARE_CHOICE, captureAlternatives, captureChoices, declared, inputClick, pendingPush, type InputClick } from "./arimaa/input.js";
@@ -657,10 +657,7 @@ export class ArimaaGame extends GameBase {
             if ((isCaptureChoice && !alternativeCapture) || (!placing && square === undefined)) {
                 return withMode({...this.validateMove(move), move});
             }
-            // The unadvertised status-quo path is retained for compatibility
-            // regression tests and click-count comparisons only.
             const input: InputClick = placing ? {move: this.setupClick(move, row, col, piece)} :
-                ui?.inputMode === "status-quo" ? {move: this.moveClick(move, row, col)} :
                 inputClick(this.board, this.currplayer, this.maxSteps(), move, square!,
                     advanced ? "advanced" : "basic", alternativeCapture);
             const newmove = input.move;
@@ -766,135 +763,6 @@ export class ArimaaGame extends GameBase {
             }
         
         return newmove;
-    }
-
-    // Movement clicks work on the drawn tokens; the rules are in the branch
-    // comments below. The move string holds destination tokens (arrows, and
-    // holds: a piece sent to its own square), capture marks (a hold on a trap,
-    // clicked once more), anything typed, and at most two trailing bare
-    // squares: the selected piece awaiting a destination and, before it, the
-    // selection that a second click on the current one completes an arrow from.
-    private moveClick(move: string, row: number, col: number): string {
-        let parsed: ParsedMove;
-        try {
-            parsed = parseMove(move, true);
-        } catch {
-            // unreadable typed input: start over from this click
-            parsed = {tokens: []};
-        }
-        const clicked = ArimaaGame.coords2algebraic(col, row);
-        const drawn = parsed.tokens.filter(t => isArrow(t) || isHold(t) || isMark(t));
-        const others = parsed.tokens.filter(t => !drawn.includes(t));
-        let pending = parsed.pending;
-        let previous = parsed.previous;
-        const tailOf = (sq: string): number => drawn.findIndex(t => isArrow(t) && t.spec.square === sq);
-        const headOf = (sq: string): number => drawn.findIndex(t => isArrow(t) && (t.prop as {square: string}).square === sq);
-        // every arrow ending on this square, latest first: more than one piece
-        // can finish on a trap, the ones that died there and at most one alive
-        const headsOf = (sq: string): Token[] => drawn.filter(t => isArrow(t) && (t.prop as {square: string}).square === sq).reverse();
-        const holdOf = (sq: string): number => drawn.findIndex(t => isHold(t) && t.spec.square === sq);
-        const markOf = (sq: string): number => drawn.findIndex(t => isMark(t) && t.spec.square === sq);
-        // occupancy is judged at the start of the turn; a square whose piece
-        // already has an arrow away from it counts as vacated
-        const unvacatedPiece = (sq: string): boolean => this.board.has(sq) && tailOf(sq) < 0;
-        const mkArrow = (from: string, to: string): Token => {
-            const [pc, owner] = this.board.get(from)!;
-            return arrowToken(pc, owner, from, to);
-        };
-        // a capture asserted of an arrow's piece rides with that arrow: it says
-        // the piece dies where the arrow sends it, so it goes when the arrow does
-        const dropMark = (origin: string): void => {
-            const m = markOf(origin);
-            if (m >= 0) {
-                drawn.splice(m, 1);
-            }
-        };
-        // send what is selected at `from` to `to`: a new arrow from a piece's
-        // square, or the extension of the arrow whose head was re-opened
-        const complete = (from: string, to: string): void => {
-            if (unvacatedPiece(from)) {
-                drawn.push(mkArrow(from, to));
-                return;
-            }
-            const h = headOf(from);
-            if (h >= 0) {
-                const tail = drawn[h].spec.square!;
-                dropMark(tail);
-                if (tail === to) {
-                    drawn.splice(headOf(from), 1);
-                } else {
-                    drawn[headOf(from)] = mkArrow(tail, to);
-                }
-            }
-        };
-
-        if (pending !== undefined) {
-            if (clicked === pending) {
-                if (previous !== undefined) {
-                    // the second click on an occupied square sends the
-                    // selection before it there; its occupant will have to move
-                    complete(previous, clicked);
-                } else if (traps.includes(clicked) && headOf(clicked) >= 0) {
-                    // the second click on an arrow's head, when that head is a
-                    // trap, says the piece dies there rather than surviving on
-                    // it; the arrow stays, because it says which trap. This
-                    // comes before holding, because whatever still stands on
-                    // the trap cannot survive alongside what is arriving. The
-                    // claim falls on the last arrow drawn to that trap that
-                    // does not carry one yet, and once they all do, clicking
-                    // again takes them all back.
-                    const heads = headsOf(clicked);
-                    const next = heads.find(t => markOf(t.spec.square!) < 0);
-                    if (next === undefined) {
-                        for (const t of heads) {
-                            dropMark(t.spec.square!);
-                        }
-                    } else {
-                        const [pc, owner] = this.board.get(next.spec.square!)!;
-                        drawn.push(captureToken(pc, owner, next.spec.square!));
-                    }
-                } else if (unvacatedPiece(clicked) && holdOf(clicked) < 0 && markOf(clicked) < 0) {
-                    // the second click on a selected piece holds it where it stands
-                    const [pc, owner] = this.board.get(clicked)!;
-                    drawn.push(holdToken(pc, owner, clicked));
-                }
-                // a re-opened arrow head is simply released
-                pending = undefined;
-                previous = undefined;
-            } else if (unvacatedPiece(clicked)) {
-                // re-selection rather than a destination; the selection it
-                // replaces is kept in case the next click confirms this square
-                previous = unvacatedPiece(pending) || headOf(pending) >= 0 ? pending : undefined;
-                pending = clicked;
-            } else {
-                complete(pending, clicked);
-                pending = undefined;
-                previous = undefined;
-            }
-        } else {
-            const t = tailOf(clicked);
-            const p = holdOf(clicked);
-            if (t >= 0) {
-                // grabbing an arrow's tail removes it and starts a new one
-                dropMark(clicked);
-                drawn.splice(tailOf(clicked), 1);
-                pending = clicked;
-            } else if (p >= 0 && traps.includes(clicked)) {
-                // on a trap a hold cannot tell survival from capture, so a
-                // click on it turns the hold into a capture mark
-                const [pc, owner] = this.board.get(clicked)!;
-                drawn[p] = captureToken(pc, owner, clicked);
-            } else if (p >= 0 || markOf(clicked) >= 0) {
-                // a hold or a capture mark is lifted like an arrow's tail
-                drawn.splice(p >= 0 ? p : markOf(clicked), 1);
-                pending = clicked;
-            } else if (this.board.has(clicked) || headOf(clicked) >= 0) {
-                pending = clicked;
-            } else {
-                return move;
-            }
-        }
-        return joinMove([...others, ...drawn], pending, previous);
     }
 
     public validateMove(m: string): IValidationResult {
