@@ -647,10 +647,10 @@ interface Aim {
 // taking a rabbit of the player's to goal there if any do, otherwise those
 // moving an enemy piece there if any do; then the fewest pieces displaced,
 // the fewest steps, the fewest own pieces captured, the most enemy pieces
-// captured, the most enemy pieces less own pieces left beside an opposing
-// piece exactly one rank stronger, and the most pushes and pulls of a piece
-// exactly one rank weaker. If that still leaves more than one position, the
-// one that sorts first where a rabbit goes to goal, and otherwise nothing.
+// captured, the most pushes and pulls of a piece exactly one rank weaker, and
+// the most enemy pieces less own pieces left beside an opposing piece exactly
+// one rank stronger. If that still leaves more than one position, the one
+// that sorts first where a rabbit goes to goal, and otherwise nothing.
 function targetSelection(v: View, target: string): InputClick | undefined {
     const {board, player, limit, said} = v;
     const there = sqIndex(target);
@@ -693,8 +693,8 @@ function targetSelection(v: View, target: string): InputClick | undefined {
         const order = (a: Aim, b: Aim): number =>
             a.found.turn.ownCaptured - b.found.turn.ownCaptured ||
             b.found.turn.enemyCaptured - a.found.turn.enemyCaptured ||
-            b.wrong - a.wrong ||
-            b.found.rightSized - a.found.rightSized;
+            b.found.rightSized - a.found.rightSized ||
+            b.wrong - a.wrong;
         aims.sort(order);
         const best = aims.filter(a => order(a, aims[0]) === 0);
         const tied = best.some(a => a.found.turn.signature !== best[0].found.turn.signature);

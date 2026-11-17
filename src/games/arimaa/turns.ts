@@ -1100,10 +1100,10 @@ export function display(board: Map<string, CellContents>, player: playerid, maxS
  * what the notation means by it (`display`). Beyond what the tokens say it
  * asks for as little as it can: of every turn that fits, the fewest pieces
  * displaced, then the fewest steps, the fewest own pieces captured, the most
- * enemy pieces captured, the most enemy pieces less own pieces left beside an
- * opposing piece exactly one rank stronger (`wrongPieces`), the most pushes
- * and pulls of a piece exactly one rank weaker, and then (so that there is
- * always an answer) the position that sorts first. An entry that is to be
+ * enemy pieces captured, the most pushes and pulls of a piece exactly one rank
+ * weaker, the most enemy pieces less own pieces left beside an opposing piece
+ * exactly one rank stronger (`wrongPieces`), and then (so that there is always
+ * an answer) the position that sorts first. An entry that is to be
  * played as this turn has to say so in terms the notation reads the same way.
  */
 export function choose(board: Map<string, CellContents>, player: playerid, maxSteps: number, tokens: Token[], accept?: (turn: Turn) => boolean): Displayed {
@@ -1127,8 +1127,8 @@ export function choose(board: Map<string, CellContents>, player: playerid, maxSt
     const preference = (a: Found, b: Found): number =>
         a.turn.ownCaptured - b.turn.ownCaptured ||
         b.turn.enemyCaptured - a.turn.enemyCaptured ||
-        wrong(b) - wrong(a) ||
-        b.rightSized - a.rightSized;
+        b.rightSized - a.rightSized ||
+        wrong(b) - wrong(a);
     let best = found[0];
     let tied = false;
     for (const f of found.slice(1)) {

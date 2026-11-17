@@ -654,14 +654,22 @@ describe("Arimaa input modes", () => {
             expect(either.message).to.contain(ambiguous(2));
         });
 
-        it("prefers leaving enemy pieces, and not its own, beside a piece one rank stronger, before a right-sized push", () => {
-            // two steps: the cat's push is the right-sized one, but it would
-            // leave the cat beside the enemy dog, while the dog's push leaves
-            // the rabbit on d5 beside the cat
+        it("prefers a right-sized push before leaving enemy pieces, and not its own, beside a piece one rank stronger", () => {
+            // two steps: the cat's push is the right-sized one, though it
+            // leaves the cat beside the enemy dog, while the dog's push would
+            // leave the rabbit on d5 beside the cat
             const g = withDie(position("Cd4,Df4,Ra1", "re4,rd5,de3,ra8,ee8"), 2);
             const pushed = click(g, "e4", "e5", "advanced");
-            expect(played(g, pushed.move).board.get("e4")).to.deep.equal(["D", 1]);
+            expect(played(g, pushed.move).board.get("e4")).to.deep.equal(["C", 1]);
             expect(pushed.message).not.to.contain(ambiguous(2));
+            // between two right-sized pushes, the cat that stays put is better
+            // not left beside the enemy dog (the rabbit on f5 keeps it unfrozen)
+            const twins = withDie(position("Cd4,Cf4,Rf5,Ra1", "re4,dg4,ra8,ee8"), 2);
+            const either = click(twins, "e4", "e5", "advanced");
+            const after = played(twins, either.move);
+            expect(after.board.get("e4")).to.deep.equal(["C", 1]);
+            expect(after.board.has("f4")).to.equal(false);
+            expect(either.message).not.to.contain(ambiguous(2));
         });
 
         it("lists the steps of the move shown where the notation alone reads otherwise", () => {
@@ -802,8 +810,8 @@ describe("Arimaa input modes", () => {
             (p: Play) => p.steps,
             (p: Play) => captured(p, player),
             (p: Play) => -captured(p, other(player)),
-            (p: Play) => wrong(p.board, player) - wrong(p.board, other(player)),
             (p: Play) => -p.rightSized,
+            (p: Play) => wrong(p.board, player) - wrong(p.board, other(player)),
         ].reduce(prefer, plays);
         // also whether a rabbit of the player's goes to goal, which lets a tie be broken
         const targetSelection = (plays: Play[], player: Owner, target: string): {best: Play[]; goal: boolean} => {
@@ -823,8 +831,8 @@ describe("Arimaa input modes", () => {
                 (p: Play) => p.steps,
                 (p: Play) => captured(p, player),
                 (p: Play) => -captured(p, other(player)),
-                (p: Play) => wrong(p.board, player) - wrong(p.board, other(player)),
                 (p: Play) => -p.rightSized,
+                (p: Play) => wrong(p.board, player) - wrong(p.board, other(player)),
             ].reduce(prefer, left);
             return {best, goal};
         };
