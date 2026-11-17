@@ -748,6 +748,22 @@ describe("Arimaa input modes", () => {
             expect(after.board.get("d6")).to.deep.equal(["D", 1]);
         });
 
+        it("take one of two rabbits to goal where nothing else separates them, though short of goal such a tie chooses neither", () => {
+            // either rabbit reaches e8 in two steps, and the two moves are alike in everything else
+            const g = position("Rd7,Rf7,Ra1", "ra8,eh8");
+            const goal = click(g, "", "e8", "advanced");
+            expect(said(goal.move)).to.have.length(1);
+            expect(["Rd7e8", "Rf7e8"]).to.include(said(goal.move)[0]);
+            expect(goal.message).to.contain(ambiguous(2));
+            expect(click(g, "", "e8", "advanced").move).to.equal(goal.move);
+            expect(played(g, goal.move).winner).to.deep.equal([1]);
+            // a row lower the same tie is no win, and the click chooses neither
+            const lower = position("Rd5,Rf5,Ra1", "ra8,eh8");
+            const none = click(lower, "", "e6", "advanced");
+            expect(none.move).to.equal("");
+            expect(none.complete).to.equal(-1);
+        });
+
         it("prefer to leave enemy pieces, and not their own, beside a piece one rank stronger", () => {
             // one step: the cat or the dog can step between them, and nothing else separates the two moves
             const rabbit = withDie(position("Cd4,Df4,Ra1", "re5,ra8,ee8"), 1);
@@ -789,20 +805,20 @@ describe("Arimaa input modes", () => {
             (p: Play) => wrong(p.board, player) - wrong(p.board, other(player)),
             (p: Play) => -p.rightSized,
         ].reduce(prefer, plays);
-        const targetSelection = (plays: Play[], player: Owner, target: string): Play[] => {
+        // also whether a rabbit of the player's goes to goal, which lets a tie be broken
+        const targetSelection = (plays: Play[], player: Owner, target: string): {best: Play[]; goal: boolean} => {
             const brings = (p: Play, which: (path: Path) => boolean): boolean =>
                 [...p.paths.values()].some(path => path.final === target && which(path));
             let left = plays.filter(p => brings(p, () => true));
-            if (left.length === 0) {
-                return left;
-            }
+            let goal = false;
             if (target[1] === (player === 1 ? "8" : "1")) {
-                const goal = left.filter(p => brings(p, path => path.type === "R" && path.owner === player));
-                left = goal.length > 0 ? goal : left;
+                const rabbits = left.filter(p => brings(p, path => path.type === "R" && path.owner === player));
+                goal = rabbits.length > 0;
+                left = goal ? rabbits : left;
             }
             const enemy = left.filter(p => brings(p, path => path.owner !== player));
             left = enemy.length > 0 ? enemy : left;
-            return [
+            const best = [
                 displaced,
                 (p: Play) => p.steps,
                 (p: Play) => captured(p, player),
@@ -810,6 +826,7 @@ describe("Arimaa input modes", () => {
                 (p: Play) => wrong(p.board, player) - wrong(p.board, other(player)),
                 (p: Play) => -p.rightSized,
             ].reduce(prefer, left);
+            return {best, goal};
         };
         const positions = (plays: Play[]): Set<string> => new Set(plays.map(p => signature(p.board)));
         // whether a click's message says the move shown is one of several, whatever number it gives
@@ -827,6 +844,7 @@ describe("Arimaa input modes", () => {
             ["no cats or dogs on the board", "Hd5 Me4 Rd3 rd4 re5 hc5 ef5", 1, 4],
             ["Silver to move, beside a trap", "Rc5 Cb6 Dd6 rc7 hb5 ed5 rc6", 2, 3],
             ["Silver's rabbit near goal", "Ee3 Rd1 Cf2 rd2 re2 hc2 df1", 2, 3],
+            ["two rabbits a step from goal", "Rd7 Rf7 Me6 Ra1 cg8 rb8 dh6", 1, 3],
         ] as Array<[string, string, Owner, number]>) {
             it(name, function () {
                 this.timeout(120000);
@@ -889,11 +907,14 @@ describe("Arimaa input modes", () => {
                 }
                 // an empty square is clicked with nothing selected: the Target Selection list
                 for (const target of squares.filter(sq => !board.has(sq))) {
-                    const wanted = positions(targetSelection(plays, player, target));
+                    const {best, goal} = targetSelection(plays, player, target);
+                    const wanted = positions(best);
                     const r = click(g, "", target, "advanced");
-                    if (wanted.size === 1) {
+                    // a tie is broken only where a rabbit goes to goal, and the player is told of it
+                    if (wanted.size === 1 || (wanted.size > 1 && goal)) {
                         expect(r.move, target).not.to.equal("");
                         expect([...wanted], `${target}: ${r.move}`).to.include(shown(g, r.move));
+                        expect(hinted(r.message), target).to.equal(wanted.size > 1);
                         aimed++;
                     } else {
                         expect(r.move, target).to.equal("");

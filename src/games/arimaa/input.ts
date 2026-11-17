@@ -649,8 +649,8 @@ interface Aim {
 // the fewest steps, the fewest own pieces captured, the most enemy pieces
 // captured, the most enemy pieces less own pieces left beside an opposing
 // piece exactly one rank stronger, and the most pushes and pulls of a piece
-// exactly one rank weaker. Nothing if that still leaves more than one
-// position.
+// exactly one rank weaker. If that still leaves more than one position, the
+// one that sorts first where a rabbit goes to goal, and otherwise nothing.
 function targetSelection(v: View, target: string): InputClick | undefined {
     const {board, player, limit, said} = v;
     const there = sqIndex(target);
@@ -665,7 +665,7 @@ function targetSelection(v: View, target: string): InputClick | undefined {
             classes[owner !== player ? 1 : goal && piece === "R" ? 0 : 2].push([origin, contents]);
         }
     }
-    for (const pieces of classes) {
+    for (const [kind, pieces] of classes.entries()) {
         let aims: Aim[] = [];
         for (const [origin, [piece, owner]] of pieces) {
             const start = sqIndex(origin);
@@ -696,11 +696,17 @@ function targetSelection(v: View, target: string): InputClick | undefined {
             b.wrong - a.wrong ||
             b.found.rightSized - a.found.rightSized;
         aims.sort(order);
-        const first = aims[0];
-        if (aims.some(a => order(a, first) === 0 && a.found.turn.signature !== first.found.turn.signature)) {
+        const best = aims.filter(a => order(a, aims[0]) === 0);
+        const tied = best.some(a => a.found.turn.signature !== best[0].found.turn.signature);
+        // only a tie between rabbits going to goal (the first class) is broken
+        if (tied && kind !== 0) {
             return undefined;
         }
-        return {move: entry(v, [...said, first.arrow], first.found.turn)};
+        const pick = best.reduce((a, b) => b.found.turn.signature < a.found.turn.signature ? b : a);
+        return {
+            move: entry(v, [...said, pick.arrow], pick.found.turn),
+            oneOf: tied ? new Set(aims.map(a => a.found.turn.signature)).size : undefined,
+        };
     }
     return undefined;
 }
