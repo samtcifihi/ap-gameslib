@@ -1100,10 +1100,11 @@ export function display(board: Map<string, CellContents>, player: playerid, maxS
  * what the notation means by it (`display`). Beyond what the tokens say it
  * asks for as little as it can: of every turn that fits, the fewest pieces
  * displaced, then the fewest steps, the fewest own pieces captured, the most
- * enemy pieces captured, the most pushes and pulls of a piece exactly one rank
- * weaker, and then (so that there is always an answer) the position that
- * sorts first. An entry that is to be played as this turn has to say so in
- * terms the notation reads the same way.
+ * enemy pieces captured, the most enemy pieces less own pieces left beside an
+ * opposing piece exactly one rank stronger (`wrongPieces`), the most pushes
+ * and pulls of a piece exactly one rank weaker, and then (so that there is
+ * always an answer) the position that sorts first. An entry that is to be
+ * played as this turn has to say so in terms the notation reads the same way.
  */
 export function choose(board: Map<string, CellContents>, player: playerid, maxSteps: number, tokens: Token[], accept?: (turn: Turn) => boolean): Displayed {
     if (accept === undefined && standing(board, tokens)) {
@@ -1113,9 +1114,20 @@ export function choose(board: Map<string, CellContents>, player: playerid, maxSt
     if (found.length === 0) {
         return { status: "unsatisfiable" };
     }
+    const enemy: playerid = player === 1 ? 2 : 1;
+    const wrongs = new Map<string, number>();
+    const wrong = ({turn: {signature}}: Found): number => {
+        let n = wrongs.get(signature);
+        if (n === undefined) {
+            n = wrongPieces(signature, enemy) - wrongPieces(signature, player);
+            wrongs.set(signature, n);
+        }
+        return n;
+    };
     const preference = (a: Found, b: Found): number =>
         a.turn.ownCaptured - b.turn.ownCaptured ||
         b.turn.enemyCaptured - a.turn.enemyCaptured ||
+        wrong(b) - wrong(a) ||
         b.rightSized - a.rightSized;
     let best = found[0];
     let tied = false;

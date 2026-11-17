@@ -654,6 +654,16 @@ describe("Arimaa input modes", () => {
             expect(either.message).to.contain(ambiguous(2));
         });
 
+        it("prefers leaving enemy pieces, and not its own, beside a piece one rank stronger, before a right-sized push", () => {
+            // two steps: the cat's push is the right-sized one, but it would
+            // leave the cat beside the enemy dog, while the dog's push leaves
+            // the rabbit on d5 beside the cat
+            const g = withDie(position("Cd4,Df4,Ra1", "re4,rd5,de3,ra8,ee8"), 2);
+            const pushed = click(g, "e4", "e5", "advanced");
+            expect(played(g, pushed.move).board.get("e4")).to.deep.equal(["D", 1]);
+            expect(pushed.message).not.to.contain(ambiguous(2));
+        });
+
         it("lists the steps of the move shown where the notation alone reads otherwise", () => {
             const g = position("Ed4,Rd5,Ra1", "ra8,ee8");
             const move = enter(g, "advanced", ["d4", "d6"]);
@@ -776,6 +786,7 @@ describe("Arimaa input modes", () => {
             (p: Play) => p.steps,
             (p: Play) => captured(p, player),
             (p: Play) => -captured(p, other(player)),
+            (p: Play) => wrong(p.board, player) - wrong(p.board, other(player)),
             (p: Play) => -p.rightSized,
         ].reduce(prefer, plays);
         const targetSelection = (plays: Play[], player: Owner, target: string): Play[] => {
