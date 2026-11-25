@@ -966,21 +966,32 @@ export class GolombGame extends GameBase {
             // drawn over the grid so pieces show no internal lines
             markers.push({ type: "flood", colour, opacity: 1, belowGrid: false, points: points as [RowCol, ...RowCol[]] });
         }
-        // outline each piece where it touches another piece or blocker
+        // outline every outside edge of each piece and blocker, but not the edges between its own squares
         const fences: MarkerFenceData[] = [];
+        // where the edge faces an empty square, a hole or the board's edge, the grid line the band covers is redrawn on top
+        const gridLines: MarkerFenceData[] = [];
+        const sides: [number, number, "N" | "E" | "S" | "W"][] = [[0, -1, "N"], [1, 0, "E"], [0, 1, "S"], [-1, 0, "W"]];
         for (const [cell, u] of unitOf.entries()) {
             const [x, y] = this.algebraic2coords(cell);
-            for (const [dx, dy, side] of [[1, 0, "E"], [0, 1, "S"]] as [number, number, "E" | "S"][]) {
-                if (x + dx >= width || y + dy >= height) {
+            for (const [dx, dy, side] of sides) {
+                const nx = x + dx;
+                const ny = y + dy;
+                const onBoard = nx >= 0 && ny >= 0 && nx < width && ny < height;
+                const other = onBoard ? unitOf.get(this.coords2algebraic(nx, ny)) : undefined;
+                if (other === u) {
                     continue;
                 }
-                const other = unitOf.get(this.coords2algebraic(x + dx, y + dy));
-                if (other !== undefined && other !== u) {
-                    fences.push({ cell: { row: y, col: x }, side, colour: "_context_background", width: 3 });
+                // an edge shared by two pieces is drawn once, from its west or north side
+                if (other !== undefined && (side === "N" || side === "W")) {
+                    continue;
+                }
+                fences.push({ cell: { row: y, col: x }, side, colour: "_context_background", width: 3 });
+                if (other === undefined) {
+                    gridLines.push({ cell: { row: y, col: x }, side, colour: "_context_strokes", width: 1 });
                 }
             }
         }
-        for (const f of fences) {
+        for (const f of [...fences, ...gridLines]) {
             markers.push({ type: "fence", ...f });
         }
 
