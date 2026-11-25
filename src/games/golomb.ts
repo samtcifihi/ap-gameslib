@@ -88,16 +88,16 @@ export const gameApgamesEn = {
 
 export const gameApresultsEn = {
     SELECT: {
-        default: "{{player}} chose a pentomino.",
+        default: "{{player}} chose the {{what}} pentomino.",
     },
     PLACE: {
-        default: "{{player}} placed a pentomino on {{where}}.",
+        default: "{{player}} placed the {{what}} pentomino on {{where}}.",
     },
     REMOVE: {
-        default: "{{player}} removed the pentomino on {{where}} from the board.",
+        default: "{{player}} removed the {{what}} pentomino from the board.",
     },
     CAPTURE: {
-        default: "{{player}} captured the pentomino on {{where}}.",
+        default: "{{player}} captured the {{what}} pentomino.",
     },
     SWAP: {
         default: "{{player}} passed and swapped hands.",
@@ -1113,16 +1113,16 @@ export class GolombGame extends GameBase {
     public collectChatLogLine(lines: ChatLogLine[], r: APMoveResult, ctx: ChatLogCollectContext): boolean {
         switch (r.type) {
             case "select":
-                this.pushSeatChatLine(lines, ctx.defaultSeat, "apresults:golomb.SELECT.default");
+                this.pushSeatChatLine(lines, ctx.defaultSeat, "apresults:golomb.SELECT.default", { what: r.what! });
                 return true;
             case "place":
-                this.pushSeatChatLine(lines, ctx.defaultSeat, "apresults:golomb.PLACE.default", { where: r.where!.split(" ").join(", ") });
+                this.pushSeatChatLine(lines, ctx.defaultSeat, "apresults:golomb.PLACE.default", { what: r.what!, where: r.where!.split(" ").join(", ") });
                 return true;
             case "remove":
-                this.pushSeatChatLine(lines, ctx.defaultSeat, "apresults:golomb.REMOVE.default", { where: r.where!.split(" ").join(", ") });
+                this.pushSeatChatLine(lines, ctx.defaultSeat, "apresults:golomb.REMOVE.default", { what: r.what! });
                 return true;
             case "capture":
-                this.pushSeatChatLine(lines, ctx.defaultSeat, "apresults:golomb.CAPTURE.default", { where: r.where!.split(" ").join(", ") });
+                this.pushSeatChatLine(lines, ctx.defaultSeat, "apresults:golomb.CAPTURE.default", { what: r.what! });
                 return true;
             case "pie":
                 this.pushSeatChatLine(lines, ctx.defaultSeat, "apresults:golomb.SWAP.default");

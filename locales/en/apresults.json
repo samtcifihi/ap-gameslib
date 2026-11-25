@@ -902,16 +902,16 @@
   },
   "golomb": {
     "SELECT": {
-      "default": "{{player}} chose a pentomino."
+      "default": "{{player}} chose the {{what}} pentomino."
     },
     "PLACE": {
-      "default": "{{player}} placed a pentomino on {{where}}."
+      "default": "{{player}} placed the {{what}} pentomino on {{where}}."
     },
     "REMOVE": {
-      "default": "{{player}} removed the pentomino on {{where}} from the board."
+      "default": "{{player}} removed the {{what}} pentomino from the board."
     },
     "CAPTURE": {
-      "default": "{{player}} captured the pentomino on {{where}}."
+      "default": "{{player}} captured the {{what}} pentomino."
     },
     "SWAP": {
       "default": "{{player}} passed and swapped hands."
