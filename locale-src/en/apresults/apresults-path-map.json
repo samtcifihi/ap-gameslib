@@ -3840,7 +3840,7 @@
       "newLeaf": "default",
       "newPath": "golomb.CAPTURE.default",
       "newFullKey": "apresults:golomb.CAPTURE.default",
-      "english": "{{player}} captured the {{what}} pentomino."
+      "english": "{{player}} captured the pentomino on {{where}}."
     },
     {
       "oldPath": "EOG.golomb_repetition",
@@ -3860,7 +3860,7 @@
       "newLeaf": "default",
       "newPath": "golomb.PLACE.default",
       "newFullKey": "apresults:golomb.PLACE.default",
-      "english": "{{player}} placed the {{what}} pentomino on {{where}}."
+      "english": "{{player}} placed a pentomino on {{where}}."
     },
     {
       "oldPath": "REMOVE.golomb",
@@ -3870,7 +3870,7 @@
       "newLeaf": "default",
       "newPath": "golomb.REMOVE.default",
       "newFullKey": "apresults:golomb.REMOVE.default",
-      "english": "{{player}} removed the {{what}} pentomino from the board."
+      "english": "{{player}} removed the pentomino on {{where}} from the board."
     },
     {
       "oldPath": "SELECT.golomb",
@@ -3880,7 +3880,7 @@
       "newLeaf": "default",
       "newPath": "golomb.SELECT.default",
       "newFullKey": "apresults:golomb.SELECT.default",
-      "english": "{{player}} chose the {{what}} pentomino."
+      "english": "{{player}} chose a pentomino."
     },
     {
       "oldPath": "SWAP.golomb",

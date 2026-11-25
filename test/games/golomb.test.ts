@@ -310,7 +310,7 @@ describe("Golomb's Game", () => {
             const g = dealt();
             g.move("a1 a5");
             const shown = (rep: ReturnType<GolombGame["render"]>) =>
-                (rep.areas ?? []).map(a => ("pieces" in a ? (a.pieces as { piece: string }[]).map(p => p.piece) : []));
+                (rep.areas ?? []).map(a => ("pieces" in a ? (a.pieces as string[]) : []));
             for (const viewer of [g, new GolombGame(g.serialize({ strip: true, player: 1 }))]) {
                 const areas = shown(viewer.render({ perspective: 1 }));
                 expect(areas).to.deep.include(["F", "L", "N", "P"]);
@@ -472,6 +472,17 @@ describe("Golomb's Game", () => {
             expect(g.getButtons()).to.be.empty;
         });
 
+        it("the swap button passes", () => {
+            const g = setUp(new GolombGame(2, ["random-hands", "simple-pie"]), { hands: hands() });
+            g.move("a1 a5");
+            // the client sends a custom "pass" button as a click on "_btn_pass"
+            const r = g.handleClick("", -1, -1, "_btn_pass");
+            expect(r.move).to.equal("pass");
+            expect(r.complete).to.equal(1);
+            const later = setUp(new GolombGame(2, ["random-hands", "simple-pie"]), { hands: hands() });
+            expect(later.handleClick("", -1, -1, "_btn_pass").move).to.equal("");
+        });
+
         it("placing a piece instead keeps the hands", () => {
             const g = setUp(new GolombGame(2, ["random-hands", "simple-pie"]), { hands: hands() });
             g.move("a1 a5");
@@ -523,9 +534,11 @@ describe("Golomb's Game", () => {
             expect(r.complete).to.equal(1);
         });
 
-        it("clicking the previewed piece or a placed piece cancels the move", () => {
+        it("clicking the previewed piece changes nothing, while clicking a placed piece cancels the move", () => {
             const g = new GolombGame();
-            expect(g.handleClick("a1 a5", ...rc("a3")).move).to.equal("");
+            const same = g.handleClick("a1 a5", ...rc("a3"));
+            expect(same.move).to.equal("a1 a5");
+            expect(same.complete).to.equal(0);
             g.move("c1 c5");
             expect(g.handleClick("a1 a5", ...rc("c2")).move).to.equal("");
             expect(g.handleClick("a1", ...rc("c2")).move).to.equal("");
@@ -554,13 +567,14 @@ describe("Golomb's Game", () => {
 
         it("pieces removed by the move being entered are crossed out in the pool, in the remover's colour", () => {
             type Layer = { name?: string; paint?: { fill?: unknown } };
+            // the colour of each crossed-out piece shown in an area
             const crosses = (game: GolombGame) => {
                 const rep = game.render();
-                const pieces = (rep.areas ?? []).flatMap(a => "pieces" in a ? (a.pieces as { piece: string; text: string }[]) : []);
-                return pieces.flatMap(p => {
-                    const entry = rep.legend![p.piece];
+                const pieces = (rep.areas ?? []).flatMap(a => "pieces" in a ? (a.pieces as string[]) : []);
+                return pieces.flatMap(key => {
+                    const entry = rep.legend![key];
                     const cross = (Array.isArray(entry) ? entry as Layer[] : []).find(l => l.name === "cross-diag");
-                    return cross === undefined ? [] : [{ text: p.text, colour: cross.paint?.fill }];
+                    return cross === undefined ? [] : [cross.paint?.fill];
                 });
             };
             for (const player of [1, 2] as const) {
@@ -574,7 +588,8 @@ describe("Golomb's Game", () => {
                 preview.pool = [...g.pool];
                 preview.currplayer = player;
                 preview.move("xa1 c1", { partial: true });
-                expect(crosses(preview)).to.deep.equal([{ text: "I", colour: player }]);
+                expect(crosses(preview)).to.deep.equal([player]);
+                expect(preview.pool).to.include("I");
                 // once the move is made, the piece is back in the pool and placeable
                 g.move("xa1 a1 a2 a3 b1 c1");
                 expect(crosses(g)).to.be.empty;
@@ -587,6 +602,33 @@ describe("Golomb's Game", () => {
             expect(r.move).to.equal("X");
             expect(r.complete).to.equal(1);
             expect(g.handleClick("", ...rc("a1")).move).to.equal("");
+        });
+
+        it("once only one placement fits, the piece is shown placed, with its captures", () => {
+            const g = setUp(new GolombGame(2, ["capture"]), {
+                placed: [["I", ["a1", "a2", "a3", "a4", "a5"], 0]],
+                pool: ALL.filter(p => p !== "I"),
+            });
+            const preview = new GolombGame(g.serialize());
+            preview.placed = g.placed.map(p => ({ ...p, cells: [...p.cells] }));
+            preview.pool = [...g.pool];
+            preview.move("b1 b2 b3 b4 c1", { partial: true });
+            expect(preview.placed.find(p => p.piece === "I")!.owner).to.equal(1);
+            expect(preview.pool).to.not.include("L");
+            const rep = preview.render();
+            // no preview squares: the piece is drawn like any placed piece
+            expect(rep.pieces).to.be.null;
+            const floods = (rep.board as { markers: { type: string; colour: unknown; points: { row: number; col: number }[] }[] }).markers
+                .filter(m => m.type === "flood");
+            const colourAt = (cell: string) => {
+                const [row, col] = rc(cell);
+                return floods.find(f => f.points.some(p => p.row === row && p.col === col))?.colour;
+            };
+            expect(colourAt("a3")).to.equal(1);
+            expect(colourAt("b2")).to.not.be.undefined;
+            expect(colourAt("b2")).to.not.equal(1);
+            // the real game is untouched until the move is submitted
+            expect(g.placed.find(p => p.piece === "I")!.owner).to.equal(0);
         });
 
         it("a partial placement previews every square some fitting placement would cover", () => {

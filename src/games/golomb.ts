@@ -7,13 +7,13 @@ import i18next from "i18next";
 
 export const gameApgamesEn = {
     validation: {
-        INITIAL_INSTRUCTIONS: "Click the empty squares your pentomino will cover. Once only one placement fits, click any other empty square to confirm, or click the piece to start over.",
+        INITIAL_INSTRUCTIONS: "Click the empty squares your pentomino will cover. Once only one placement fits, click any other empty square to confirm, or click another piece to start over.",
         INITIAL_INSTRUCTIONS_CAPTURE: "Click the empty squares your pentomino will cover. Before that, you may click pieces you have captured to remove them from the board; they return to the pool after your move. Once only one placement fits, click any other empty square to confirm.",
         INITIAL_INSTRUCTIONS_CHOOSE: "Click a pentomino in the pool to add it to your hand.",
         INITIAL_INSTRUCTIONS_SWAP: "Place a pentomino to keep your hand, or press the button to pass and swap hands with your opponent.",
         INITIAL_INSTRUCTIONS_SWAP_CHOOSE: "Choose a pentomino to keep your hand, or press the button to pass and swap hands with your opponent.",
         PARTIAL: "Keep clicking squares the pentomino will cover until only one placement fits.",
-        UNIQUE: "This places the {{piece}} pentomino. Click any other empty square to confirm, or click the piece to start over.",
+        UNIQUE: "Only one placement fits. Click any other empty square to confirm, or click another piece to start over.",
         BAD_TOKEN: "\"{{token}}\" is not a square, a removal, or a pentomino.",
         OFF_BOARD: "{{cell}} is not a square on this board.",
         OCCUPIED: "{{cell}} is already occupied.",
@@ -24,7 +24,7 @@ export const gameApgamesEn = {
         DUPLICATE_REMOVAL: "The piece at {{cell}} is already being removed.",
         MUST_CHOOSE: "You must choose a pentomino from the pool before play begins.",
         NOT_CHOOSING: "Pentominoes can only be chosen before play begins.",
-        UNAVAILABLE: "The {{piece}} pentomino is not in the pool.",
+        UNAVAILABLE: "That pentomino is not in the pool.",
         NO_SWAP: "You can only pass to swap hands right after your opponent's first move.",
         LABEL_HAND: "{{player}}'s hand",
         LABEL_POOL: "Pool",
@@ -88,16 +88,16 @@ export const gameApgamesEn = {
 
 export const gameApresultsEn = {
     SELECT: {
-        default: "{{player}} chose the {{what}} pentomino.",
+        default: "{{player}} chose a pentomino.",
     },
     PLACE: {
-        default: "{{player}} placed the {{what}} pentomino on {{where}}.",
+        default: "{{player}} placed a pentomino on {{where}}.",
     },
     REMOVE: {
-        default: "{{player}} removed the {{what}} pentomino from the board.",
+        default: "{{player}} removed the pentomino on {{where}} from the board.",
     },
     CAPTURE: {
-        default: "{{player}} captured the {{what}} pentomino.",
+        default: "{{player}} captured the pentomino on {{where}}.",
     },
     SWAP: {
         default: "{{player}} passed and swapped hands.",
@@ -220,7 +220,7 @@ export class GolombGame extends GameBase {
         version: "20261125",
         dateAdded: "2026-11-25",
         description: "Players take turns placing pentominoes on the board. The last player able to place one wins.",
-        notes: "To place a pentomino, click the empty squares it will cover. Once only one legal placement covers every selected square, the move is ready: click any other empty square to confirm it, or click the previewed piece to start over. In move notation, a placement lists all 5 covered squares, and a capture-variant removal is an `x` followed by the removed piece's first square, as in `xa1`. With 3 or 4 players, the game ends as soon as the player to move has no legal move: the last player who moved wins, or, in Misère, the player who cannot move wins. In Capture, pieces removed during the move being entered are crossed out in the pool, since they cannot be placed until the next turn, and a position that occurs for the fifth time with the same player to move ends the game in a draw. Simple pie only applies to 2-player games and is ignored in larger games.",
+        notes: "To place a pentomino, click the empty squares it will cover. Once only one legal placement covers every selected square, the move is ready and the piece is shown as placed, along with anything it would capture: click any other empty square to confirm it, or click another piece to start over. In move notation, a placement lists all 5 covered squares, and a capture-variant removal is an `x` followed by the removed piece's first square, as in `xa1`. With 3 or 4 players, the game ends as soon as the player to move has no legal move: the last player who moved wins, or, in Misère, the player who cannot move wins. In Capture, pieces removed during the move being entered are crossed out in the pool, since they cannot be placed until the next turn, and a position that occurs for the fifth time with the same player to move ends the game in a draw. Simple pie only applies to 2-player games and is ignored in larger games.",
         urls: [
             "https://nrich.maths.org/content/01/10/game/game.html",
             "https://club.cc.cmu.edu/~ajo/free-software/pento/pento.html",
@@ -566,7 +566,7 @@ export class GolombGame extends GameBase {
                 return fail(i18next.t("apgames:validation.golomb.NOT_CHOOSING"));
             }
             if (!this.pool.includes(m as Pentomino)) {
-                return fail(i18next.t("apgames:validation.golomb.UNAVAILABLE", { piece: m }));
+                return fail(i18next.t("apgames:validation.golomb.UNAVAILABLE"));
             }
             return { result: { valid: true, complete: 1, message: i18next.t("apgames:validation._general.VALID_MOVE") } };
         }
@@ -638,7 +638,7 @@ export class GolombGame extends GameBase {
         } else if (compatible.length === 1) {
             // a complete placement is never auto-submitted
             result.complete = 0;
-            result.message = i18next.t("apgames:validation.golomb.UNIQUE", { piece: compatible[0].piece });
+            result.message = i18next.t("apgames:validation.golomb.UNIQUE");
         } else {
             result.complete = -1;
             result.message = i18next.t("apgames:validation.golomb.PARTIAL");
@@ -664,6 +664,11 @@ export class GolombGame extends GameBase {
         try {
             move = GolombGame.cleanInput(move);
             const keep = (): IClickResult => ({ ...this.validateMove(move), move });
+            // the client sends the Swap button as a click on "_btn_pass"
+            if (piece === "_btn_pass") {
+                const result = this.validateMove("pass");
+                return { ...result, move: result.valid ? "pass" : move };
+            }
             if (row < 0 || col < 0) {
                 if (this.isChoosing() && piece !== undefined && this.pool.includes(piece as Pentomino)) {
                     const result = this.validateMove(piece);
@@ -697,8 +702,8 @@ export class GolombGame extends GameBase {
 
             if (current.result.valid && current.result.complete === 0 && current.compatible !== undefined) {
                 if (current.compatible[0].cells.includes(cell)) {
-                    // clicking the previewed piece cancels the move
-                    return reset();
+                    // clicking the previewed piece changes nothing
+                    return { ...current.result, move };
                 }
                 // clicking any other empty square confirms the placement
                 return {
@@ -760,7 +765,12 @@ export class GolombGame extends GameBase {
             this.pool.sort();
             this.placed = this.placed.filter((_, i) => !analysis.removed!.includes(i));
             if (analysis.parsed.cells.length > 0 && analysis.compatible !== undefined) {
-                this.candidates = [...new Set(analysis.compatible.flatMap(p => p.cells))];
+                if (analysis.compatible.length === 1) {
+                    // the squares are settled: show the piece, and any captures, as they will be
+                    this.placePiece(analysis.compatible[0]);
+                } else {
+                    this.candidates = [...new Set(analysis.compatible.flatMap(p => p.cells))];
+                }
             }
             return this;
         }
@@ -784,21 +794,7 @@ export class GolombGame extends GameBase {
                 returning.push(p.piece);
             }
             this.placed = this.placed.filter((_, i) => !removed.includes(i));
-            if (this.usesHands) {
-                this.hands[this.currplayer - 1] = this.hands[this.currplayer - 1].filter(p => p !== placement.piece);
-            } else {
-                this.pool = this.pool.filter(p => p !== placement.piece);
-            }
-            this.results.push({ type: "place", what: placement.piece, where: placement.cells.join(" ") });
-            if (this.variants.includes("capture")) {
-                for (const other of this.placed) {
-                    if (this.sharedEdges(placement.cells, other.cells) >= 3 && other.owner !== this.currplayer) {
-                        this.results.push({ type: "capture", what: other.piece, where: other.cells.join(" "), whose: other.owner });
-                        other.owner = this.currplayer;
-                    }
-                }
-            }
-            this.placed.push({ piece: placement.piece, cells: [...placement.cells], owner: 0 });
+            this.placePiece(placement);
             // removed pieces only return to the pool once the move is over
             this.pool = [...this.pool, ...returning].sort();
         }
@@ -808,6 +804,25 @@ export class GolombGame extends GameBase {
         this.checkEOG();
         this.saveState();
         return this;
+    }
+
+    /** Takes the piece from the mover's supply, places it, and captures what it touches enough. */
+    private placePiece(placement: IPlacement): void {
+        if (this.usesHands) {
+            this.hands[this.currplayer - 1] = this.hands[this.currplayer - 1].filter(p => p !== placement.piece);
+        } else {
+            this.pool = this.pool.filter(p => p !== placement.piece);
+        }
+        this.results.push({ type: "place", what: placement.piece, where: placement.cells.join(" ") });
+        if (this.variants.includes("capture")) {
+            for (const other of this.placed) {
+                if (this.sharedEdges(placement.cells, other.cells) >= 3 && other.owner !== this.currplayer) {
+                    this.results.push({ type: "capture", what: other.piece, where: other.cells.join(" "), whose: other.owner });
+                    other.owner = this.currplayer;
+                }
+            }
+        }
+        this.placed.push({ piece: placement.piece, cells: [...placement.cells], owner: 0 });
     }
 
     private sharedEdges(a: string[], b: string[]): number {
@@ -1010,7 +1025,7 @@ export class GolombGame extends GameBase {
         }
 
         const areas: AreaPieces[] = [];
-        const asPieces = (list: Pentomino[]) => list.map(pc => ({ piece: pc, text: pc })) as AreaPieces["pieces"];
+        const asPieces = (list: string[]) => list as AreaPieces["pieces"];
         const concealed = this.variants.includes("concealed");
         const reveal = !concealed || this.gameover || opts.omniscient === true;
         const seen = new Set<Pentomino>(this.placed.map(p => p.piece));
@@ -1036,7 +1051,7 @@ export class GolombGame extends GameBase {
             areas.push({
                 type: "pieces",
                 label: this.neutralAreaLabel("apgames:validation.golomb.LABEL_POOL"),
-                pieces: this.pool.map(pc => ({ piece: this.removing.includes(pc) ? `${pc}-removed` : pc, text: pc })) as AreaPieces["pieces"],
+                pieces: asPieces(this.pool.map(pc => this.removing.includes(pc) ? `${pc}-removed` : pc)),
                 spacing: 0.3,
             });
         }
@@ -1098,16 +1113,16 @@ export class GolombGame extends GameBase {
     public collectChatLogLine(lines: ChatLogLine[], r: APMoveResult, ctx: ChatLogCollectContext): boolean {
         switch (r.type) {
             case "select":
-                this.pushSeatChatLine(lines, ctx.defaultSeat, "apresults:golomb.SELECT.default", { what: r.what! });
+                this.pushSeatChatLine(lines, ctx.defaultSeat, "apresults:golomb.SELECT.default");
                 return true;
             case "place":
-                this.pushSeatChatLine(lines, ctx.defaultSeat, "apresults:golomb.PLACE.default", { what: r.what!, where: r.where!.split(" ").join(", ") });
+                this.pushSeatChatLine(lines, ctx.defaultSeat, "apresults:golomb.PLACE.default", { where: r.where!.split(" ").join(", ") });
                 return true;
             case "remove":
-                this.pushSeatChatLine(lines, ctx.defaultSeat, "apresults:golomb.REMOVE.default", { what: r.what! });
+                this.pushSeatChatLine(lines, ctx.defaultSeat, "apresults:golomb.REMOVE.default", { where: r.where!.split(" ").join(", ") });
                 return true;
             case "capture":
-                this.pushSeatChatLine(lines, ctx.defaultSeat, "apresults:golomb.CAPTURE.default", { what: r.what! });
+                this.pushSeatChatLine(lines, ctx.defaultSeat, "apresults:golomb.CAPTURE.default", { where: r.where!.split(" ").join(", ") });
                 return true;
             case "pie":
                 this.pushSeatChatLine(lines, ctx.defaultSeat, "apresults:golomb.SWAP.default");
