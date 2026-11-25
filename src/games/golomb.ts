@@ -73,7 +73,7 @@ export const gameApgamesEn = {
         },
         capture: {
             name: "Capture",
-            description: "A placement that shares 3 or more edges with a previously placed piece captures that piece, which takes the capturing player's colour. Captured pieces can be recaptured. Before placing, you may remove any pieces you have captured; they return to the pool after your move.",
+            description: "A placement that shares 3 or more edges with a previously placed piece captures that piece, which takes the capturing player's colour. Captured pieces can be recaptured. Before placing, you may remove any pieces you have captured; they return to the pool after your move. A position that occurs for the fifth time with the same player to move is a draw.",
         },
         misere: {
             name: "Misère",
@@ -101,6 +101,9 @@ export const gameApresultsEn = {
     },
     SWAP: {
         default: "{{player}} passed and swapped hands.",
+    },
+    EOG: {
+        repetition: "The game has ended in a draw because the same position occurred five times with the same player to move.",
     },
 };
 
@@ -217,7 +220,7 @@ export class GolombGame extends GameBase {
         version: "20261125",
         dateAdded: "2026-11-25",
         description: "Players take turns placing pentominoes on the board. The last player able to place one wins.",
-        notes: "To place a pentomino, click the empty squares it will cover. Once only one legal placement covers every selected square, the move is ready: click any other empty square to confirm it, or click the previewed piece to start over. In move notation, a placement lists all 5 covered squares, and a capture-variant removal is an `x` followed by the removed piece's first square, as in `xa1`. With 3 or 4 players, the game ends as soon as the player to move has no legal move: the last player who moved wins, or, in Misère, the player who cannot move wins. Simple pie only applies to 2-player games and is ignored in larger games.",
+        notes: "To place a pentomino, click the empty squares it will cover. Once only one legal placement covers every selected square, the move is ready: click any other empty square to confirm it, or click the previewed piece to start over. In move notation, a placement lists all 5 covered squares, and a capture-variant removal is an `x` followed by the removed piece's first square, as in `xa1`. With 3 or 4 players, the game ends as soon as the player to move has no legal move: the last player who moved wins, or, in Misère, the player who cannot move wins. In Capture, pieces removed during the move being entered are crossed out in the pool, since they cannot be placed until the next turn, and a position that occurs for the fifth time with the same player to move ends the game in a draw. Simple pie only applies to 2-player games and is ignored in larger games.",
         urls: [
             "https://nrich.maths.org/content/01/10/game/game.html",
             "https://club.cc.cmu.edu/~ajo/free-software/pento/pento.html",
@@ -226,6 +229,12 @@ export class GolombGame extends GameBase {
             {
                 type: "designer",
                 name: "Solomon W. Golomb",
+            },
+            {
+                type: "coder",
+                name: "Samraku",
+                urls: [],
+                apid: "6ea91933-1262-41a5-b5f3-a6af70692296",
             },
         ],
         variants: [
@@ -327,6 +336,8 @@ export class GolombGame extends GameBase {
     private geo!: IGeometry;
     // squares shown while a placement is only partially entered
     private candidates: string[] = [];
+    // pieces removed by the move being entered: back in the pool, but not placeable yet
+    private removing: Pentomino[] = [];
 
     constructor(state?: number | IGolombState | string, variants?: string[]) {
         super();
@@ -409,6 +420,7 @@ export class GolombGame extends GameBase {
         this.results = [...state._results];
         this.geo = GolombGame.geometry(this.variants);
         this.candidates = [];
+        this.removing = [];
         return this;
     }
 
@@ -732,6 +744,7 @@ export class GolombGame extends GameBase {
 
         this.results = [];
         this.candidates = [];
+        this.removing = [];
 
         if (partial) {
             if (analysis.parsed === undefined || analysis.removed === undefined) {
@@ -742,6 +755,7 @@ export class GolombGame extends GameBase {
                 const p = this.placed[i];
                 this.results.push({ type: "remove", what: p.piece, where: p.cells.join(" ") });
                 this.pool.push(p.piece);
+                this.removing.push(p.piece);
             }
             this.pool.sort();
             this.placed = this.placed.filter((_, i) => !analysis.removed!.includes(i));
@@ -829,8 +843,33 @@ export class GolombGame extends GameBase {
                 { type: "eog", reason: "stalemate" },
                 { type: "winners", players: [...this.winner] },
             );
+        } else if (this.variants.includes("capture") && this.repetitions() >= 5) {
+            this.gameover = true;
+            this.winner = Array.from({ length: this.numplayers }, (_, i) => (i + 1) as playerid);
+            this.results.push(
+                { type: "eog", reason: "repetition" },
+                { type: "winners", players: [...this.winner] },
+            );
         }
         return this;
+    }
+
+    /** The board, captured colours and player to move; the shared pool follows from the board. */
+    private static positionKey(state: { currplayer: playerid; placed: IPlacedPiece[] }): string {
+        return `${state.currplayer}|${state.placed.map(p => `${p.owner}:${p.cells.join(".")}`).sort().join(",")}`;
+    }
+
+    /**
+     * How many times the current, not yet saved, position has occurred, counting itself.
+     * Only Capture games can repeat a position, since otherwise every move fills the board further.
+     */
+    private repetitions(): number {
+        const seen = new Map<string, number>();
+        for (const entry of this.stack) {
+            const key = GolombGame.positionKey(entry);
+            seen.set(key, (seen.get(key) ?? 0) + 1);
+        }
+        return (seen.get(GolombGame.positionKey(this)) ?? 0) + 1;
     }
 
     public getButtons(): ICustomButton[] {
@@ -961,6 +1000,13 @@ export class GolombGame extends GameBase {
             glyphDefs[`golomb-${pc}`] = { viewBox: [0, 0, 500, 500], markup };
             legend[pc] = { def: `golomb-${pc}`, scale: 1.4, paint: { fill: "_context_fill" } };
         }
+        // removed this turn, so not placeable until the move is over
+        for (const pc of this.removing) {
+            legend[`${pc}-removed`] = [
+                { def: `golomb-${pc}`, scale: 1.4, paint: { fill: "_context_fill" } },
+                { name: "cross-diag", scale: 1.1, paint: { fill: "#e41a1c" } },
+            ];
+        }
 
         const areas: AreaPieces[] = [];
         const asPieces = (list: Pentomino[]) => list.map(pc => ({ piece: pc, text: pc })) as AreaPieces["pieces"];
@@ -989,7 +1035,7 @@ export class GolombGame extends GameBase {
             areas.push({
                 type: "pieces",
                 label: this.neutralAreaLabel("apgames:validation.golomb.LABEL_POOL"),
-                pieces: asPieces(this.pool),
+                pieces: this.pool.map(pc => ({ piece: this.removing.includes(pc) ? `${pc}-removed` : pc, text: pc })) as AreaPieces["pieces"],
                 spacing: 0.3,
             });
         }

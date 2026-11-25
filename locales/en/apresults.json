@@ -915,6 +915,9 @@
     },
     "SWAP": {
       "default": "{{player}} passed and swapped hands."
+    },
+    "EOG": {
+      "repetition": "The game has ended in a draw because the same position occurred five times with the same player to move."
     }
   },
   "gonnect": {

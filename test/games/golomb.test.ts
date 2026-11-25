@@ -407,6 +407,46 @@ describe("Golomb's Game", () => {
             expect(moves.every(m => m.startsWith("xa2 "))).to.be.true;
         });
 
+        it("a position occurring for the fifth time with the same player to move is a draw", () => {
+            // Each player runs a "pump" of two adjacent holes: they remove the piece they
+            // captured in one hole and place a piece there that captures the piece next door.
+            // Player 1 cycles T, U and V through a1-c3 and d1-f3; player 2 cycles L, N and Y
+            // through a5-b8 and c5-d8. After these 12 plies the board is back where it began.
+            const open = /^([a-f][1-3]|[a-d][5-8])$/;
+            const g = setUp(new GolombGame(2, ["capture"]), {
+                blockers: squares(8, 8).filter(c => !open.test(c)),
+                placed: [
+                    ["T", ["a2", "b2", "c1", "c2", "c3"], 1],
+                    ["V", ["d1", "d2", "d3", "e1", "f1"], 0],
+                    ["L", ["a8", "b5", "b6", "b7", "b8"], 2],
+                    ["Y", ["c5", "c6", "c7", "c8", "d6"], 0],
+                ],
+                pool: ["F", "I", "N", "P", "U", "W", "X", "Z"],
+            });
+            const cycle = [
+                "xa2 b1 b3 c1 c2 c3", "xa8 a7 a8 b5 b6 b7",
+                "xd1 d1 d2 d3 e2 f2", "xc5 c5 c6 c7 c8 d5",
+                "xb1 a1 b1 c1 c2 c3", "xa7 a6 b5 b6 b7 b8",
+                "xd1 d1 d2 d3 e1 e3", "xc5 c5 c6 c7 d7 d8",
+                "xa1 a2 b2 c1 c2 c3", "xa6 a8 b5 b6 b7 b8",
+                "xd1 d1 d2 d3 e1 f1", "xc5 c5 c6 c7 c8 d6",
+            ];
+            const start = JSON.stringify(g.placed.map(p => [p.piece, p.owner]).sort());
+            for (let round = 0; round < 4; round++) {
+                for (const m of cycle) {
+                    g.move(m);
+                }
+                expect(g.gameover).to.be.false;
+            }
+            expect(JSON.stringify(g.placed.map(p => [p.piece, p.owner]).sort())).to.equal(start);
+            // the position after the first ply now occurs for the fifth time
+            g.move(cycle[0]);
+            expect(g.gameover).to.be.true;
+            expect(g.winner).to.deep.equal([1, 2]);
+            expect(g.results.some(r => r.type === "eog" && r.reason === "repetition")).to.be.true;
+            assertChatLogParity(g, ["Alice", "Bob"]);
+        });
+
         it("cannot be combined with Misère, and needs the shared pool", () => {
             const both = new GolombGame(2, ["capture", "misere"]).variants;
             expect(both.includes("capture") && both.includes("misere")).to.be.false;
@@ -510,6 +550,30 @@ describe("Golomb's Game", () => {
             expect(r.move).to.equal("xa1 a1");
             // the opponent's captured piece cancels instead
             expect(g.handleClick("xa1 a1", ...rc("c2")).move).to.equal("");
+        });
+
+        it("pieces removed by the move being entered are crossed out in the pool", () => {
+            const g = setUp(new GolombGame(2, ["capture"]), {
+                placed: [["I", ["a1", "a2", "a3", "a4", "a5"], 1]],
+                pool: ALL.filter(p => p !== "I"),
+            });
+            const poolOf = (game: GolombGame) => {
+                const rep = game.render();
+                const pool = (rep.areas ?? []).find(a => "pieces" in a && (a.pieces as { text: string }[]).length === 12)!;
+                return (pool as { pieces: { piece: string; text: string }[] }).pieces.map(p => ({
+                    text: p.text,
+                    crossed: JSON.stringify(rep.legend![p.piece]).includes("cross-diag"),
+                }));
+            };
+            const preview = new GolombGame(g.serialize());
+            preview.placed = g.placed.map(p => ({ ...p, cells: [...p.cells] }));
+            preview.pool = [...g.pool];
+            preview.move("xa1 c1", { partial: true });
+            const shown = poolOf(preview);
+            expect(shown.filter(p => p.crossed).map(p => p.text)).to.deep.equal(["I"]);
+            // once the move is made, the piece is back in the pool and placeable
+            g.move("xa1 a1 a2 a3 b1 c1");
+            expect(g.render().areas!.flatMap(a => "pieces" in a ? (a.pieces as { piece: string }[]) : []).every(p => !JSON.stringify(g.render().legend![p.piece]).includes("cross-diag"))).to.be.true;
         });
 
         it("during choose up, clicking a pentomino in the pool chooses it", () => {
