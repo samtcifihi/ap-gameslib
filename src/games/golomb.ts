@@ -1004,7 +1004,8 @@ export class GolombGame extends GameBase {
         for (const pc of this.removing) {
             legend[`${pc}-removed`] = [
                 { def: `golomb-${pc}`, scale: 1.4, paint: { fill: "_context_fill" } },
-                { name: "cross-diag", scale: 1.1, paint: { fill: "#e41a1c" } },
+                // only the player to move can remove pieces, so the cross is theirs
+                { name: "cross-diag", scale: 1.1, paint: { fill: this.currplayer } },
             ];
         }
 

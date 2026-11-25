@@ -552,28 +552,33 @@ describe("Golomb's Game", () => {
             expect(g.handleClick("xa1 a1", ...rc("c2")).move).to.equal("");
         });
 
-        it("pieces removed by the move being entered are crossed out in the pool", () => {
-            const g = setUp(new GolombGame(2, ["capture"]), {
-                placed: [["I", ["a1", "a2", "a3", "a4", "a5"], 1]],
-                pool: ALL.filter(p => p !== "I"),
-            });
-            const poolOf = (game: GolombGame) => {
+        it("pieces removed by the move being entered are crossed out in the pool, in the remover's colour", () => {
+            type Layer = { name?: string; paint?: { fill?: unknown } };
+            const crosses = (game: GolombGame) => {
                 const rep = game.render();
-                const pool = (rep.areas ?? []).find(a => "pieces" in a && (a.pieces as { text: string }[]).length === 12)!;
-                return (pool as { pieces: { piece: string; text: string }[] }).pieces.map(p => ({
-                    text: p.text,
-                    crossed: JSON.stringify(rep.legend![p.piece]).includes("cross-diag"),
-                }));
+                const pieces = (rep.areas ?? []).flatMap(a => "pieces" in a ? (a.pieces as { piece: string; text: string }[]) : []);
+                return pieces.flatMap(p => {
+                    const entry = rep.legend![p.piece];
+                    const cross = (Array.isArray(entry) ? entry as Layer[] : []).find(l => l.name === "cross-diag");
+                    return cross === undefined ? [] : [{ text: p.text, colour: cross.paint?.fill }];
+                });
             };
-            const preview = new GolombGame(g.serialize());
-            preview.placed = g.placed.map(p => ({ ...p, cells: [...p.cells] }));
-            preview.pool = [...g.pool];
-            preview.move("xa1 c1", { partial: true });
-            const shown = poolOf(preview);
-            expect(shown.filter(p => p.crossed).map(p => p.text)).to.deep.equal(["I"]);
-            // once the move is made, the piece is back in the pool and placeable
-            g.move("xa1 a1 a2 a3 b1 c1");
-            expect(g.render().areas!.flatMap(a => "pieces" in a ? (a.pieces as { piece: string }[]) : []).every(p => !JSON.stringify(g.render().legend![p.piece]).includes("cross-diag"))).to.be.true;
+            for (const player of [1, 2] as const) {
+                const g = setUp(new GolombGame(2, ["capture"]), {
+                    placed: [["I", ["a1", "a2", "a3", "a4", "a5"], player]],
+                    pool: ALL.filter(p => p !== "I"),
+                });
+                g.currplayer = player;
+                const preview = new GolombGame(g.serialize());
+                preview.placed = g.placed.map(p => ({ ...p, cells: [...p.cells] }));
+                preview.pool = [...g.pool];
+                preview.currplayer = player;
+                preview.move("xa1 c1", { partial: true });
+                expect(crosses(preview)).to.deep.equal([{ text: "I", colour: player }]);
+                // once the move is made, the piece is back in the pool and placeable
+                g.move("xa1 a1 a2 a3 b1 c1");
+                expect(crosses(g)).to.be.empty;
+            }
         });
 
         it("during choose up, clicking a pentomino in the pool chooses it", () => {
