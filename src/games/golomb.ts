@@ -502,9 +502,13 @@ export class GolombGame extends GameBase {
         return this.reachablePlacements(player).length > 0;
     }
 
+    /** A removal is written as `x` and the removed piece's first square. */
+    private removalToken(i: number): string {
+        return `x${this.placed[i].cells[0]}`;
+    }
+
     private formatPlacement(removed: number[], cells: string[]): string {
-        const xs = removed.map(i => `x${this.placed[i].cells[0]}`).sort();
-        return [...xs, ...cells].join(" ");
+        return [...removed.map(i => this.removalToken(i)).sort(), ...cells].join(" ");
     }
 
     public moves(player?: playerid): string[] {
@@ -690,14 +694,14 @@ export class GolombGame extends GameBase {
             const current = this.analyse(move);
             const parsed = current.parsed ?? { removals: [], cells: [] };
             const removed = current.removed ?? [];
-            const removals = removed.map(i => `x${this.placed[i].cells[0]}`);
+            const removals = removed.map(i => this.removalToken(i));
             const reset = (): IClickResult => ({ ...this.validateMove(""), move: "" });
 
             const unit = this.occupancy().get(cell);
             if (unit !== undefined && !removed.includes(unit)) {
                 // clicking your own captured piece removes it (and drops any partial placement)
                 if (unit >= 0 && this.variants.includes("capture") && this.placed[unit].owner === this.currplayer) {
-                    const newmove = [...removals, `x${this.placed[unit].cells[0]}`].join(" ");
+                    const newmove = [...removals, this.removalToken(unit)].join(" ");
                     return { ...this.validateMove(newmove), move: newmove };
                 }
                 // clicking any other piece or blocker cancels the move
@@ -767,14 +771,8 @@ export class GolombGame extends GameBase {
             }
             this.previewing = true;
             // show removed pieces off the board and back in the pool
-            for (const i of analysis.removed) {
-                const p = this.placed[i];
-                this.results.push({ type: "remove", what: p.piece, where: p.cells.join(" ") });
-                this.pool.push(p.piece);
-                this.removing.push(p.piece);
-            }
-            this.pool.sort();
-            this.placed = this.placed.filter((_, i) => !analysis.removed!.includes(i));
+            this.removing = this.liftPieces(analysis.removed);
+            this.pool = [...this.pool, ...this.removing].sort();
             if (analysis.parsed.cells.length > 0 && analysis.compatible?.length === 1) {
                 // the squares are settled: show the piece, and any captures, as they will be
                 this.placePiece(analysis.compatible[0]);
@@ -794,16 +792,9 @@ export class GolombGame extends GameBase {
             this.hands[this.currplayer - 1] = [...this.hands[this.currplayer - 1], pc].sort();
             this.results.push({ type: "select", what: pc });
         } else {
-            m = this.normaliseMove(m);
-            const removed = analysis.removed!;
             const placement = analysis.compatible![0];
-            const returning: Pentomino[] = [];
-            for (const i of removed) {
-                const p = this.placed[i];
-                this.results.push({ type: "remove", what: p.piece, where: p.cells.join(" ") });
-                returning.push(p.piece);
-            }
-            this.placed = this.placed.filter((_, i) => !removed.includes(i));
+            m = this.formatPlacement(analysis.removed!, placement.cells);
+            const returning = this.liftPieces(analysis.removed!);
             this.placePiece(placement);
             // removed pieces only return to the pool once the move is over
             this.pool = [...this.pool, ...returning].sort();
@@ -814,6 +805,16 @@ export class GolombGame extends GameBase {
         this.checkEOG();
         this.saveState();
         return this;
+    }
+
+    /** Takes the given pieces off the board, recording each removal, and returns them. */
+    private liftPieces(indices: number[]): Pentomino[] {
+        const lifted = indices.map(i => this.placed[i]);
+        for (const p of lifted) {
+            this.results.push({ type: "remove", what: p.piece, where: p.cells.join(" ") });
+        }
+        this.placed = this.placed.filter((_, i) => !indices.includes(i));
+        return lifted.map(p => p.piece);
     }
 
     /** Takes the piece from the mover's supply, places it, and captures what it touches enough. */
@@ -955,50 +956,7 @@ export class GolombGame extends GameBase {
 
     public render(opts: IRenderOpts = {}): APRenderRep {
         const { width, height } = this.geo;
-        const toRowCol = (cell: string): RowCol => {
-            const [col, row] = this.algebraic2coords(cell);
-            return { row, col };
-        };
-
-        // pieces and blockers share the foreground colour unless captured
-        const units: { cells: string[]; colour: string | number }[] = [
-            ...this.placed.map(p => ({ cells: p.cells, colour: p.owner === 0 ? "_context_fill" : p.owner })),
-            ...this.blockers.map(c => ({ cells: [c], colour: "_context_fill" })),
-        ];
-        const unitOf = new Map<string, number>();
-        units.forEach((u, i) => u.cells.forEach(c => unitOf.set(c, i)));
-        const floods = new Map<string | number, RowCol[]>();
-        for (const u of units) {
-            floods.set(u.colour, [...(floods.get(u.colour) ?? []), ...u.cells.map(toRowCol)]);
-        }
-        const markers: (MarkerFlood | MarkerFence)[] = [];
-        for (const [colour, points] of floods.entries()) {
-            // drawn over the grid so pieces show no internal lines
-            markers.push({ type: "flood", colour, opacity: 1, belowGrid: false, points: points as [RowCol, ...RowCol[]] });
-        }
-        // outline every outside edge of each piece and blocker, but not the edges between its own squares
-        const fences: MarkerFenceData[] = [];
-        const sides: [number, number, "N" | "E" | "S" | "W"][] = [[0, -1, "N"], [1, 0, "E"], [0, 1, "S"], [-1, 0, "W"]];
-        for (const [cell, u] of unitOf.entries()) {
-            const [x, y] = this.algebraic2coords(cell);
-            for (const [dx, dy, side] of sides) {
-                const nx = x + dx;
-                const ny = y + dy;
-                const onBoard = nx >= 0 && ny >= 0 && nx < width && ny < height;
-                const other = onBoard ? unitOf.get(this.coords2algebraic(nx, ny)) : undefined;
-                if (other === u) {
-                    continue;
-                }
-                // an edge shared by two pieces is drawn once, from its west or north side
-                if (other !== undefined && (side === "N" || side === "W")) {
-                    continue;
-                }
-                fences.push({ cell: { row: y, col: x }, side, colour: "_context_background", width: 3 });
-            }
-        }
-        for (const f of fences) {
-            markers.push({ type: "fence", ...f });
-        }
+        const markers = this.boardMarkers();
 
         let pieces: string | null = null;
         if (this.selected.length > 0) {
@@ -1042,6 +1000,93 @@ export class GolombGame extends GameBase {
             ];
         }
 
+        const areas = this.pieceAreas(opts);
+
+        const blocked = this.holes().map(c => this.toRowCol(c));
+        const rep: APRenderRep = {
+            board: {
+                style: "squares",
+                width,
+                height,
+                ...(blocked.length > 0 ? { blocked: blocked as [RowCol, ...RowCol[]] } : {}),
+                ...(markers.length > 0 ? { markers } : {}),
+            },
+            glyphDefs,
+            legend,
+            pieces,
+            ...(areas.length > 0 ? { areas } : {}),
+        };
+
+        const annotations: AnnotationBasic[] = [];
+        for (const r of this.results) {
+            if (r.type === "place") {
+                annotations.push({ type: "enter", targets: r.where!.split(" ").map(c => this.toRowCol(c)) as [RowCol, ...RowCol[]] });
+            } else if (r.type === "remove") {
+                annotations.push({ type: "exit", targets: r.where!.split(" ").map(c => this.toRowCol(c)) as [RowCol, ...RowCol[]] });
+            }
+        }
+        const dots = dotted.filter(c => !this.selected.includes(c)).map(c => this.toRowCol(c));
+        if (dots.length > 0) {
+            annotations.push({ type: "dots", targets: dots as [RowCol, ...RowCol[]] });
+        }
+        if (annotations.length > 0) {
+            rep.annotations = annotations;
+        }
+        return rep;
+    }
+
+    private toRowCol(cell: string): RowCol {
+        const [col, row] = this.algebraic2coords(cell);
+        return { row, col };
+    }
+
+    /** Fills pieces and blockers, and outlines their outside edges. */
+    private boardMarkers(): (MarkerFlood | MarkerFence)[] {
+        const { width, height } = this.geo;
+        // pieces and blockers share the foreground colour unless captured
+        const units: { cells: string[]; colour: string | number }[] = [
+            ...this.placed.map(p => ({ cells: p.cells, colour: p.owner === 0 ? "_context_fill" : p.owner })),
+            ...this.blockers.map(c => ({ cells: [c], colour: "_context_fill" })),
+        ];
+        const unitOf = new Map<string, number>();
+        units.forEach((u, i) => u.cells.forEach(c => unitOf.set(c, i)));
+        const floods = new Map<string | number, RowCol[]>();
+        for (const u of units) {
+            floods.set(u.colour, [...(floods.get(u.colour) ?? []), ...u.cells.map(c => this.toRowCol(c))]);
+        }
+        const markers: (MarkerFlood | MarkerFence)[] = [];
+        for (const [colour, points] of floods.entries()) {
+            // drawn over the grid so pieces show no internal lines
+            markers.push({ type: "flood", colour, opacity: 1, belowGrid: false, points: points as [RowCol, ...RowCol[]] });
+        }
+        // outline every outside edge of each piece and blocker, but not the edges between its own squares
+        const fences: MarkerFenceData[] = [];
+        const sides: [number, number, "N" | "E" | "S" | "W"][] = [[0, -1, "N"], [1, 0, "E"], [0, 1, "S"], [-1, 0, "W"]];
+        for (const [cell, u] of unitOf.entries()) {
+            const [x, y] = this.algebraic2coords(cell);
+            for (const [dx, dy, side] of sides) {
+                const nx = x + dx;
+                const ny = y + dy;
+                const onBoard = nx >= 0 && ny >= 0 && nx < width && ny < height;
+                const other = onBoard ? unitOf.get(this.coords2algebraic(nx, ny)) : undefined;
+                if (other === u) {
+                    continue;
+                }
+                // an edge shared by two pieces is drawn once, from its west or north side
+                if (other !== undefined && (side === "N" || side === "W")) {
+                    continue;
+                }
+                fences.push({ cell: { row: y, col: x }, side, colour: "_context_background", width: 3 });
+            }
+        }
+        for (const f of fences) {
+            markers.push({ type: "fence", ...f });
+        }
+        return markers;
+    }
+
+    /** Hands, the pool and (with Concealed hands) the unseen pieces, as this viewer may see them. */
+    private pieceAreas(opts: IRenderOpts): AreaPieces[] {
         const areas: AreaPieces[] = [];
         const asPieces = (list: string[]) => list as AreaPieces["pieces"];
         const concealed = this.variants.includes("concealed");
@@ -1085,38 +1130,7 @@ export class GolombGame extends GameBase {
                 });
             }
         }
-
-        const blocked = this.holes().map(toRowCol);
-        const rep: APRenderRep = {
-            board: {
-                style: "squares",
-                width,
-                height,
-                ...(blocked.length > 0 ? { blocked: blocked as [RowCol, ...RowCol[]] } : {}),
-                ...(markers.length > 0 ? { markers } : {}),
-            },
-            glyphDefs,
-            legend,
-            pieces,
-            ...(areas.length > 0 ? { areas } : {}),
-        };
-
-        const annotations: AnnotationBasic[] = [];
-        for (const r of this.results) {
-            if (r.type === "place") {
-                annotations.push({ type: "enter", targets: r.where!.split(" ").map(toRowCol) as [RowCol, ...RowCol[]] });
-            } else if (r.type === "remove") {
-                annotations.push({ type: "exit", targets: r.where!.split(" ").map(toRowCol) as [RowCol, ...RowCol[]] });
-            }
-        }
-        const dots = dotted.filter(c => !this.selected.includes(c)).map(toRowCol);
-        if (dots.length > 0) {
-            annotations.push({ type: "dots", targets: dots as [RowCol, ...RowCol[]] });
-        }
-        if (annotations.length > 0) {
-            rep.annotations = annotations;
-        }
-        return rep;
+        return areas;
     }
 
     /** Empty squares the player to move could cover with some placement, without removing anything. */
@@ -1124,15 +1138,8 @@ export class GolombGame extends GameBase {
         if (this.gameover || this.isChoosing()) {
             return [];
         }
-        const avail = new Set(this.available(this.currplayer));
-        const occ = this.occupancy();
-        const out = new Set<string>();
-        for (const p of this.geo.placements) {
-            if (avail.has(p.piece) && p.cells.every(c => !occ.has(c))) {
-                p.cells.forEach(c => out.add(c));
-            }
-        }
-        return [...out];
+        const free = this.reachablePlacements(this.currplayer).filter(r => r.needs.length === 0);
+        return [...new Set(free.flatMap(r => r.placement.cells))];
     }
 
     private holes(): string[] {
