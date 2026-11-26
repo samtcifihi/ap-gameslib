@@ -968,8 +968,6 @@ export class GolombGame extends GameBase {
         }
         // outline every outside edge of each piece and blocker, but not the edges between its own squares
         const fences: MarkerFenceData[] = [];
-        // where the edge faces an empty square, a hole or the board's edge, the grid line the band covers is redrawn on top
-        const gridLines: MarkerFenceData[] = [];
         const sides: [number, number, "N" | "E" | "S" | "W"][] = [[0, -1, "N"], [1, 0, "E"], [0, 1, "S"], [-1, 0, "W"]];
         for (const [cell, u] of unitOf.entries()) {
             const [x, y] = this.algebraic2coords(cell);
@@ -986,12 +984,9 @@ export class GolombGame extends GameBase {
                     continue;
                 }
                 fences.push({ cell: { row: y, col: x }, side, colour: "_context_background", width: 3 });
-                if (other === undefined) {
-                    gridLines.push({ cell: { row: y, col: x }, side, colour: "_context_strokes", width: 1 });
-                }
             }
         }
-        for (const f of [...fences, ...gridLines]) {
+        for (const f of fences) {
             markers.push({ type: "fence", ...f });
         }
 
