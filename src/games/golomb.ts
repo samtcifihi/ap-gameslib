@@ -715,6 +715,10 @@ export class GolombGame extends GameBase {
                 };
             }
 
+            // a square that is already selected changes nothing
+            if (parsed.cells.includes(cell)) {
+                return { ...current.result, move };
+            }
             const newmove = [...removals, ...parsed.cells, cell].join(" ");
             const result = this.validateMove(newmove);
             if (result.valid) {

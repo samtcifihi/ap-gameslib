@@ -544,6 +544,14 @@ describe("Golomb's Game", () => {
             expect(g.handleClick("a1", ...rc("c2")).move).to.equal("");
         });
 
+        it("clicking an already selected square changes nothing", () => {
+            const g = new GolombGame();
+            const r = g.handleClick("a1 a2", ...rc("a2"));
+            expect(r.valid).to.be.true;
+            expect(r.move).to.equal("a1 a2");
+            expect(r.complete).to.equal(-1);
+        });
+
         it("a square no placement can add cancels the partial placement", () => {
             const g = new GolombGame();
             const r = g.handleClick("a1", ...rc("h8"));
