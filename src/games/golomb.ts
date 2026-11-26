@@ -334,8 +334,10 @@ export class GolombGame extends GameBase {
     public stack!: Array<IMoveState>;
     public results: Array<APMoveResult> = [];
     private geo!: IGeometry;
-    // squares shown while a placement is only partially entered
+    // while a move is being entered: empty squares some fitting placement could cover, and the squares clicked so far
     private candidates: string[] = [];
+    private selected: string[] = [];
+    private previewing = false;
     // pieces removed by the move being entered: back in the pool, but not placeable yet
     private removing: Pentomino[] = [];
 
@@ -420,6 +422,8 @@ export class GolombGame extends GameBase {
         this.results = [...state._results];
         this.geo = GolombGame.geometry(this.variants);
         this.candidates = [];
+        this.selected = [];
+        this.previewing = false;
         this.removing = [];
         return this;
     }
@@ -753,12 +757,15 @@ export class GolombGame extends GameBase {
 
         this.results = [];
         this.candidates = [];
+        this.selected = [];
+        this.previewing = false;
         this.removing = [];
 
         if (partial) {
             if (analysis.parsed === undefined || analysis.removed === undefined) {
                 return this;
             }
+            this.previewing = true;
             // show removed pieces off the board and back in the pool
             for (const i of analysis.removed) {
                 const p = this.placed[i];
@@ -768,13 +775,12 @@ export class GolombGame extends GameBase {
             }
             this.pool.sort();
             this.placed = this.placed.filter((_, i) => !analysis.removed!.includes(i));
-            if (analysis.parsed.cells.length > 0 && analysis.compatible !== undefined) {
-                if (analysis.compatible.length === 1) {
-                    // the squares are settled: show the piece, and any captures, as they will be
-                    this.placePiece(analysis.compatible[0]);
-                } else {
-                    this.candidates = [...new Set(analysis.compatible.flatMap(p => p.cells))];
-                }
+            if (analysis.parsed.cells.length > 0 && analysis.compatible?.length === 1) {
+                // the squares are settled: show the piece, and any captures, as they will be
+                this.placePiece(analysis.compatible[0]);
+            } else {
+                this.selected = [...analysis.parsed.cells];
+                this.candidates = [...new Set((analysis.compatible ?? []).flatMap(p => p.cells))];
             }
             return this;
         }
@@ -995,21 +1001,23 @@ export class GolombGame extends GameBase {
         }
 
         let pieces: string | null = null;
-        if (this.candidates.length > 0) {
-            const candidates = new Set(this.candidates);
+        if (this.selected.length > 0) {
+            const selected = new Set(this.selected);
             const rows: string[] = [];
             for (let y = 0; y < height; y++) {
                 const row: string[] = [];
                 for (let x = 0; x < width; x++) {
-                    row.push(candidates.has(this.coords2algebraic(x, y)) ? "CAND" : "-");
+                    row.push(selected.has(this.coords2algebraic(x, y)) ? "CAND" : "-");
                 }
                 rows.push(row.join(","));
             }
             pieces = rows.join("\n");
         }
+        // before any input, every empty square some placement could cover gets a dot
+        const dotted = this.previewing ? this.candidates : this.coverable();
 
         const legend: NonNullable<APRenderRep["legend"]> = {
-            // 0.707 ≈ sqrt(0.5), so the preview square covers about half the cell's area
+            // marks a clicked square; 0.707 ≈ sqrt(0.5), so it covers about half the cell's area
             CAND: { name: "piece-square-borderless", colour: "_context_fill", scale: 0.707 },
         };
         // Hand and pool pentominoes are vector glyphs so they size like other pieces;
@@ -1101,10 +1109,30 @@ export class GolombGame extends GameBase {
                 annotations.push({ type: "exit", targets: r.where!.split(" ").map(toRowCol) as [RowCol, ...RowCol[]] });
             }
         }
+        const dots = dotted.filter(c => !this.selected.includes(c)).map(toRowCol);
+        if (dots.length > 0) {
+            annotations.push({ type: "dots", targets: dots as [RowCol, ...RowCol[]] });
+        }
         if (annotations.length > 0) {
             rep.annotations = annotations;
         }
         return rep;
+    }
+
+    /** Empty squares the player to move could cover with some placement, without removing anything. */
+    private coverable(): string[] {
+        if (this.gameover || this.isChoosing()) {
+            return [];
+        }
+        const avail = new Set(this.available(this.currplayer));
+        const occ = this.occupancy();
+        const out = new Set<string>();
+        for (const p of this.geo.placements) {
+            if (avail.has(p.piece) && p.cells.every(c => !occ.has(c))) {
+                p.cells.forEach(c => out.add(c));
+            }
+        }
+        return [...out];
     }
 
     private holes(): string[] {

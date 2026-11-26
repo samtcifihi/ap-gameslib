@@ -639,16 +639,57 @@ describe("Golomb's Game", () => {
             expect(g.placed.find(p => p.piece === "I")!.owner).to.equal(0);
         });
 
-        it("a partial placement previews every square some fitting placement would cover", () => {
+        // squares marked with dots, and squares marked as clicked, in a render
+        const marks = (rep: ReturnType<GolombGame["render"]>) => {
+            const dots = new Set<string>();
+            for (const a of (rep.annotations ?? []) as { type: string; targets: { row: number; col: number }[] }[]) {
+                if (a.type === "dots") {
+                    a.targets.forEach(t => dots.add(`${t.row},${t.col}`));
+                }
+            }
+            const clicked = new Set<string>();
+            if (typeof rep.pieces === "string") {
+                rep.pieces.split("\n").forEach((row, y) => row.split(",").forEach((v, x) => { if (v !== "-") { clicked.add(`${y},${x}`); } }));
+            }
+            return { dots, clicked };
+        };
+        const key = (cell: string) => rc(cell).join(",");
+
+        it("before any input, every empty square some placement could cover has a dot", () => {
+            const fresh = marks(new GolombGame().render());
+            expect(fresh.dots.size).to.equal(64);
+            expect(fresh.clicked.size).to.equal(0);
+            // with the I placed along a1-a5, only the X left, a corner square nothing can reach loses its dot
+            const g = setUp(new GolombGame(), { placed: [["I", ["a1", "a2", "a3", "a4", "a5"], 0]], pool: ["X"] });
+            const { dots } = marks(g.render());
+            expect(dots.has(key("a3"))).to.be.false;
+            expect(dots.has(key("h8"))).to.be.false;
+            expect(dots.has(key("g7"))).to.be.true;
+            expect(dots.has(key("b1"))).to.be.false;
+            expect(dots.has(key("c1"))).to.be.true;
+        });
+
+        it("while a placement is partly entered, clicked squares are marked and other coverable squares have dots", () => {
             const g = new GolombGame();
-            const expected = new Set(g.moves().filter(m => m.split(" ").includes("a1") && m.split(" ").includes("a2")).flatMap(m => m.split(" ")).map(c => rc(c).join(",")));
+            const covering = g.moves().filter(m => m.split(" ").includes("a1") && m.split(" ").includes("a2")).flatMap(m => m.split(" "));
             const preview = new GolombGame(g.serialize());
             preview.move("a1 a2", { partial: true });
-            const rows = (preview.render().pieces as string).split("\n").map(r => r.split(","));
-            const marked = new Set<string>();
-            rows.forEach((row, y) => row.forEach((v, x) => { if (v !== "-") { marked.add(`${y},${x}`); } }));
-            expect(marked).to.deep.equal(expected);
-            expect(new GolombGame().render().pieces).to.be.null;
+            const { dots, clicked } = marks(preview.render());
+            expect(clicked).to.deep.equal(new Set([key("a1"), key("a2")]));
+            expect(dots).to.deep.equal(new Set(covering.filter(c => c !== "a1" && c !== "a2").map(key)));
+        });
+
+        it("removing a captured piece frees its squares for the dots", () => {
+            const g = setUp(new GolombGame(2, ["capture"]), {
+                placed: [["I", ["a1", "a2", "a3", "a4", "a5"], 1]],
+                pool: ALL.filter(p => p !== "I"),
+            });
+            expect(marks(g.render()).dots.has(key("a3"))).to.be.false;
+            const preview = new GolombGame(g.serialize());
+            preview.placed = g.placed.map(p => ({ ...p, cells: [...p.cells] }));
+            preview.pool = [...g.pool];
+            preview.move("xa1", { partial: true });
+            expect(marks(preview.render()).dots.has(key("a3"))).to.be.true;
         });
     });
 
