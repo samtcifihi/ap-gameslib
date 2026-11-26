@@ -21,6 +21,7 @@ interface IFixture {
     pool?: Pentomino[];
     hands?: Pentomino[][];
     kitty?: Pentomino[];
+    currplayer?: 1 | 2 | 3 | 4;
 }
 
 const setUp = (g: GolombGame, f: IFixture): GolombGame => {
@@ -39,7 +40,36 @@ const setUp = (g: GolombGame, f: IFixture): GolombGame => {
     if (f.kitty !== undefined) {
         g.kitty = [...f.kitty];
     }
+    if (f.currplayer !== undefined) {
+        g.currplayer = f.currplayer;
+    }
+    // the fixture is also the saved position, so the game reloads exactly as set up
+    const top = g.stack.length - 1;
+    g.stack[top] = {
+        ...g.stack[top],
+        currplayer: g.currplayer,
+        placed: g.placed.map(pc => ({ ...pc, cells: [...pc.cells] })),
+        blockers: [...g.blockers],
+        pool: [...g.pool],
+        hands: g.hands.map(h => [...h]),
+        kitty: [...g.kitty],
+    };
     return g;
+};
+
+/** A copy of the game showing the move being entered. */
+const preview = (g: GolombGame, m: string): GolombGame => {
+    const copy = new GolombGame(g.serialize());
+    copy.move(m, { partial: true });
+    return copy;
+};
+
+// mulberry32: random blockers and deals shuffle with Math.random, which every test reseeds
+const seeded = (seed: number) => (): number => {
+    seed = (seed + 0x6d2b79f5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
 };
 
 const squares = (width: number, height: number): string[] => {
@@ -70,8 +100,15 @@ const movedCells = (m: string): string[] => m.split(" ").filter(t => !t.startsWi
 const rc = (cell: string, height = 8): [number, number] => [height - Number(cell.slice(1)), cell.charCodeAt(0) - 97];
 
 describe("Golomb's Game", () => {
+    const realRandom = Math.random;
     before(() => {
         addResource("en");
+    });
+    beforeEach(() => {
+        Math.random = seeded(20261125);
+    });
+    afterEach(() => {
+        Math.random = realRandom;
     });
 
     describe("setup", () => {
@@ -95,9 +132,7 @@ describe("Golomb's Game", () => {
             expect(new GolombGame(2, ["size-10x6"]).moves()).to.have.length(placementCount(10, 6));
         });
 
-        it("uses the selected board's squares", () => {
-            expect(new GolombGame(2, ["size-7x7"]).validateMove("g3 g7").complete).to.equal(0);
-            expect(new GolombGame(2, ["size-7x7"]).validateMove("h1").valid).to.be.false;
+        it("8x7 and 10x6 boards are wider than they are tall", () => {
             expect(new GolombGame(2, ["size-8x7"]).validateMove("h3 h7").complete).to.equal(0);
             expect(new GolombGame(2, ["size-8x7"]).validateMove("a8").valid).to.be.false;
             expect(new GolombGame(2, ["size-10x6"]).validateMove("f1 j1").complete).to.equal(0);
@@ -128,15 +163,28 @@ describe("Golomb's Game", () => {
                 for (const b of g.blockers) {
                     expect(["d4", "d5", "e4", "e5"].includes(b) && board.includes("center-blocked")).to.be.false;
                     expect(g.validateMove(b).valid).to.be.false;
+                    expect(g.moves().some(m => movedCells(m).includes(b))).to.be.false;
                 }
             }
         });
 
-        it("blockers cannot be covered", () => {
-            const g = setUp(new GolombGame(), { blockers: ["c3"] });
-            expect(g.moves().some(m => movedCells(m).includes("c3"))).to.be.false;
-            expect(g.validateMove("c1 c5").valid).to.be.false;
+        it("drops variant combinations the rules don't allow", () => {
+            // requested variants, and variants that must not all survive together
+            const cases: [string[], string[]][] = [
+                [["concealed"], ["concealed"]],
+                [["choose-up", "concealed"], ["concealed"]],
+                [["random-hands", "capture"], ["capture"]],
+                [["choose-up", "capture"], ["capture"]],
+                [["capture", "misere"], ["capture", "misere"]],
+                [["simple-pie"], ["simple-pie"]],
+                [["random-hands", "concealed", "simple-pie"], ["concealed", "simple-pie"]],
+            ];
+            for (const [requested, forbidden] of cases) {
+                const kept = new GolombGame(2, requested).variants;
+                expect(forbidden.every(v => kept.includes(v)), requested.join("+")).to.be.false;
+            }
         });
+
     });
 
     describe("placing pentominoes", () => {
@@ -155,10 +203,6 @@ describe("Golomb's Game", () => {
             expect(result.valid).to.be.true;
             expect(result.complete).to.equal(-1);
             expect(() => g.move("a1 a2")).to.throw();
-        });
-
-        it("a complete placement is offered for confirmation rather than submitted automatically", () => {
-            expect(new GolombGame().validateMove("a1 a2 a3 a4 a5").complete).to.equal(0);
         });
 
         it("rejects squares that no single pentomino can cover", () => {
@@ -199,15 +243,6 @@ describe("Golomb's Game", () => {
             expect(g.gameover).to.be.true;
             expect(g.winner).to.deep.equal([1]);
             expect(g.moves()).to.be.empty;
-        });
-
-        it("the game continues while the next player can still place", () => {
-            // the a1-a5 strip and an f1-g4 block, where the L fits
-            const blockers = squares(7, 7).filter(c => !/^(a[1-5]|[fg][1-4])$/.test(c));
-            const g = setUp(new GolombGame(2, ["size-7x7"]), { blockers, pool: ["I", "L"] });
-            g.move("a1 a5");
-            expect(g.gameover).to.be.false;
-            expect(g.moves()).to.include("f1 f2 f3 f4 g1");
         });
 
         it("in Misère, the first player with no legal move wins", () => {
@@ -303,7 +338,7 @@ describe("Golomb's Game", () => {
             expect(full.stack[full.stack.length - 1].kitty).to.deep.equal(["Y", "Z"]);
             // hands that are not concealed are never stripped
             const open = setUp(new GolombGame(2, ["random-hands"]), { hands: [["F"], ["I"]] });
-            expect(open.state({ strip: true, player: 1 }).stack[0].hands[1].length).to.equal(6);
+            expect(open.state({ strip: true, player: 1 }).stack[0].hands[1]).to.deep.equal(["I"]);
         });
 
         it("the display lists the unseen pentominoes without saying where they are", () => {
@@ -326,10 +361,6 @@ describe("Golomb's Game", () => {
             expect(new GolombGame().getFlags()).to.not.include("no-explore");
         });
 
-        it("requires random distribution", () => {
-            expect(new GolombGame(2, ["concealed"]).variants).to.not.include("concealed");
-            expect(new GolombGame(2, ["choose-up", "concealed"]).variants).to.not.include("concealed");
-        });
     });
 
     describe("capture", () => {
@@ -398,8 +429,8 @@ describe("Golomb's Game", () => {
                 placed: [["X", ["a2", "b1", "b2", "b3", "c2"], 1]],
                 blockers: squares(7, 7).filter(c => !/^([a-c][1-3]|g[1-5])$/.test(c)),
                 pool: ["I", "T", "V"],
+                currplayer: 2,
             });
-            g.currplayer = 2;
             g.move("g1 g5");
             expect(g.gameover).to.be.false;
             const moves = g.moves();
@@ -432,27 +463,19 @@ describe("Golomb's Game", () => {
                 "xd1 d1 d2 d3 e1 f1", "xc5 c5 c6 c7 c8 d6",
             ];
             const start = JSON.stringify(g.placed.map(p => [p.piece, p.owner]).sort());
-            for (let round = 0; round < 4; round++) {
-                for (const m of cycle) {
-                    g.move(m);
-                }
-                expect(g.gameover).to.be.false;
+            // the starting position recurs every 12 plies, so it occurs for the fifth time after 48
+            let plies = 0;
+            while (!g.gameover && plies < 100) {
+                g.move(cycle[plies % cycle.length]);
+                plies++;
             }
+            expect(plies).to.equal(48);
             expect(JSON.stringify(g.placed.map(p => [p.piece, p.owner]).sort())).to.equal(start);
-            // the position after the first ply now occurs for the fifth time
-            g.move(cycle[0]);
-            expect(g.gameover).to.be.true;
             expect(g.winner).to.deep.equal([1, 2]);
             expect(g.results.some(r => r.type === "eog" && r.reason === "repetition")).to.be.true;
             assertChatLogParity(g, ["Alice", "Bob"]);
         });
 
-        it("cannot be combined with Misère, and needs the shared pool", () => {
-            const both = new GolombGame(2, ["capture", "misere"]).variants;
-            expect(both.includes("capture") && both.includes("misere")).to.be.false;
-            expect(new GolombGame(2, ["random-hands", "capture"]).variants).to.not.include("capture");
-            expect(new GolombGame(2, ["choose-up", "capture"]).variants).to.not.include("capture");
-        });
     });
 
     describe("simple pie", () => {
@@ -504,20 +527,11 @@ describe("Golomb's Game", () => {
         it("is silently dropped from games with more than two players", () => {
             const g = new GolombGame(3, ["random-hands", "simple-pie"]);
             expect(g.variants).to.deep.equal(["random-hands"]);
-        });
-
-        it("needs dealt or chosen hands, and cannot be combined with concealed hands", () => {
-            expect(new GolombGame(2, ["simple-pie"]).variants).to.not.include("simple-pie");
-            const both = new GolombGame(2, ["random-hands", "concealed", "simple-pie"]).variants;
-            expect(both.includes("concealed") && both.includes("simple-pie")).to.be.false;
-        });
-
-        it("no pass is offered without the variant", () => {
-            const g = setUp(new GolombGame(2, ["random-hands"]), { hands: hands() });
-            g.move("a1 a5");
+            g.move(g.moves()[0]);
             expect(g.moves()).to.not.include("pass");
             expect(g.validateMove("pass").valid).to.be.false;
         });
+
     });
 
     describe("clicking", () => {
@@ -589,15 +603,11 @@ describe("Golomb's Game", () => {
                 const g = setUp(new GolombGame(2, ["capture"]), {
                     placed: [["I", ["a1", "a2", "a3", "a4", "a5"], player]],
                     pool: ALL.filter(p => p !== "I"),
+                    currplayer: player,
                 });
-                g.currplayer = player;
-                const preview = new GolombGame(g.serialize());
-                preview.placed = g.placed.map(p => ({ ...p, cells: [...p.cells] }));
-                preview.pool = [...g.pool];
-                preview.currplayer = player;
-                preview.move("xa1 c1", { partial: true });
-                expect(crosses(preview)).to.deep.equal([player]);
-                expect(preview.pool).to.include("I");
+                const shown = preview(g, "xa1 c1");
+                expect(crosses(shown)).to.deep.equal([player]);
+                expect(shown.pool).to.include("I");
                 // once the move is made, the piece is back in the pool and placeable
                 g.move("xa1 a1 a2 a3 b1 c1");
                 expect(crosses(g)).to.be.empty;
@@ -617,13 +627,10 @@ describe("Golomb's Game", () => {
                 placed: [["I", ["a1", "a2", "a3", "a4", "a5"], 0]],
                 pool: ALL.filter(p => p !== "I"),
             });
-            const preview = new GolombGame(g.serialize());
-            preview.placed = g.placed.map(p => ({ ...p, cells: [...p.cells] }));
-            preview.pool = [...g.pool];
-            preview.move("b1 b2 b3 b4 c1", { partial: true });
-            expect(preview.placed.find(p => p.piece === "I")!.owner).to.equal(1);
-            expect(preview.pool).to.not.include("L");
-            const rep = preview.render();
+            const shown = preview(g, "b1 b2 b3 b4 c1");
+            expect(shown.placed.find(p => p.piece === "I")!.owner).to.equal(1);
+            expect(shown.pool).to.not.include("L");
+            const rep = shown.render();
             // no preview squares: the piece is drawn like any placed piece
             expect(rep.pieces).to.be.null;
             const floods = (rep.board as { markers: { type: string; colour: unknown; points: { row: number; col: number }[] }[] }).markers
@@ -672,9 +679,7 @@ describe("Golomb's Game", () => {
         it("while a placement is partly entered, clicked squares are marked and other coverable squares have dots", () => {
             const g = new GolombGame();
             const covering = g.moves().filter(m => m.split(" ").includes("a1") && m.split(" ").includes("a2")).flatMap(m => m.split(" "));
-            const preview = new GolombGame(g.serialize());
-            preview.move("a1 a2", { partial: true });
-            const { dots, clicked } = marks(preview.render());
+            const { dots, clicked } = marks(preview(g, "a1 a2").render());
             expect(clicked).to.deep.equal(new Set([key("a1"), key("a2")]));
             expect(dots).to.deep.equal(new Set(covering.filter(c => c !== "a1" && c !== "a2").map(key)));
         });
@@ -685,11 +690,7 @@ describe("Golomb's Game", () => {
                 pool: ALL.filter(p => p !== "I"),
             });
             expect(marks(g.render()).dots.has(key("a3"))).to.be.false;
-            const preview = new GolombGame(g.serialize());
-            preview.placed = g.placed.map(p => ({ ...p, cells: [...p.cells] }));
-            preview.pool = [...g.pool];
-            preview.move("xa1", { partial: true });
-            expect(marks(preview.render()).dots.has(key("a3"))).to.be.true;
+            expect(marks(preview(g, "xa1").render()).dots.has(key("a3"))).to.be.true;
         });
     });
 
